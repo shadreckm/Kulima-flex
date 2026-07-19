@@ -1,20 +1,9 @@
-import sqlite3
+"""Bootstrap / reset Kulima intelligence database."""
 
-conn = sqlite3.connect("founders.db")
+from kulima.db import IntelligenceRepository
 
-cursor = conn.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS founders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    founder_name TEXT,
-    startup_name TEXT,
-    founder_score INTEGER,
-    trust_score INTEGER
-)
-""")
-
-conn.commit()
-conn.close()
-
-print("Database recreated successfully")
+if __name__ == "__main__":
+    repo = IntelligenceRepository()
+    print(f"Database ready at: {repo.db_path}")
+    print("Schema: intelligence_runs + founders (legacy)")

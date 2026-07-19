@@ -1,18 +1,18 @@
-from tavily import TavilyClient
+"""Quick Tavily OSINT connectivity check for Kulima FLEX."""
 
-client = TavilyClient(
-    api_key="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"
-)
+from dotenv import load_dotenv
 
-try:
-    response = client.search(
-        query="Shadreck Mawindo entrepreneurship",
-        search_depth="basic"
-    )
+from kulima.research import ResearchEngine
 
-    print("SUCCESS!")
-    print(response)
+load_dotenv()
 
-except Exception as e:
-    print("ERROR:")
-    print(e)
+if __name__ == "__main__":
+    engine = ResearchEngine()
+    try:
+        results = engine.search("African venture capital startup funding 2026", depth="basic")
+        print(f"SUCCESS — {len(results)} sources")
+        for r in results[:3]:
+            print(f"- {r.title}: {r.url}")
+    except Exception as exc:
+        print("ERROR:")
+        print(exc)

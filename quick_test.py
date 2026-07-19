@@ -1,21 +1,15 @@
-from openai import OpenAI
+"""Quick OpenAI connectivity check for Kulima FLEX."""
+
 from dotenv import load_dotenv
-import os
+
+from kulima.llm import LLMClient
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {
-            "role": "user",
-            "content": "Say hello to Kulima FLEX VC Brain"
-        }
-    ]
-)
-
-print(response.choices[0].message.content)
+if __name__ == "__main__":
+    client = LLMClient()
+    text = client.complete(
+        system="You are Kulima FLEX, an African VC intelligence OS.",
+        user="Say hello to Kulima FLEX VC Brain in one sharp sentence.",
+    )
+    print(text)

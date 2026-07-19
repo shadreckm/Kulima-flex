@@ -5,7 +5,7 @@
       "args": [
         "-y",
         "mcp-remote",
-        "https://mcp.tavily.com/mcp/?tavilyApiKey=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"
+        "https://mcp.tavily.com/mcp/?tavilyApiKey=${env:TAVILY_API_KEY}"
       ],
       "env": {
         "DEFAULT_PARAMETERS": "{\"search_depth\":\"advanced\",\"max_results\":10}"
