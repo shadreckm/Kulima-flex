@@ -19,6 +19,7 @@ logging.basicConfig(
 )
 
 from kulima.agents.orchestrator import IntelligenceOrchestrator
+from kulima.ask_ic import answer_ask_ic_question
 from kulima.config import FUTURES_MODEL, SYNDICATE_MODEL, get_settings
 from kulima.db import IntelligenceRepository
 from kulima.export import render_export_buttons
@@ -92,6 +93,79 @@ with st.sidebar:
         st.success("API credentials loaded")
 
 
+
+def _ask_ic_session_key(brief: InvestmentBrief) -> str:
+    return (
+        "ask_ic_messages::"
+        f"{brief.founder_name}::{brief.startup_name}::"
+        f"{brief.overall_score:.0f}::{brief.recommendation.value}"
+    )
+
+
+def render_ask_ic_tab(brief: InvestmentBrief) -> None:
+    st.markdown("#### 💬 Ask the Investment Committee")
+    st.caption(
+        "Ask follow-up diligence questions. Answers are grounded only in this generated "
+        "report, evidence sources, syndicate outputs, risk analysis, and futures analysis."
+    )
+
+    examples = [
+        "Why was this startup scored low?",
+        "What would change the recommendation?",
+        "Would you invest $25,000?",
+        "What are the biggest risks?",
+        "Compare this founder to similar founders.",
+        "What should the founder do next?",
+    ]
+    st.markdown("**Suggested committee prompts**")
+    chips = st.columns(3)
+    for i, prompt in enumerate(examples):
+        if chips[i % 3].button(prompt, key=f"ask_ic_example_{i}"):
+            st.session_state["ask_ic_pending_prompt"] = prompt
+
+    message_key = _ask_ic_session_key(brief)
+    if message_key not in st.session_state:
+        st.session_state[message_key] = [
+            {
+                "role": "assistant",
+                "content": (
+                    "I’m ready to answer as the IC analyst. I will stay inside the "
+                    "generated memo, evidence, syndicate votes, risk analysis, and "
+                    "futures scenarios, and I’ll cite those artifacts whenever possible."
+                ),
+            }
+        ]
+
+    if st.button("Clear Ask IC history", key="ask_ic_clear_history"):
+        st.session_state[message_key] = st.session_state[message_key][:1]
+        st.rerun()
+
+    for message in st.session_state[message_key]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    pending_prompt = st.session_state.pop("ask_ic_pending_prompt", None)
+    typed_prompt = st.chat_input(
+        "Ask the IC analyst a follow-up question…",
+        key=f"ask_ic_chat_input_{message_key}",
+    )
+    question = pending_prompt or typed_prompt
+    if question:
+        st.session_state[message_key].append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Consulting the generated IC context…"):
+                response = answer_ask_ic_question(
+                    brief,
+                    question,
+                    history=st.session_state[message_key][:-1],
+                )
+            st.markdown(response)
+        st.session_state[message_key].append({"role": "assistant", "content": response})
+
+
 def render_brief(brief: InvestmentBrief) -> None:
     if st.session_state.get("show_success_banner"):
         render_success_banner(brief)
@@ -141,6 +215,7 @@ def render_brief(brief: InvestmentBrief) -> None:
             "Trust Graph",
             "Sources",
             "Explainability",
+            "💬 Ask IC",
         ]
     )
 
@@ -240,6 +315,10 @@ def render_brief(brief: InvestmentBrief) -> None:
         st.markdown("#### Explainable AI Decisions")
         for reason in brief.explainability:
             st.markdown(f"- {reason}")
+
+
+    with tabs[10]:
+        render_ask_ic_tab(brief)
 
 
 if run:
