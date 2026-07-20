@@ -5,7 +5,7 @@ from __future__ import annotations
 from kulima.agents.base import BaseAgent
 from kulima.models import AgentResult, RedFlag, ScoreDimension, SourceAttribution
 from kulima.research import ResearchEngine
-from kulima.scoring import clamp
+from kulima.scoring import clamp, parse_qualitative_score, safe_float
 
 
 class FounderIntelligenceAgent(BaseAgent):
@@ -41,27 +41,51 @@ Required score names: Credibility, Leadership, Digital Footprint, Reputation, Do
                 user=f"Founder: {founder}\nStartup: {startup}\n\nOSINT Evidence:\n{corpus}",
             )
         except Exception as exc:
-            return self._fallback(founder, sources, str(exc))
+            import logging
+            logging.error(f"FounderIntelligenceAgent LLM completion failed: {exc}", exc_info=True)
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Founder Intelligence Agent",
+                message=f"Failed to complete LLM analysis for founder '{founder}'",
+                cause=exc
+            ) from exc
 
         scores = [
             ScoreDimension(
                 name=str(s.get("name", "Dimension")),
-                score=clamp(float(s.get("score", 50))),
+                score=clamp(parse_qualitative_score(s.get("score"), is_risk=False, default=50.0)),
                 rationale=str(s.get("rationale", "")),
-                confidence=float(s.get("confidence", 0.55)),
+                confidence=safe_float(s.get("confidence"), 0.55),
             )
             for s in data.get("scores", [])
         ]
-        if not scores:
-            scores = self._heuristic_scores(sources)
+
+        # Enforce and validate required dimensions
+        required_dims = {"Credibility", "Leadership", "Digital Footprint", "Reputation", "Domain Expertise"}
+        canonical_map = {d.lower(): d for d in required_dims}
+        for s in scores:
+            name_lower = s.name.lower()
+            if name_lower in canonical_map:
+                s.name = canonical_map[name_lower]
+
+        returned_dims = {s.name for s in scores}
+        missing_dims = required_dims - returned_dims
+        if missing_dims:
+            import logging
+            logging.error(f"FounderIntelligenceAgent validation failed. Missing: {missing_dims}. Output was: {data}")
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Founder Intelligence Agent",
+                message=f"AI output is missing required scoring dimensions: {', '.join(missing_dims)}"
+            )
 
         red_flags = [
             RedFlag(
-                severity=str(rf.get("severity", "medium")),
+                severity=str(rf.get("severity", "medium")).strip().lower(),
                 title=str(rf.get("title", "Concern")),
                 detail=str(rf.get("detail", "")),
                 mitigation=str(rf.get("mitigation", "")),
-                confidence=float(rf.get("confidence", 0.6)),
+                confidence=safe_float(rf.get("confidence"), 0.6),
             )
             for rf in data.get("red_flags", [])
         ]
@@ -83,25 +107,4 @@ Required score names: Credibility, Leadership, Digital Footprint, Reputation, Do
             metadata={
                 "leadership_archetype": data.get("leadership_archetype"),
             },
-        )
-
-    def _heuristic_scores(self, sources: list[SourceAttribution]) -> list[ScoreDimension]:
-        base = clamp(48 + len(sources) * 5)
-        return [
-            ScoreDimension(name="Credibility", score=base, rationale="Heuristic from evidence volume", confidence=0.4),
-            ScoreDimension(name="Leadership", score=clamp(base - 3), rationale="Limited public leadership signal", confidence=0.35),
-            ScoreDimension(name="Digital Footprint", score=clamp(40 + len(sources) * 6), rationale="Source breadth proxy", confidence=0.45),
-            ScoreDimension(name="Reputation", score=clamp(base - 5), rationale="Sparse reputation corpus", confidence=0.35),
-            ScoreDimension(name="Domain Expertise", score=clamp(base), rationale="Inferred from public mentions", confidence=0.35),
-        ]
-
-    def _fallback(self, founder: str, sources: list[SourceAttribution], error: str) -> AgentResult:
-        return AgentResult(
-            agent_name=self.name,
-            summary=f"Partial founder assessment for {founder} (LLM degraded). Evidence-only heuristics applied.",
-            scores=self._heuristic_scores(sources),
-            findings=[f"LLM path error: {error}", f"Recovered from {len(sources)} sources."],
-            sources=sources,
-            confidence=0.3,
-            raw_reasoning=error,
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from kulima.agents.base import BaseAgent
 from kulima.models import AgentResult, RedFlag, ScoreDimension, SourceAttribution
 from kulima.research import ResearchEngine
-from kulima.scoring import clamp
+from kulima.scoring import clamp, parse_qualitative_score, safe_float
 
 
 class StartupIntelligenceAgent(BaseAgent):
@@ -47,32 +47,54 @@ tam_narrative (string)
                 user=f"Founder: {founder}\nStartup: {startup}\n\nEvidence:\n{corpus}",
             )
         except Exception as exc:
-            return AgentResult(
-                agent_name=self.name,
-                summary=f"Partial startup assessment (degraded): {exc}",
-                scores=self._heuristic(merged),
-                sources=merged,
-                confidence=0.3,
-                raw_reasoning=str(exc),
-            )
+            import logging
+            logging.error(f"StartupIntelligenceAgent LLM completion failed: {exc}", exc_info=True)
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Startup Intelligence Agent",
+                message=f"Failed to complete LLM analysis for startup '{startup}'",
+                cause=exc,
+            ) from exc
 
         scores = [
             ScoreDimension(
                 name=str(s.get("name", "Dimension")),
-                score=clamp(float(s.get("score", 50))),
+                score=clamp(parse_qualitative_score(s.get("score"), is_risk=False, default=50.0)),
                 rationale=str(s.get("rationale", "")),
-                confidence=float(s.get("confidence", 0.55)),
+                confidence=safe_float(s.get("confidence"), 0.55),
             )
             for s in data.get("scores", [])
-        ] or self._heuristic(merged)
+        ]
+
+        # Enforce and validate required dimensions
+        required_dims = {
+            "Market Opportunity", "Competitive Position",
+            "Business Model", "Growth Potential", "Investment Readiness",
+        }
+        canonical_map = {d.lower(): d for d in required_dims}
+        for s in scores:
+            if s.name.lower() in canonical_map:
+                s.name = canonical_map[s.name.lower()]
+        returned_dims = {s.name for s in scores}
+        missing_dims = required_dims - returned_dims
+        if missing_dims:
+            import logging
+            logging.error(
+                f"StartupIntelligenceAgent validation failed. Missing: {missing_dims}. Output: {data}"
+            )
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Startup Intelligence Agent",
+                message=f"AI output is missing required scoring dimensions: {', '.join(missing_dims)}",
+            )
 
         red_flags = [
             RedFlag(
-                severity=str(rf.get("severity", "medium")),
+                severity=str(rf.get("severity", "medium")).strip().lower(),
                 title=str(rf.get("title", "Concern")),
                 detail=str(rf.get("detail", "")),
                 mitigation=str(rf.get("mitigation", "")),
-                confidence=float(rf.get("confidence", 0.6)),
+                confidence=safe_float(rf.get("confidence"), 0.6),
             )
             for rf in data.get("red_flags", [])
         ]
@@ -95,12 +117,4 @@ tam_narrative (string)
             },
         )
 
-    def _heuristic(self, sources: list[SourceAttribution]) -> list[ScoreDimension]:
-        base = clamp(50 + len(sources) * 3.5)
-        return [
-            ScoreDimension(name="Market Opportunity", score=clamp(base + 5), rationale="Evidence-volume proxy", confidence=0.4),
-            ScoreDimension(name="Competitive Position", score=clamp(base - 8), rationale="Limited competitive intel", confidence=0.35),
-            ScoreDimension(name="Business Model", score=clamp(base - 2), rationale="Inferred model quality", confidence=0.35),
-            ScoreDimension(name="Growth Potential", score=clamp(base), rationale="Africa leapfrog optionality", confidence=0.4),
-            ScoreDimension(name="Investment Readiness", score=clamp(base - 10), rationale="Readiness inferred conservatively", confidence=0.35),
-        ]
+

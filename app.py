@@ -6,7 +6,17 @@ Executive dashboard + multi-agent diligence + Twin Syndicate breakthrough.
 
 from __future__ import annotations
 
+import logging
+import traceback
+
 import streamlit as st
+
+# Configure root logger — writes to stderr / Streamlit server logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 from kulima.agents.orchestrator import IntelligenceOrchestrator
 from kulima.config import FUTURES_MODEL, SYNDICATE_MODEL, get_settings
@@ -91,7 +101,7 @@ def render_brief(brief: InvestmentBrief) -> None:
         m4.metric("Red Flags", len(brief.red_flags))
     render_dashboard_shell_close()
 
-    render_twin_syndicate_committee(brief)
+    render_twin_syndicate_committee(brief, key_suffix="_main")
     render_continental_futures_simulator(brief)
     render_export_buttons(brief, key_prefix="main")
 
@@ -175,7 +185,7 @@ def render_brief(brief: InvestmentBrief) -> None:
         render_export_buttons(brief, key_prefix="memo_tab")
 
     with tabs[5]:
-        render_twin_syndicate_committee(brief)
+        render_twin_syndicate_committee(brief, key_suffix="_tab")
 
     with tabs[6]:
         render_continental_futures_simulator(brief)
@@ -258,21 +268,44 @@ if run:
                     f"{len(brief.sources)} sources · {len(brief.red_flags)} red flags"
                 )
             except Exception as e:
-                import traceback
+                # Collect full diagnostics
+                exc_type = type(e).__name__
+                exc_module = type(e).__module__
+                tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+                full_tb = "".join(tb_lines)
 
-                traceback.print_exc()
+                # Stage label from PipelineStageError if available
+                stage_label = getattr(e, "stage", None)
+                stage_info = f" in **{stage_label}**" if stage_label else ""
 
+                # Log everything to server stderr
+                logging.error(
+                    f"Pipeline failure{(' in stage: ' + stage_label) if stage_label else ''}: "
+                    f"{exc_type}: {e}\n{full_tb}"
+                )
+
+                progress_bar.progress(0.0, text=f"Pipeline failed — {exc_type}{stage_info}")
                 status.update(
-                    label=f"Pipeline failed: {str(e)}",
-                    state="error"
+                    label=f"Pipeline failed — {exc_type}{stage_info}",
+                    state="error",
                 )
 
-                progress_bar.progress(
-                    0.0,
-                    text=f"Pipeline failed: {str(e)}"
+                st.error(
+                    f"### 🚨 Pipeline Failure{stage_info}\n\n"
+                    f"**Exception type:** `{exc_module}.{exc_type}`  \n"
+                    f"**Message:** {e}"
                 )
+                with st.expander("📋 Full Traceback (click to expand)", expanded=False):
+                    st.code(full_tb, language="python")
 
-                st.exception(e)
+                # Surface cause chain if present
+                cause = getattr(e, "cause", None) or getattr(e, "__cause__", None)
+                if cause and cause is not e:
+                    cause_tb = "".join(
+                        traceback.format_exception(type(cause), cause, cause.__traceback__)
+                    )
+                    with st.expander(f"🔗 Root Cause — `{type(cause).__name__}`", expanded=False):
+                        st.code(cause_tb, language="python")
 if "latest_brief" in st.session_state:
     render_brief(st.session_state["latest_brief"])
 else:

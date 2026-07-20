@@ -21,6 +21,7 @@ from kulima.scoring import (
     clamp,
     confidence_level,
     mean,
+    parse_qualitative_score,
     recommendation_from_score,
 )
 from kulima.trust_graph import TrustGraphEngine
@@ -111,16 +112,38 @@ class IntelligenceOrchestrator:
 
         founder_score = aggregate_agent_score(founder_result, 55)
         startup_score = aggregate_agent_score(startup_result, 55)
+
         market_dims = [s for s in startup_result.scores if "Market" in s.name]
+        if not market_dims:
+            import logging
+            logging.warning("Orchestrator: 'Market Opportunity' dimension missing from startup_result — falling back to aggregate startup score.")
         market_score = market_dims[0].score if market_dims else startup_score
+
         growth_dims = [s for s in startup_result.scores if "Growth" in s.name]
+        if not growth_dims:
+            import logging
+            logging.warning("Orchestrator: 'Growth Potential' dimension missing from startup_result — falling back to aggregate startup score.")
         growth_potential = growth_dims[0].score if growth_dims else startup_score
+
         ready_dims = [s for s in startup_result.scores if "Readiness" in s.name]
-        investment_readiness = ready_dims[0].score if ready_dims else clamp(startup_score - 5)
+        if not ready_dims:
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Orchestrator",
+                message=(
+                    "Startup AI output is missing the 'Investment Readiness' dimension. "
+                    "Cannot compute investment readiness without structured AI output."
+                ),
+            )
+        investment_readiness = ready_dims[0].score
         trust_score = trust_graph.trust_score
-        risk_score = float(
-            risk_result.metadata.get("composite_risk_score")
-            or aggregate_agent_score(risk_result, 50)
+
+        risk_score = clamp(
+            parse_qualitative_score(
+                risk_result.metadata.get("composite_risk_score")
+                or aggregate_agent_score(risk_result, 50),
+                is_risk=True,
+            )
         )
 
         overall = clamp(

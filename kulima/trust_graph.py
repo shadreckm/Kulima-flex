@@ -93,8 +93,13 @@ class TrustGraphEngine:
                         strength=float(link.get("strength", 0.5)),
                     )
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            logging.warning(
+                f"TrustGraphEngine LLM enrichment failed — graph will use base nodes only. "
+                f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
 
         g = nx.Graph()
         for n in nodes:

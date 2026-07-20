@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from kulima.models import (
     AgentResult,
     ConfidenceLevel,
@@ -12,6 +14,88 @@ from kulima.models import (
 
 def clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, value))
+
+
+def safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert any value to float, returning default if parsing fails."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    import re
+    match = re.search(r"[-+]?\d*\.\d+|\d+", s)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            pass
+    return default
+
+
+def parse_qualitative_score(val: Any, is_risk: bool = False, default: float = 50.0) -> float:
+    """
+    Parses a score which can be a number, string representation of a number,
+    or a qualitative term (e.g. High, Medium, Low, Critical).
+    `is_risk` indicates if a higher score is worse (for risk assessment).
+    """
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+        
+    s = str(val).strip().lower()
+    
+    # Check qualitative terms first
+    # Risk-specific mapping: Higher risk score = worse (closer to 100)
+    risk_mapping = {
+        "low": 20.0,
+        "medium": 50.0,
+        "high": 75.0,
+        "very high": 90.0,
+        "critical": 95.0,
+    }
+    
+    # General-specific mapping: Higher score = better (closer to 100)
+    general_mapping = {
+        "low": 20.0,
+        "medium": 50.0,
+        "high": 80.0,
+        "very high": 95.0,
+        "critical": 20.0, 
+    }
+    
+    mapping = risk_mapping if is_risk else general_mapping
+    
+    if s in mapping:
+        return mapping[s]
+        
+    # Try to parse as direct float
+    try:
+        return float(s)
+    except ValueError:
+        pass
+        
+    # Try extracting first numeric match (e.g. "85%" -> 85.0, "risk: 45" -> 45.0)
+    import re
+    match = re.search(r"[-+]?\d*\.\d+|\d+", s)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            pass
+            
+    # Substring matching as fallback
+    for key, value in mapping.items():
+        if key in s:
+            return value
+            
+    return default
+
 
 
 def mean(values: list[float], default: float = 0.0) -> float:

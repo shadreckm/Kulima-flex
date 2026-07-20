@@ -50,13 +50,54 @@ def inject_styles() -> None:
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg, #0B3D2E 0%, #0F4A38 55%, #123F32 100%);
         }
-        [data-testid="stSidebar"] * {
+        /* High contrast sidebar headings and labels */
+        [data-testid="stSidebar"] h1, 
+        [data-testid="stSidebar"] h2, 
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] strong,
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
             color: #F3F7F4 !important;
         }
+        /* Sidebar body text */
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] div {
+            color: #E2EBE5;
+        }
+        /* Accessible placeholders & inputs */
         [data-testid="stSidebar"] .stTextInput input {
             background: rgba(255,255,255,0.08) !important;
-            border: 1px solid rgba(255,255,255,0.18) !important;
-            color: #fff !important;
+            border: 1px solid rgba(255,255,255,0.25) !important;
+            color: #ffffff !important;
+        }
+        [data-testid="stSidebar"] .stTextInput input::placeholder {
+            color: rgba(255, 255, 255, 0.45) !important;
+            opacity: 1 !important;
+        }
+        [data-testid="stSidebar"] .stTextInput input::-webkit-input-placeholder {
+            color: rgba(255, 255, 255, 0.45) !important;
+        }
+        [data-testid="stSidebar"] .stTextInput input::-moz-placeholder {
+            color: rgba(255, 255, 255, 0.45) !important;
+            opacity: 1 !important;
+        }
+        /* Inline code block elements */
+        [data-testid="stSidebar"] code {
+            background-color: rgba(255, 255, 255, 0.15) !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            padding: 0.1rem 0.3rem !important;
+            border-radius: 4px !important;
+        }
+        /* Muted caption styles in sidebar */
+        [data-testid="stSidebar"] .stCaptionContainer p,
+        [data-testid="stSidebar"] caption,
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+            color: #A0B6AA !important;
+        }
+        /* Alert boxes must retain readable black/red/green text colors */
+        [data-testid="stSidebar"] [data-testid="stAlert"] * {
+            color: inherit !important;
         }
         [data-testid="stSidebar"] .stButton > button {
             background: #C4A35A !important;
@@ -506,7 +547,7 @@ def syndicate_bar(brief: InvestmentBrief) -> go.Figure | None:
     return fig
 
 
-def render_twin_syndicate_committee(brief: InvestmentBrief) -> None:
+def render_twin_syndicate_committee(brief: InvestmentBrief, key_suffix: str = "") -> None:
     st.markdown("---")
     st.markdown("## 🏛 Twin Syndicate Investment Committee")
     st.caption(
@@ -532,7 +573,8 @@ def render_twin_syndicate_committee(brief: InvestmentBrief) -> None:
 
     fig = syndicate_bar(brief)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        chart_key = f"syndicate_chart{key_suffix}" if key_suffix else "syndicate_chart"
+        st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
     st.markdown("### Individual Committee Votes")
     for v in syn.votes:

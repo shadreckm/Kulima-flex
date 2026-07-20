@@ -5,7 +5,7 @@ from __future__ import annotations
 from kulima.agents.base import BaseAgent
 from kulima.models import AgentResult, RedFlag, ScoreDimension, SourceAttribution
 from kulima.research import ResearchEngine
-from kulima.scoring import clamp
+from kulima.scoring import clamp, parse_qualitative_score, safe_float
 
 
 class RiskAssessmentAgent(BaseAgent):
@@ -47,46 +47,63 @@ risk_posture (Conservative|Balanced|Aggressive tolerance match)
                 user=f"Founder: {founder}\nStartup: {startup}\n\nEvidence:\n{corpus}",
             )
         except Exception as exc:
-            base_risk = clamp(55 - len(pooled) * 2)
-            return AgentResult(
-                agent_name=self.name,
-                summary=f"Risk assessment degraded: {exc}",
-                scores=[
-                    ScoreDimension(
-                        name="Composite Risk",
-                        score=base_risk,
-                        rationale="Heuristic risk under LLM failure",
-                        confidence=0.3,
-                    )
-                ],
-                sources=pooled,
-                confidence=0.25,
-                metadata={"composite_risk_score": base_risk},
-                raw_reasoning=str(exc),
-            )
+            import logging
+            logging.error(f"RiskAssessmentAgent LLM completion failed: {exc}", exc_info=True)
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Risk Assessment Agent",
+                message=f"Failed to complete LLM risk analysis for '{founder} / {startup}'",
+                cause=exc,
+            ) from exc
 
         scores = [
             ScoreDimension(
                 name=str(s.get("name", "Risk")),
-                score=clamp(float(s.get("score", 50))),
+                score=clamp(parse_qualitative_score(s.get("score"), is_risk=True, default=50.0)),
                 rationale=str(s.get("rationale", "")),
-                confidence=float(s.get("confidence", 0.55)),
+                confidence=safe_float(s.get("confidence"), 0.55),
             )
             for s in data.get("scores", [])
         ]
+
+        # Enforce and validate required risk dimensions
+        required_dims = {
+            "Execution Risk", "Market Risk", "Regulatory Risk", "FX Macro Risk",
+            "Key Person Risk", "Competitive Risk", "Reputational Risk", "Capital Risk",
+        }
+        canonical_map = {d.lower(): d for d in required_dims}
+        for s in scores:
+            if s.name.lower() in canonical_map:
+                s.name = canonical_map[s.name.lower()]
+        returned_dims = {s.name for s in scores}
+        missing_dims = required_dims - returned_dims
+        if missing_dims:
+            import logging
+            logging.error(
+                f"RiskAssessmentAgent validation failed. Missing: {missing_dims}. Output: {data}"
+            )
+            from kulima.errors import PipelineStageError
+            raise PipelineStageError(
+                stage="Risk Assessment Agent",
+                message=f"AI output is missing required risk dimensions: {', '.join(missing_dims)}",
+            )
+
+        composite = parse_qualitative_score(
+            data.get("composite_risk_score"),
+            is_risk=True,
+            default=(sum(s.score for s in scores) / len(scores) if scores else 50.0)
+        )
+
         red_flags = [
             RedFlag(
-                severity=str(rf.get("severity", "medium")),
+                severity=str(rf.get("severity", "medium")).strip().lower(),
                 title=str(rf.get("title", "Risk")),
                 detail=str(rf.get("detail", "")),
                 mitigation=str(rf.get("mitigation", "")),
-                confidence=float(rf.get("confidence", 0.65)),
+                confidence=safe_float(rf.get("confidence"), 0.65),
             )
             for rf in data.get("red_flags", [])
         ]
-        composite = float(data.get("composite_risk_score") or (
-            sum(s.score for s in scores) / len(scores) if scores else 50
-        ))
 
         return AgentResult(
             agent_name=self.name,
