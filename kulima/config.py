@@ -22,6 +22,29 @@ class Settings:
     db_path: str
     max_research_results: int
     africa_focus: bool
+    access_mode: str
+    guest_daily_limit: int
+    analyst_daily_limit: int
+    investor_daily_limit: int
+    admin_emails: tuple[str, ...]
+
+    def missing_required_secrets(self) -> list[str]:
+        missing = []
+        if not self.openai_api_key:
+            missing.append("OPENAI_API_KEY")
+        if not self.tavily_api_key:
+            missing.append("TAVILY_API_KEY")
+        return missing
+
+    def pilot_access_summary(self) -> dict[str, object]:
+        return {
+            "guest_access": self.access_mode in {"guest", "pilot", "open"},
+            "authenticated_access": self.access_mode in {"pilot", "authenticated"},
+            "guest_daily_limit": self.guest_daily_limit,
+            "analyst_daily_limit": self.analyst_daily_limit,
+            "investor_daily_limit": self.investor_daily_limit,
+            "admin_controls": bool(self.admin_emails),
+        }
 
 
 def get_settings() -> Settings:
@@ -32,6 +55,15 @@ def get_settings() -> Settings:
         db_path=os.getenv("KULIMA_DB_PATH", "founders.db"),
         max_research_results=int(os.getenv("MAX_RESEARCH_RESULTS", "8")),
         africa_focus=os.getenv("AFRICA_FOCUS", "true").lower() == "true",
+        access_mode=os.getenv("KULIMA_ACCESS_MODE", "pilot").lower(),
+        guest_daily_limit=int(os.getenv("KULIMA_GUEST_DAILY_LIMIT", "3")),
+        analyst_daily_limit=int(os.getenv("KULIMA_ANALYST_DAILY_LIMIT", "25")),
+        investor_daily_limit=int(os.getenv("KULIMA_INVESTOR_DAILY_LIMIT", "10")),
+        admin_emails=tuple(
+            email.strip().lower()
+            for email in os.getenv("KULIMA_ADMIN_EMAILS", "").split(",")
+            if email.strip()
+        ),
     )
 
 
