@@ -10,7 +10,6 @@ import streamlit as st
 
 from kulima.models import InvestmentBrief, Recommendation
 
-
 REC_COLORS = {
     Recommendation.INVEST: "#0B6E4F",
     Recommendation.CO_INVEST: "#1B9AAA",
@@ -65,20 +64,33 @@ def inject_styles() -> None:
             color: #E2EBE5;
         }
         /* Accessible placeholders & inputs */
+        .stTextInput input, textarea, [data-baseweb="input"] input {
+            background: #FFFFFF !important;
+            border: 1px solid rgba(11,61,46,0.24) !important;
+            color: #10251C !important;
+            caret-color: #0B6E4F !important;
+            -webkit-text-fill-color: #10251C !important;
+        }
+        .stTextInput input::placeholder, textarea::placeholder {
+            color: #5B6F64 !important;
+            opacity: 1 !important;
+        }
         [data-testid="stSidebar"] .stTextInput input {
-            background: rgba(255,255,255,0.08) !important;
-            border: 1px solid rgba(255,255,255,0.25) !important;
-            color: #ffffff !important;
+            background: #F8FBF8 !important;
+            border: 1px solid rgba(255,255,255,0.45) !important;
+            color: #10251C !important;
+            caret-color: #0B6E4F !important;
+            -webkit-text-fill-color: #10251C !important;
         }
         [data-testid="stSidebar"] .stTextInput input::placeholder {
-            color: rgba(255, 255, 255, 0.45) !important;
+            color: #496055 !important;
             opacity: 1 !important;
         }
         [data-testid="stSidebar"] .stTextInput input::-webkit-input-placeholder {
-            color: rgba(255, 255, 255, 0.45) !important;
+            color: #496055 !important;
         }
         [data-testid="stSidebar"] .stTextInput input::-moz-placeholder {
-            color: rgba(255, 255, 255, 0.45) !important;
+            color: #496055 !important;
             opacity: 1 !important;
         }
         /* Inline code block elements */
@@ -93,7 +105,7 @@ def inject_styles() -> None:
         [data-testid="stSidebar"] .stCaptionContainer p,
         [data-testid="stSidebar"] caption,
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
-            color: #A0B6AA !important;
+            color: #D7E3DC !important;
         }
         /* Alert boxes must retain readable black/red/green text colors */
         [data-testid="stSidebar"] [data-testid="stAlert"] * {
@@ -326,6 +338,51 @@ def inject_styles() -> None:
             padding: 1rem 1.15rem;
             margin: 0.6rem 0 1rem 0;
         }
+
+        [data-testid="stAlert"] {
+            color: #10251C !important;
+        }
+        [data-testid="stAlert"] * {
+            color: inherit !important;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+            overflow-x: auto;
+        }
+        .stTabs [data-baseweb="tab"] {
+            color: #0B3D2E !important;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        @media (prefers-color-scheme: dark) {
+            .stApp {
+                background: linear-gradient(180deg, #071F18 0%, #0B2D22 100%);
+                color: #EDF6F0;
+            }
+            .kulima-brand, .empty-state h3, .score-chip .value, .futures-card h3, .futures-metric-value {
+                color: #F3F7F4 !important;
+            }
+            .kulima-sub, .score-chip .label, .score-chip .hint, .dashboard-kicker, .futures-metric-label, .futures-body {
+                color: #D7E3DC !important;
+            }
+            .dashboard-shell, .section-card, .empty-state, .score-chip, .futures-card, .pipeline-card {
+                background: rgba(13, 43, 33, 0.90) !important;
+                border-color: rgba(215, 227, 220, 0.20) !important;
+            }
+            .stTextInput input, textarea, [data-baseweb="input"] input {
+                background: #F8FBF8 !important;
+                color: #10251C !important;
+                -webkit-text-fill-color: #10251C !important;
+            }
+            .stTabs [data-baseweb="tab"] { color: #F3F7F4 !important; }
+        }
+        @media (max-width: 760px) {
+            .block-container { padding: 0.85rem 0.75rem 2rem; }
+            .kulima-brand { font-size: 2.1rem; }
+            .rec-banner { font-size: 1.05rem; padding: 0.9rem; }
+            .score-chip .value { font-size: 1.55rem; }
+            .futures-card { min-height: unset; }
+        }
         div[data-testid="stMetricValue"] {
             font-family: Fraunces, Georgia, serif;
         }
@@ -429,7 +486,10 @@ def render_recommendation_banner(brief: InvestmentBrief) -> None:
 
 
 def render_score_row(brief: InvestmentBrief) -> None:
-    st.markdown('<div class="dashboard-kicker">Executive Scorecard</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="dashboard-kicker">Executive Scorecard</div>',
+        unsafe_allow_html=True,
+    )
     cols = st.columns(6)
     metrics = [
         ("Overall", brief.overall_score, False, "Composite conviction"),
@@ -497,7 +557,12 @@ def radar_figure(brief: InvestmentBrief) -> go.Figure:
     fig.update_layout(
         polar=dict(
             bgcolor="rgba(255,255,255,0.45)",
-            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor="rgba(11,61,46,0.12)"),
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=False,
+                gridcolor="rgba(11,61,46,0.12)",
+            ),
             angularaxis=dict(gridcolor="rgba(11,61,46,0.10)"),
         ),
         showlegend=False,
@@ -538,7 +603,11 @@ def syndicate_bar(brief: InvestmentBrief) -> go.Figure | None:
             text="Twin Syndicate — Confidence by Investor",
             font=dict(family="Fraunces", size=16, color="#0B3D2E"),
         ),
-        yaxis=dict(range=[0, 120], title="Confidence Score (0–100)", gridcolor="rgba(11,61,46,0.08)"),
+        yaxis=dict(
+            range=[0, 120],
+            title="Confidence Score (0–100)",
+            gridcolor="rgba(11,61,46,0.08)",
+        ),
         margin=dict(l=20, r=20, t=50, b=80),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.45)",
@@ -547,7 +616,9 @@ def syndicate_bar(brief: InvestmentBrief) -> go.Figure | None:
     return fig
 
 
-def render_twin_syndicate_committee(brief: InvestmentBrief, key_suffix: str = "") -> None:
+def render_twin_syndicate_committee(
+    brief: InvestmentBrief, key_suffix: str = ""
+) -> None:
     st.markdown("---")
     st.markdown("## 🏛 Twin Syndicate Investment Committee")
     st.caption(
@@ -590,7 +661,9 @@ def render_twin_syndicate_committee(brief: InvestmentBrief, key_suffix: str = ""
             st.markdown("**Key Reasoning**")
             st.write(v.key_reasoning or v.thesis)
             st.markdown("**Major Concern**")
-            st.warning(v.major_concern or (v.concerns[0] if v.concerns else "None stated"))
+            st.warning(
+                v.major_concern or (v.concerns[0] if v.concerns else "None stated")
+            )
 
     st.markdown("### Final Committee Outcome")
     color = REC_COLORS.get(final, "#0B3D2E")
@@ -656,7 +729,9 @@ def futures_chart(brief: InvestmentBrief) -> go.Figure | None:
     return fig
 
 
-def render_continental_futures_simulator(brief: InvestmentBrief) -> None:
+def render_continental_futures_simulator(
+    brief: InvestmentBrief, key_suffix: str = ""
+) -> None:
     st.markdown("---")
     st.markdown("## 🌍 Continental Futures Simulator")
     st.caption(
@@ -678,7 +753,8 @@ def render_continental_futures_simulator(brief: InvestmentBrief) -> None:
 
     fig = futures_chart(brief)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        chart_key = f"futures_chart{key_suffix}" if key_suffix else "futures_chart"
+        st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
     cols = st.columns(3)
     for col, scenario in zip(cols, fs.scenarios[:3]):

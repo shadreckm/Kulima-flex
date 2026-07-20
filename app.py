@@ -55,10 +55,23 @@ repo = IntelligenceRepository()
 
 with st.sidebar:
     st.markdown("### Deal Intake")
-    founder = st.text_input("Founder Name", placeholder="e.g. Iyinoluwa Aboyeji")
-    startup = st.text_input("Startup Name", placeholder="e.g. Flutterwave / Andela")
+    founder = st.text_input(
+        "Founder Name",
+        placeholder="e.g. Iyinoluwa Aboyeji",
+        key="deal_intake_founder_name",
+    )
+    startup = st.text_input(
+        "Startup Name",
+        placeholder="e.g. Flutterwave / Andela",
+        key="deal_intake_startup_name",
+    )
     st.caption("Africa-first OSINT · Multi-agent IC · Twin Syndicate · Futures")
-    run = st.button("▶ Run Full Intelligence", type="primary", use_container_width=True)
+    run = st.button(
+        "▶ Run Full Intelligence",
+        type="primary",
+        use_container_width=True,
+        key="run_full_intelligence",
+    )
     st.divider()
     st.markdown("### System Status")
     st.write(f"Model · `{settings.openai_model}`")
@@ -66,11 +79,13 @@ with st.sidebar:
     st.write(f"Futures · `{FUTURES_MODEL}`")
     st.markdown("**Agents online**")
     st.write("Founder · Startup · Diligence · Risk · Memo")
-    missing = []
-    if not settings.openai_api_key:
-        missing.append("OPENAI_API_KEY")
-    if not settings.tavily_api_key:
-        missing.append("TAVILY_API_KEY")
+    access = settings.pilot_access_summary()
+    st.markdown("**Pilot access**")
+    st.caption(
+        f"Mode `{settings.access_mode}` · Guest {access['guest_daily_limit']}/day · "
+        f"Analyst {access['analyst_daily_limit']}/day · Investor {access['investor_daily_limit']}/day"
+    )
+    missing = settings.missing_required_secrets()
     if missing:
         st.error(f"Missing secrets: {', '.join(missing)}")
     else:
@@ -87,11 +102,15 @@ def render_brief(brief: InvestmentBrief) -> None:
 
     c1, c2 = st.columns([1.1, 1])
     with c1:
-        st.plotly_chart(radar_figure(brief), use_container_width=True)
+        st.plotly_chart(
+            radar_figure(brief), use_container_width=True, key="deal_dna_radar_main"
+        )
     with c2:
         fig = syndicate_bar(brief)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig, use_container_width=True, key="syndicate_bar_dashboard"
+            )
 
         m1, m2 = st.columns(2)
         m1.metric("Growth Potential", f"{brief.growth_potential:.0f}")
@@ -102,7 +121,7 @@ def render_brief(brief: InvestmentBrief) -> None:
     render_dashboard_shell_close()
 
     render_twin_syndicate_committee(brief, key_suffix="_main")
-    render_continental_futures_simulator(brief)
+    render_continental_futures_simulator(brief, key_suffix="_main")
     render_export_buttons(brief, key_prefix="main")
 
     st.markdown("### Executive Summary")
@@ -148,7 +167,9 @@ def render_brief(brief: InvestmentBrief) -> None:
                 f"Stage: {brief.stage or '—'}"
             )
             for s in meta.scores:
-                st.progress(min(s.score / 100, 1.0), text=f"{s.name}: {s.score:.0f}/100")
+                st.progress(
+                    min(s.score / 100, 1.0), text=f"{s.name}: {s.score:.0f}/100"
+                )
 
     with tabs[2]:
         st.markdown("#### Market Assessment")
@@ -188,7 +209,7 @@ def render_brief(brief: InvestmentBrief) -> None:
         render_twin_syndicate_committee(brief, key_suffix="_tab")
 
     with tabs[6]:
-        render_continental_futures_simulator(brief)
+        render_continental_futures_simulator(brief, key_suffix="_tab")
 
     with tabs[7]:
         st.markdown("#### Trust Graph")
@@ -196,7 +217,9 @@ def render_brief(brief: InvestmentBrief) -> None:
             st.write(brief.trust_graph.explanation)
             df = trust_graph_table(brief)
             if df is not None:
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(
+                    df, use_container_width=True, key="trust_graph_nodes_table"
+                )
             st.caption(
                 f"Nodes: {len(brief.trust_graph.nodes)} · "
                 f"Edges: {len(brief.trust_graph.edges)} · "
@@ -206,10 +229,12 @@ def render_brief(brief: InvestmentBrief) -> None:
     with tabs[8]:
         st.markdown("#### Source Attribution")
         for i, src in enumerate(brief.sources, 1):
-            with st.expander(f"[{i}] {src.title}"):
+            with st.expander(f"[{i}] {src.title}", expanded=i <= 3):
                 st.write(src.snippet)
                 st.markdown(f"[Open source]({src.url})")
-                st.caption(f"Relevance: {src.relevance:.2f}")
+                st.caption(
+                    f"Relevance: {src.relevance:.2f} · Confidence: {getattr(src, 'confidence_score', 0.0):.2f} · Type: {getattr(src, 'source_type', 'web')}"
+                )
 
     with tabs[9]:
         st.markdown("#### Explainable AI Decisions")
@@ -248,14 +273,18 @@ if run:
                 unsafe_allow_html=True,
             )
 
-        with st.status("Running multi-agent Investment Intelligence OS…", expanded=True) as status:
+        with st.status(
+            "Running multi-agent Investment Intelligence OS…", expanded=True
+        ) as status:
             try:
                 orchestrator = IntelligenceOrchestrator()
                 brief = orchestrator.analyze(founder, startup, on_progress=on_progress)
                 repo.save_brief(brief)
                 st.session_state["latest_brief"] = brief
                 st.session_state["show_success_banner"] = True
-                status.update(label="Intelligence complete — IC pack ready", state="complete")
+                status.update(
+                    label="Intelligence complete — IC pack ready", state="complete"
+                )
                 progress_bar.progress(1.0, text="Intelligence complete — IC pack ready")
                 st.toast(
                     f"IC pack ready · {brief.recommendation.value} · {brief.overall_score:.0f}/100",
@@ -284,7 +313,9 @@ if run:
                     f"{exc_type}: {e}\n{full_tb}"
                 )
 
-                progress_bar.progress(0.0, text=f"Pipeline failed — {exc_type}{stage_info}")
+                progress_bar.progress(
+                    0.0, text=f"Pipeline failed — {exc_type}{stage_info}"
+                )
                 status.update(
                     label=f"Pipeline failed — {exc_type}{stage_info}",
                     state="error",
@@ -302,9 +333,13 @@ if run:
                 cause = getattr(e, "cause", None) or getattr(e, "__cause__", None)
                 if cause and cause is not e:
                     cause_tb = "".join(
-                        traceback.format_exception(type(cause), cause, cause.__traceback__)
+                        traceback.format_exception(
+                            type(cause), cause, cause.__traceback__
+                        )
                     )
-                    with st.expander(f"🔗 Root Cause — `{type(cause).__name__}`", expanded=False):
+                    with st.expander(
+                        f"🔗 Root Cause — `{type(cause).__name__}`", expanded=False
+                    ):
                         st.code(cause_tb, language="python")
 if "latest_brief" in st.session_state:
     render_brief(st.session_state["latest_brief"])
@@ -316,6 +351,6 @@ st.markdown("### Founder Memory")
 history = repo.recent_runs(20)
 df = history_frame(history)
 if not df.empty:
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, use_container_width=True, key="founder_memory_history")
 else:
     st.caption("No intelligence runs stored yet — run your first deal above.")

@@ -29,6 +29,7 @@ class SourceAttribution(BaseModel):
     snippet: str = ""
     relevance: float = 0.0
     source_type: str = "web"
+    confidence_score: float = Field(ge=0, le=1, default=0.5)
 
 
 class ScoreDimension(BaseModel):
