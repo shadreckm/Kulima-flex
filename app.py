@@ -33,6 +33,8 @@ from kulima.ui import (
     render_dashboard_shell_open,
     render_empty_state,
     render_hero,
+    render_history_panel,
+    render_loaded_banner,
     render_recommendation_banner,
     render_score_row,
     render_success_banner,
@@ -40,6 +42,7 @@ from kulima.ui import (
     syndicate_bar,
     trust_graph_table,
 )
+from kulima.compare_ui import render_comparison_selector, render_comparison_view
 
 st.set_page_config(
     page_title="Kulima FLEX | Investment Intelligence OS",
@@ -167,7 +170,13 @@ def render_ask_ic_tab(brief: InvestmentBrief) -> None:
 
 
 def render_brief(brief: InvestmentBrief) -> None:
-    if st.session_state.get("show_success_banner"):
+    archive_meta = st.session_state.get("loaded_from_archive")
+    if archive_meta:
+        render_loaded_banner(
+            run_id=archive_meta["run_id"],
+            created_at=archive_meta["created_at"],
+        )
+    elif st.session_state.get("show_success_banner"):
         render_success_banner(brief)
 
     render_dashboard_shell_open()
@@ -361,6 +370,10 @@ if run:
                 repo.save_brief(brief)
                 st.session_state["latest_brief"] = brief
                 st.session_state["show_success_banner"] = True
+                # Clear any previously loaded archive state so the live-run
+                # success banner takes precedence on the next render.
+                st.session_state["loaded_from_archive"] = None
+                st.session_state["loaded_run_id"] = None
                 status.update(
                     label="Intelligence complete — IC pack ready", state="complete"
                 )
@@ -428,8 +441,59 @@ else:
 st.divider()
 st.markdown("### Founder Memory")
 history = repo.recent_runs(20)
-df = history_frame(history)
-if not df.empty:
-    st.dataframe(df, use_container_width=True, key="founder_memory_history")
-else:
-    st.caption("No intelligence runs stored yet — run your first deal above.")
+
+selected_run_id = render_history_panel(history)
+
+if selected_run_id is not None:
+    # Guard: skip if this run is already loaded — prevents an infinite rerun
+    # loop when Streamlit re-evaluates the page after st.rerun().
+    if selected_run_id != st.session_state.get("loaded_run_id"):
+        loaded_brief = repo.load_brief(selected_run_id)
+        if loaded_brief is not None:
+            # Locate the matching row so we can surface the original timestamp.
+            matching_rows = [r for r in history if int(r["id"]) == selected_run_id]
+            created_at = matching_rows[0]["created_at"] if matching_rows else ""
+
+            st.session_state["latest_brief"] = loaded_brief
+            st.session_state["loaded_from_archive"] = {
+                "run_id": selected_run_id,
+                "created_at": created_at,
+            }
+            st.session_state["loaded_run_id"] = selected_run_id
+            st.session_state["show_success_banner"] = False
+            # Pre-fill sidebar inputs so the displayed dashboard matches the
+            # active inputs — prevents a confusing name/startup mismatch.
+            st.session_state["deal_intake_founder_name"] = loaded_brief.founder_name
+            st.session_state["deal_intake_startup_name"] = loaded_brief.startup_name
+            st.toast(
+                f"Loaded run #{selected_run_id} · "
+                f"{loaded_brief.recommendation.value} · "
+                f"{loaded_brief.overall_score:.0f}/100",
+                icon="📂",
+            )
+            st.rerun()
+        else:
+            st.error(
+                f"Run #{selected_run_id} could not be restored — "
+                "the stored data may be from an older schema version.",
+                icon="⚠️",
+            )
+
+st.divider()
+with st.expander("⚖️ Compare Two Deals", expanded=False):
+    try:
+        compare_id_a, compare_id_b = render_comparison_selector(history)
+        if compare_id_a is not None and compare_id_b is not None:
+            brief_a = repo.load_brief(compare_id_a)
+            brief_b = repo.load_brief(compare_id_b)
+            if brief_a is None:
+                st.error(f"Run #{compare_id_a} could not be loaded.", icon="⚠️")
+            elif brief_b is None:
+                st.error(f"Run #{compare_id_b} could not be loaded.", icon="⚠️")
+            else:
+                render_comparison_view(brief_a, brief_b, compare_id_a, compare_id_b)
+    except Exception as _cmp_exc:
+        st.error(
+            f"Deal comparison unavailable — {type(_cmp_exc).__name__}: {_cmp_exc}",
+            icon="⚠️",
+        )

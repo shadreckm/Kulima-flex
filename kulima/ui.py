@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime, timezone
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -577,6 +578,80 @@ def radar_figure(brief: InvestmentBrief) -> go.Figure:
     return fig
 
 
+def radar_figure_dual(
+    brief_a: InvestmentBrief,
+    brief_b: InvestmentBrief,
+    label_a: str,
+    label_b: str,
+) -> go.Figure:
+    """Dual-trace radar chart overlaying two deals on the same axes.
+
+    Deal A: green (#0B6E4F).  Deal B: gold (#C4A35A).
+    Uses the same 5 non-Growth axes as the MVP score table so the chart
+    and table dimensions match exactly.
+    The existing single-brief ``radar_figure()`` is not modified.
+    """
+    cats = ["Founder", "Startup", "Market", "Trust", "Risk Inverse"]
+
+    def _vals(b: InvestmentBrief) -> list[float]:
+        return [
+            b.founder_score,
+            b.startup_score,
+            b.market_score,
+            b.trust_score,
+            max(0.0, 100.0 - b.risk_score),
+        ]
+
+    vals_a = _vals(brief_a)
+    vals_b = _vals(brief_b)
+    # Close the polygon by repeating the first point.
+    theta = cats + [cats[0]]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatterpolar(
+            r=vals_a + [vals_a[0]],
+            theta=theta,
+            fill="toself",
+            line=dict(color="#0B6E4F", width=2.5),
+            fillcolor="rgba(11,110,79,0.22)",
+            name=label_a,
+        )
+    )
+    fig.add_trace(
+        go.Scatterpolar(
+            r=vals_b + [vals_b[0]],
+            theta=theta,
+            fill="toself",
+            line=dict(color="#C4A35A", width=2.5),
+            fillcolor="rgba(196,163,90,0.22)",
+            name=label_b,
+        )
+    )
+    fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(255,255,255,0.45)",
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=False,
+                gridcolor="rgba(11,61,46,0.12)",
+            ),
+            angularaxis=dict(gridcolor="rgba(11,61,46,0.10)"),
+        ),
+        showlegend=True,
+        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"),
+        margin=dict(l=40, r=40, t=50, b=60),
+        paper_bgcolor="rgba(0,0,0,0)",
+        height=420,
+        title=dict(
+            text="Deal DNA — Side-by-Side",
+            font=dict(family="Fraunces", size=16, color="#0B3D2E"),
+        ),
+    )
+    return fig
+
+
 def syndicate_bar(brief: InvestmentBrief) -> go.Figure | None:
     if not brief.syndicate:
         return None
@@ -814,3 +889,124 @@ def history_frame(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows)
+
+
+# ── Load Previous Run helpers ─────────────────────────────────────────────────
+
+_REC_EMOJI = {
+    "Invest": "✅",
+    "Co-Invest": "🤝",
+    "Observe": "👁",
+    "Follow-On Watch": "🔭",
+    "Pass": "❌",
+}
+
+
+def _fmt_ts(iso: str) -> str:
+    """Convert an ISO 8601 UTC string to a readable local-style label."""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %Y  %H:%M UTC")
+    except Exception:
+        return iso
+
+
+def render_loaded_banner(run_id: int, created_at: str) -> None:
+    """Teal archive-restore banner shown instead of the green live-run banner."""
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #1B7A9A, #176B87);
+            color: white;
+            border-radius: 16px;
+            padding: 0.9rem 1.15rem;
+            margin: 0.4rem 0 1rem 0;
+            box-shadow: 0 12px 28px rgba(27,122,154,0.22);
+        ">
+            <strong style="font-family:Fraunces,Georgia,serif;font-size:1.1rem;">
+                📂 Loaded from archive
+            </strong>
+            &nbsp;·&nbsp; Run <code style="background:rgba(255,255,255,0.18);
+                border-radius:4px;padding:0 4px;">#{run_id}</code>
+            &nbsp;·&nbsp; {html.escape(_fmt_ts(created_at))}
+            <br/>
+            <span style="font-size:0.83rem;opacity:0.9;margin-top:0.3rem;display:block;">
+                No agents were re-run. All scores, sources, syndicate votes, and
+                analyses are from the original intelligence run.
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_history_panel(rows: list[dict]) -> int | None:
+    """Interactive Founder Memory panel.
+
+    Renders a selectable table of previous runs.  When the analyst checks
+    a row and clicks **Load Selected Run**, returns that row's integer ``id``.
+    Returns ``None`` in all other cases (nothing selected, button not
+    pressed, or empty history).
+    """
+    if not rows:
+        st.caption("No intelligence runs stored yet — run your first deal above.")
+        return None
+
+    # ── Build display table ──────────────────────────────────────────────────
+    display_rows = []
+    for r in rows:
+        rec_raw = r.get("recommendation") or "Observe"
+        emoji = _REC_EMOJI.get(rec_raw, "")
+        display_rows.append(
+            {
+                "Select": False,
+                "ID": int(r["id"]),
+                "Date": _fmt_ts(r.get("created_at") or ""),
+                "Founder": r.get("founder_name") or "—",
+                "Startup": r.get("startup_name") or "—",
+                "Rec": f"{emoji} {rec_raw}",
+                "Score": f"{float(r.get('overall_score') or 0):.0f}",
+                "Confidence": f"{float(r.get('confidence') or 0):.0%}",
+            }
+        )
+
+    df_display = pd.DataFrame(display_rows)
+
+    edited = st.data_editor(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        key="history_panel_editor",
+        column_config={
+            "Select": st.column_config.CheckboxColumn(
+                "Load?", help="Check a row then click the button below", default=False
+            ),
+            "ID": st.column_config.NumberColumn("Run #", width="small"),
+            "Date": st.column_config.TextColumn("Date (UTC)", width="medium"),
+            "Founder": st.column_config.TextColumn("Founder"),
+            "Startup": st.column_config.TextColumn("Startup"),
+            "Rec": st.column_config.TextColumn("Recommendation"),
+            "Score": st.column_config.TextColumn("Score", width="small"),
+            "Confidence": st.column_config.TextColumn("Confidence", width="small"),
+        },
+        disabled=["ID", "Date", "Founder", "Startup", "Rec", "Score", "Confidence"],
+        num_rows="fixed",
+    )
+
+    load_clicked = st.button(
+        "📂 Load Selected Run",
+        key="load_selected_run_btn",
+        help="Restore the checked run — no agents will be re-run",
+    )
+
+    if not load_clicked:
+        return None
+
+    # ── Identify selected row ────────────────────────────────────────────────
+    selected = edited[edited["Select"] == True]  # noqa: E712
+    if selected.empty:
+        st.warning("Check a row in the table above first, then click Load.", icon="☝️")
+        return None
+
+    # Take the first checked row if multiple are selected
+    return int(selected.iloc[0]["ID"])

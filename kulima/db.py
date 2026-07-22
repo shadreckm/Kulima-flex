@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from typing import Any, Iterator
 
 from kulima.config import get_settings
 from kulima.models import InvestmentBrief
+
+_log = logging.getLogger(__name__)
 
 
 SCHEMA = """
@@ -134,3 +137,29 @@ class IntelligenceRepository:
                 (run_id,),
             ).fetchone()
             return dict(row) if row else None
+
+    def load_brief(self, run_id: int) -> InvestmentBrief | None:
+        """Reconstruct a full InvestmentBrief from a stored run.
+
+        Deserialises the ``payload_json`` column back into a typed
+        ``InvestmentBrief`` via Pydantic v2's ``model_validate``.
+        Returns ``None`` — without raising — if the run does not exist
+        or if the stored JSON cannot be parsed (e.g. schema drift from
+        an older run).
+        """
+        row = self.get_run(run_id)
+        if row is None:
+            _log.warning("load_brief: run_id=%d not found in database.", run_id)
+            return None
+        try:
+            data = json.loads(row["payload_json"])
+            return InvestmentBrief.model_validate(data)
+        except (json.JSONDecodeError, KeyError, ValueError, Exception) as exc:
+            _log.error(
+                "load_brief: failed to deserialise run_id=%d — %s: %s",
+                run_id,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            return None
