@@ -461,10 +461,6 @@ if selected_run_id is not None:
             }
             st.session_state["loaded_run_id"] = selected_run_id
             st.session_state["show_success_banner"] = False
-            # Pre-fill sidebar inputs so the displayed dashboard matches the
-            # active inputs — prevents a confusing name/startup mismatch.
-            st.session_state["deal_intake_founder_name"] = loaded_brief.founder_name
-            st.session_state["deal_intake_startup_name"] = loaded_brief.startup_name
             st.toast(
                 f"Loaded run #{selected_run_id} · "
                 f"{loaded_brief.recommendation.value} · "

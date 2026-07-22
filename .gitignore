@@ -1,4 +1,4 @@
-venv/
+﻿venv/
 .env
 __pycache__/
 *.pyc
@@ -7,3 +7,13 @@ __pycache__/
 founders.db
 *.db
 .DS_Store
+
+# IDE settings
+.vscode/
+.idea/
+
+# Internal design & planning documents
+repository_audit.md
+deal-comparison-plan.md
+deal-comparison-mvp-plan.md
+load-previous-run-plan.md
