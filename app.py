@@ -308,22 +308,11 @@ def render_floating_ask_ic(brief: InvestmentBrief) -> None:
 
     # ── Floating Action Button (fixed bottom-right) ──────────────────────
     # Render via HTML wrapper for fixed positioning.
-    fab_key = f"ask_ic_fab_open::{_ask_ic_session_key(brief)}"
-    close_key = f"ask_ic_drawer_close::{_ask_ic_session_key(brief)}"
+    # Separate widget keys (used by Streamlit widgets) from session state keys.
+    fab_widget_key = f"ask_ic_fab_widget::{_ask_ic_session_key(brief)}"
+    close_widget_key = f"ask_ic_close_widget::{_ask_ic_session_key(brief)}"
 
-    # Use Streamlit checkboxes + CSS trick to handle open/close.
-    # Because Streamlit's fixed HTML wrapper cannot intercept button clicks,
-    # we use two Streamlit buttons wrapped inside fixed HTML containers:
-    # 1. The FAB sits inside .ask-ic-fab-wrapper (always visible).
-    # 2. The Close button sits inside the drawer header area.
-    if st.session_state.get(fab_key, False):
-        st.session_state[drawer_state_key] = True
-        # Clear the transient trigger so FAB can be re-clicked next render
-        st.session_state[fab_key] = False
-    if st.session_state.get(close_key, False):
-        st.session_state[drawer_state_key] = False
-        st.session_state[close_key] = False
-
+    # Drawer open/closed state lives in session state under a dedicated key.
     is_open = bool(st.session_state[drawer_state_key])
 
     # Backdrop (overlay behind drawer; click to dismiss on wide screens)
@@ -344,14 +333,11 @@ def render_floating_ask_ic(brief: InvestmentBrief) -> None:
         '<div class="ask-ic-fab-wrapper" data-fab-wrap="true">',
         unsafe_allow_html=True,
     )
-    st.button("💬 Ask IC", key=fab_key)
-    # After the button element is emitted by Streamlit, close wrapper
-    # We inject the closing tag via another markdown call.  To ensure the
-    # wrapper actually contains the button, we use CSS position:fixed on
-    # the wrapper itself; Streamlit places our <div> marker immediately
-    # before the button in DOM, and the class styles target the following
-    # stButton block via adjacent combinator in our injected CSS (already
-    # handled by the generic .ask-ic-fab-wrapper rule).
+    # Use the button return value to update drawer open state. Do NOT
+    # write directly to the widget key in session_state.
+    fab_clicked = st.button("💬 Ask IC", key=fab_widget_key)
+    if fab_clicked:
+        st.session_state[drawer_state_key] = True
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Drawer shell (fixed; transform slides it in when .open is set) ───
@@ -364,12 +350,14 @@ def render_floating_ask_ic(brief: InvestmentBrief) -> None:
 
     # ── Drawer header (sticky top) ───────────────────────────────────────
     st.markdown(
-        '<div class="ask-ic-drawer-header">'
+        '<div class="ask-ic-drawer-header'>
         '<div class="ask-ic-drawer-title">💬 Ask IC Analyst</div>'
         '<div class="ask-ic-close-btn">',
         unsafe_allow_html=True,
     )
-    st.button("✕", key=close_key)
+    close_clicked = st.button("✕", key=close_widget_key)
+    if close_clicked:
+        st.session_state[drawer_state_key] = False
     st.markdown("</div></div>", unsafe_allow_html=True)
 
     # ── Drawer body (flex-fill scroll) — compact chat panel ─────────────
