@@ -250,8 +250,16 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False, surface: 
             unsafe_allow_html=True,
         )
     for message in st.session_state[message_key]:
+        logging.debug("render_ask_ic_panel message.content: %s", repr(message.get("content")))
+        # Normalize non-string content to safe JSON/text for display
+        _msg_content = message.get("content")
+        if not isinstance(_msg_content, str):
+            try:
+                _msg_content = __import__("json").dumps(_msg_content, ensure_ascii=False, indent=2)
+            except Exception:
+                _msg_content = str(_msg_content)
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            st.markdown(_msg_content)
     if compact:
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -285,7 +293,11 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False, surface: 
                     question,
                     history=st.session_state[message_key][:-1],
                 )
-            st.markdown(response)
+            logging.debug("answer_ask_ic_question response: %s", repr(response))
+            # Ensure the response is a string for markdown rendering
+            _resp_content = response if isinstance(response, str) else __import__("json").dumps(response, ensure_ascii=False, indent=2)
+            st.markdown(_resp_content)
+        logging.debug("append_message_to_session_state: %s", repr(response))
         st.session_state[message_key].append({"role": "assistant", "content": response})
 
 

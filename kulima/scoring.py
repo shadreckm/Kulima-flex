@@ -112,6 +112,23 @@ def confidence_level(score: float) -> ConfidenceLevel:
     return ConfidenceLevel.LOW
 
 
+def normalize_confidence(val: Any, default: float = 0.55) -> float:
+    """Normalize a confidence value to the 0.0–1.0 range.
+
+    Heuristics:
+    - If value is None -> return default
+    - If numeric and <= 1.0 -> assume already 0–1 and return clamped
+    - If numeric and > 1.0 -> assume 0–100 scale and divide by 100, then clamp
+    - If string like "80%" safe_float will parse 80.0 and the above rule applies
+    """
+    v = safe_float(val, default)
+    # If the model returned a 0–100 percentage scale, convert to 0–1
+    if v > 1.0:
+        v = v / 100.0
+    # Clamp to [0.0, 1.0]
+    return max(0.0, min(1.0, v))
+
+
 def evidence_boost(n_sources: int, base: float, per_source: float = 4.0, cap: float = 100.0) -> float:
     return clamp(base + n_sources * per_source, 0, cap)
 

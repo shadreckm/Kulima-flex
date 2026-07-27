@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import html
 import textwrap
+import json
+import ast
+import logging
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -11,6 +14,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from kulima.models import InvestmentBrief, Recommendation
+
+_log = logging.getLogger(__name__)
 
 REC_COLORS = {
     Recommendation.INVEST: "#0B6E4F",
@@ -1703,6 +1708,8 @@ def render_twin_syndicate_committee(
                       <div class="persona-concern"><strong>⚠ Reason for disagreement:</strong> {concern}</div>
                     </div>
                     """
+            _log.debug("render_twin_syndicate_committee dissent_html (RAW): %s", repr(dissent_html))
+            _log.debug("render_twin_syndicate_committee dissent_html (DEDENT): %s", repr(textwrap.dedent(dissent_html)))
             st.markdown(textwrap.dedent(dissent_html), unsafe_allow_html=True)
 
     # ── Individual Committee Votes — persona cards (Step 1 compression) ──
@@ -1757,6 +1764,8 @@ def render_twin_syndicate_committee(
         card_key = f"committee_persona_{idx}_{_vote_css_class(dec)}_{key_suffix or 'global'}"
         # Step 1: auto-expand if dissenting / negative, otherwise collapsed
         with st.expander(exp_title, expanded=bool(auto_expand)):
+            _log.debug("render_twin_syndicate_committee header_html (RAW): %s", repr(header_html))
+            _log.debug("render_twin_syndicate_committee header_html (DEDENT): %s", repr(textwrap.dedent(header_html)))
             st.markdown(textwrap.dedent(header_html), unsafe_allow_html=True)
 
             # Full Reasoning + Full Concerns + Full Thesis (all only shown
@@ -1886,6 +1895,8 @@ def render_twin_syndicate_committee(
     </style>
     """
     # Dedent HTML block to avoid Markdown interpreting leading indent as code block
+    _log.debug("render_twin_syndicate_committee sb_html (RAW): %s", repr(sb_html))
+    _log.debug("render_twin_syndicate_committee sb_html (DEDENT): %s", repr(textwrap.dedent(sb_html)))
     html_block = textwrap.dedent(sb_html)
     st.markdown(html_block, unsafe_allow_html=True)
 
@@ -1943,7 +1954,41 @@ def render_twin_syndicate_committee(
                     ):
                         st.session_state[sp] = label
 
-            lines = [ln.strip() for ln in syn.debate_transcript.splitlines() if ln.strip()]
+            # Normalize debate_transcript into a list of "Speaker: message" lines.
+            raw_transcript = syn.debate_transcript
+            lines = []
+            parsed_entries = None
+            if isinstance(raw_transcript, list):
+                parsed_entries = raw_transcript
+            elif isinstance(raw_transcript, dict):
+                # Could be a dict with a 'transcript' key
+                t = raw_transcript.get("transcript")
+                if isinstance(t, list):
+                    parsed_entries = t
+            elif isinstance(raw_transcript, str):
+                txt = raw_transcript.strip()
+                if txt.startswith("[") or txt.startswith("{"):
+                    try:
+                        parsed = json.loads(txt)
+                        parsed_entries = parsed if isinstance(parsed, list) else (parsed.get("transcript") if isinstance(parsed.get("transcript"), list) else None)
+                    except Exception:
+                        try:
+                            parsed = ast.literal_eval(txt)
+                            parsed_entries = parsed if isinstance(parsed, list) else (parsed.get("transcript") if isinstance(parsed.get("transcript"), list) else None)
+                        except Exception:
+                            parsed_entries = None
+            if isinstance(parsed_entries, list):
+                for item in parsed_entries:
+                    if isinstance(item, dict):
+                        speaker_name = item.get("speaker") or item.get("name") or item.get("role") or ""
+                        msg = item.get("message") or item.get("content") or item.get("text") or ""
+                        lines.append(f"{speaker_name}: {msg}")
+                    else:
+                        lines.append(str(item))
+            else:
+                # Fallback to legacy plain-text transcript
+                lines = [ln.strip() for ln in (raw_transcript or "").splitlines() if ln.strip()]
+
             _render_debate_lines(
                 lines,
                 votes=syn.votes,
@@ -1997,7 +2042,10 @@ def _render_debate_lines(
 
     if not turns:
         # Render as markdown to allow any embedded markup to display correctly
-        st.markdown(textwrap.dedent("\n".join(lines)), unsafe_allow_html=True)
+        raw = "\n".join(lines)
+        _log.debug("_render_debate_lines fallback raw: %s", repr(raw))
+        _log.debug("_render_debate_lines fallback DEDENT: %s", repr(textwrap.dedent(raw)))
+        st.markdown(textwrap.dedent(raw), unsafe_allow_html=True)
         return
 
     # Apply Step 2 (keyword) + Step 4 (speaker) filters
@@ -2033,8 +2081,11 @@ def _render_debate_lines(
                 f'{html.escape(ident["label_short"])}</span>'
                 f'</div>'
             )
+            _log.debug("_render_debate_lines html_header: %s", repr(html_header))
+            _log.debug("_render_debate_lines html_header DEDENT: %s", repr(textwrap.dedent(html_header)))
             st.markdown(html_header, unsafe_allow_html=True)
             # Render message content as markdown allowing HTML from trusted sources
+            _log.debug("_render_debate_lines content: %s", repr(content))
             st.markdown(content, unsafe_allow_html=True)
 
 

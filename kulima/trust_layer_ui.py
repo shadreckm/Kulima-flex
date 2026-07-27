@@ -21,8 +21,11 @@ from __future__ import annotations
 
 import html
 import textwrap
+import logging
 
 import streamlit as st
+
+_log = logging.getLogger(__name__)
 
 from kulima.models import (
     ConsistencyStatus,
@@ -103,6 +106,7 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     </div>
     """)
 
+    _log.debug("render_thesis_fit_card html_block: %s", repr(html_block))
     st.markdown(html_block, unsafe_allow_html=True)
 
     if thesis.notes:
@@ -214,7 +218,7 @@ def reliability_badge_html(report: EvidenceIntegrityReport) -> str:
             f' <span style="font-size:0.72rem;opacity:0.85;">'
             f'· {html.escape(_sparse_label(True))}</span>'
         )
-    return (
+    out = (
         f'<span class="reliability-badge reliability-badge-{grade}" '
         f'style="display:inline-flex;flex-wrap:wrap;align-items:center;'
         f'gap:0.25rem;max-width:100%;overflow-wrap:break-word;'
@@ -228,6 +232,8 @@ def reliability_badge_html(report: EvidenceIntegrityReport) -> str:
         f'<span style="word-break:break-word;">{consistency}</span>'
         f'{sparse_note}</span>'
     )
+    _log.debug("reliability_badge_html return: %s", repr(out))
+    return out
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -360,6 +366,7 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
                 </div>
             </div>
             """)
+        _log.debug("render_reliability_card html_block: %s", repr(html_block))
         st.markdown(html_block, unsafe_allow_html=True)
 
         # Sparse evidence Africa-aware note

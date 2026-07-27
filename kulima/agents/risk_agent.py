@@ -5,7 +5,7 @@ from __future__ import annotations
 from kulima.agents.base import BaseAgent
 from kulima.models import AgentResult, RedFlag, ScoreDimension, SourceAttribution
 from kulima.research import ResearchEngine
-from kulima.scoring import clamp, parse_qualitative_score, safe_float
+from kulima.scoring import clamp, parse_qualitative_score, safe_float, normalize_confidence
 
 
 class RiskAssessmentAgent(BaseAgent):
@@ -61,7 +61,7 @@ risk_posture (Conservative|Balanced|Aggressive tolerance match)
                 name=str(s.get("name", "Risk")),
                 score=clamp(parse_qualitative_score(s.get("score"), is_risk=True, default=50.0)),
                 rationale=str(s.get("rationale", "")),
-                confidence=safe_float(s.get("confidence"), 0.55),
+                confidence=normalize_confidence(s.get("confidence"), 0.55),
             )
             for s in data.get("scores", [])
         ]
@@ -100,7 +100,7 @@ risk_posture (Conservative|Balanced|Aggressive tolerance match)
                 title=str(rf.get("title", "Risk")),
                 detail=str(rf.get("detail", "")),
                 mitigation=str(rf.get("mitigation", "")),
-                confidence=safe_float(rf.get("confidence"), 0.65),
+                confidence=normalize_confidence(rf.get("confidence"), 0.65),
             )
             for rf in data.get("red_flags", [])
         ]

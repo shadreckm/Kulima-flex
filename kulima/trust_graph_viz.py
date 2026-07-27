@@ -509,6 +509,9 @@ def render_trust_graph_explorer(
     # Explanation may contain markup; render it as safe HTML-markdown
     exp_html = textwrap.dedent(str(graph.explanation) if graph.explanation is not None else "")
     if exp_html:
+        print("RAW_HTML_START render_trust_graph_explorer explanation")
+        print(repr(exp_html))
+        print("RAW_HTML_END render_trust_graph_explorer explanation")
         st.markdown(exp_html, unsafe_allow_html=True)
 
     # Inline coverage note from trust_layer_ui if EIE present
