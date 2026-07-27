@@ -20,6 +20,7 @@ Plus helpers used by kulima/ui.py:
 from __future__ import annotations
 
 import html
+import textwrap
 
 import streamlit as st
 
@@ -50,60 +51,59 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
         status, ("#5B6F64", "rgba(0,0,0,0.05)", "rgba(0,0,0,0.1)")
     )
 
-    st.markdown(
-        f"""
-        <div style="
-            background: {bg};
-            border: 1px solid {border};
-            border-radius: 14px;
-            padding: 0.9rem 1.1rem;
-            margin: 0.6rem 0 1rem 0;
-        ">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
-                <div style="font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;color:#0B3D2E;">
-                    🎯 Thesis Fit
-                </div>
-                <div style="
-                    background: {color};
-                    color: #FFFFFF;
-                    padding: 0.2rem 0.75rem;
-                    border-radius: 999px;
-                    font-weight: 700;
-                    font-size: 0.82rem;
-                    letter-spacing: 0.03em;
-                ">
-                    {html.escape(status_text)} · Match {thesis.overall_match:.0f}%
-                </div>
+    html_block = textwrap.dedent(f"""
+    <div style="
+        background: {bg};
+        border: 1px solid {border};
+        border-radius: 14px;
+        padding: 0.9rem 1.1rem;
+        margin: 0.6rem 0 1rem 0;
+    ">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+            <div style="font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;color:#0B3D2E;">
+                🎯 Thesis Fit
             </div>
-
             <div style="
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 0.5rem;
-                text-align: center;
-                margin-bottom: 0.4rem;
+                background: {color};
+                color: #FFFFFF;
+                padding: 0.2rem 0.75rem;
+                border-radius: 999px;
+                font-weight: 700;
+                font-size: 0.82rem;
+                letter-spacing: 0.03em;
             ">
-                <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Sector Fit</div>
-                    <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.sector_fit)}</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Stage Fit</div>
-                    <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.stage_fit)}</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Geography Fit</div>
-                    <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.geography_fit)}</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Evidence Fit</div>
-                    <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.evidence_fit)}</div>
-                </div>
+                {html.escape(status_text)} · Match {thesis.overall_match:.0f}%
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+        <div style="
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            text-align: center;
+            margin-bottom: 0.4rem;
+        ">
+            <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Sector Fit</div>
+                <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.sector_fit)}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Stage Fit</div>
+                <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.stage_fit)}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Geography Fit</div>
+                <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.geography_fit)}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.6);padding:0.45rem;border-radius:8px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;color:#5B6F64;font-weight:700;">Evidence Fit</div>
+                <div style="font-weight:700;font-size:0.95rem;color:#0B3D2E;">{html.escape(thesis.evidence_fit)}</div>
+            </div>
+        </div>
+    </div>
+    """)
+
+    st.markdown(html_block, unsafe_allow_html=True)
 
     if thesis.notes:
         with st.expander(

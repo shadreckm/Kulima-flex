@@ -124,7 +124,7 @@ def _ask_ic_session_key(brief: InvestmentBrief) -> str:
     )
 
 
-def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
+def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False, surface: str = "tab") -> None:
     """Shared Ask IC UI surface.
 
     Renders (1) grounding context badges, (2) prompt-suggestion chips,
@@ -203,7 +203,7 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
             'margin:0.1rem 0 0.55rem 0;">'
         )
         for i, prompt in enumerate(examples):
-            chip_id = f"ask_ic_fab_chip_{i}_{_ask_ic_session_key(brief)}"
+            chip_id = f"ask_ic_fab_chip::%s::%d::%s" % (surface, i, _ask_ic_session_key(brief))
             btn = st.button(prompt, key=chip_id)
             if btn:
                 st.session_state["ask_ic_pending_prompt"] = prompt
@@ -212,7 +212,7 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
         st.markdown("**Suggested committee prompts**")
         cols = st.columns(3)
         for i, prompt in enumerate(examples):
-            chip_id = f"ask_ic_example_{i}_{_ask_ic_session_key(brief)}"
+            chip_id = f"ask_ic_example::%s::%d::%s" % (surface, i, _ask_ic_session_key(brief))
             if cols[i % 3].button(prompt, key=chip_id):
                 st.session_state["ask_ic_pending_prompt"] = prompt
 
@@ -231,7 +231,7 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
         ]
 
     # ── Clear history (small CTA; drawer places it in header too) ──────────
-    clear_key = f"ask_ic_clear_history_{_ask_ic_session_key(brief)}"
+    clear_key = f"ask_ic_clear_history::%s::%s" % (surface, _ask_ic_session_key(brief))
     if compact:
         if st.button("🧹 Clear", key=clear_key, help="Clear Ask IC conversation"):
             st.session_state[message_key] = st.session_state[message_key][:1]
@@ -255,7 +255,7 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
     pending_prompt = st.session_state.pop("ask_ic_pending_prompt", None)
-    input_key = f"ask_ic_chat_input_{message_key}"
+    input_key = f"ask_ic_chat_input::%s::%s" % (surface, message_key)
     if compact:
         st.markdown(
             '<div class="ask-ic-sticky-input" '
@@ -290,7 +290,7 @@ def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
 
 def render_ask_ic_tab(brief: InvestmentBrief) -> None:
     """Tab 4 — full-width Ask IC experience.  Delegates to shared panel."""
-    render_ask_ic_panel(brief, compact=False)
+    render_ask_ic_panel(brief, compact=False, surface="tab")
 
 
 def render_floating_ask_ic(brief: InvestmentBrief) -> None:
@@ -365,11 +365,13 @@ def render_floating_ask_ic(brief: InvestmentBrief) -> None:
     if is_open:
         # Only render the Streamlit chat widgets when open to avoid wasting
         # computation + session state on a hidden surface.
-        render_ask_ic_panel(brief, compact=True)
+        render_ask_ic_panel(brief, compact=True, surface="drawer")
     else:
         # Hidden state — emit minimal spacer so Streamlit block order stays
         # stable between renders (widget key ordering invariant).
-        st.container(height=0, border=False)
+        # Use st.empty() as a lightweight placeholder (container() does not
+        # accept height/border kwargs across Streamlit versions).
+        st.empty()
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div><!-- /ask-ic-drawer-shell -->", unsafe_allow_html=True)
