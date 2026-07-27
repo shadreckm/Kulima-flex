@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -145,6 +146,260 @@ class FutureSimulation(BaseModel):
     africa_conditions_summary: str = ""
 
 
+# ── Trust Layer / Evidence Integrity Engine models ───────────────────────────
+# All fields carry None-safe defaults so existing stored briefs continue to
+# round-trip cleanly through InvestmentBrief.model_validate().
+
+
+class ClaimType(str, Enum):
+    """The type of factual claim extracted from a source."""
+
+    FUNDING_AMOUNT = "funding_amount"
+    FOUNDING_YEAR = "founding_year"
+    EMPLOYEE_COUNT = "employee_count"
+    STAGE = "stage"
+    GEOGRAPHY = "geography"
+    INVESTOR_IDENTITY = "investor_identity"
+    REVENUE = "revenue"
+    VALUATION = "valuation"
+    PRODUCT_DESCRIPTION = "product_description"
+    TEAM_COMPOSITION = "team_composition"
+    LEGAL_STATUS = "legal_status"
+    REGULATORY_STATUS = "regulatory_status"
+    PARTNERSHIP = "partnership"
+    MARKET_SIZE = "market_size"
+    GROWTH_METRIC = "growth_metric"
+    CUSTOMER_COUNT = "customer_count"
+    OTHER = "other"
+
+
+class StalenessT(str, Enum):
+    """How fresh a piece of extracted evidence is."""
+
+    FRESH = "fresh"          # ≤ 12 months old
+    AGING = "aging"          # 12–24 months old
+    STALE = "stale"          # 24–48 months old
+    VERY_STALE = "very_stale"  # > 48 months old
+    UNKNOWN = "unknown"      # No date signal found
+
+
+class ContradictionSeverity(str, Enum):
+    """How materially significant a detected contradiction is."""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class IntegrityGrade(str, Enum):
+    """Letter grade summarising the overall evidence integrity score."""
+
+    A = "A"  # ≥ 90 — strong, consistent evidence base
+    B = "B"  # ≥ 75 — good evidence, minor noise
+    C = "C"  # ≥ 60 — moderate evidence, conflicts present
+    D = "D"  # ≥ 45 — weak evidence or significant conflicts
+    F = "F"  # < 45  — serious integrity concerns
+
+
+class EvidenceDepth(str, Enum):
+    """How much evidence was found (the confidence/depth axis)."""
+
+    THIN = "thin"                    # 1–2 sources, few facts  ●○○○○
+    LIMITED = "limited"              # 3–4 sources              ●●○○○
+    MODERATE = "moderate"            # 5–7 sources              ●●●○○
+    RICH = "rich"                    # 8–11 sources             ●●●●○
+    COMPREHENSIVE = "comprehensive"  # 12+ sources              ●●●●●
+
+
+class ConsistencyStatus(str, Enum):
+    """Whether extracted claims from different sources agree."""
+
+    CLEAN = "clean"                            # No material conflicts found
+    MINOR_DIFFERENCES = "minor_differences"    # Terminology gaps only
+    CONFLICTS = "conflicts"                    # ≥ 1 GENUINE contradiction
+    MAJOR_CONFLICTS = "major_conflicts"        # ≥ 3 GENUINE contradictions
+
+
+class Claim(BaseModel):
+    """A single factual claim extracted from one source."""
+
+    claim_id: str = ""
+    claim_type: ClaimType = ClaimType.OTHER
+    value_raw: str = ""                       # Verbatim text from source
+    value_normalised: str | None = None       # Normalised for comparison (USD, ISO year, …)
+    source_url: str = ""
+    source_authority: str = "web"             # e.g. "high_authority_web", "web", "social"
+    source_title: str = ""
+    snippet: str = ""                         # Short verbatim extract
+    staleness: StalenessT = StalenessT.UNKNOWN
+    confidence: float = Field(ge=0, le=1, default=0.5)
+
+
+class Contradiction(BaseModel):
+    """A genuine, material conflict between two independent claims."""
+
+    contradiction_id: str = ""
+    claim_a: Claim
+    claim_b: Claim
+    severity: ContradictionSeverity = ContradictionSeverity.MEDIUM
+    # Subtype: GENUINE_CONTRADICTION | TEMPORAL_DRIFT | CURRENCY_ARTEFACT
+    # Only GENUINE_CONTRADICTION generates deductions; the other two are stored
+    # as IgnoredConflict objects.
+    subtype: str = "GENUINE_CONTRADICTION"
+    description: str = ""
+    recommended_action: str = ""
+
+
+class IgnoredConflict(BaseModel):
+    """A conflict that was evaluated and deliberately suppressed.
+
+    Stored for IC auditability — the investor can see what was considered
+    and why it was dismissed.  Generates no score deductions and no UI
+    warnings.
+    """
+
+    claim_a: Claim
+    claim_b: Claim
+    # reason: e.g. "FOUNDING_YEAR_TOLERANCE", "CURRENCY_ARTEFACT",
+    #              "TEMPORAL_DRIFT", "STAGE_VOCABULARY", "EMPLOYEE_TERMINOLOGY"
+    reason: str = ""
+    subtype: str = ""
+    description: str = ""
+
+
+class UnsupportedClaim(BaseModel):
+    """A claim type expected for this sector that was not found in open sources.
+
+    In SPARSE_EVIDENCE_MODE these generate information notes only (no
+    deductions).  In full-corpus mode, CRITICAL and HIGH unsupported claims
+    carry small deductions.
+    """
+
+    claim_type: ClaimType = ClaimType.OTHER
+    description: str = ""
+    severity: ContradictionSeverity = ContradictionSeverity.MEDIUM
+    recommended_action: str = ""
+
+
+class StaleClaim(BaseModel):
+    """A claim that was found but is based on significantly outdated evidence."""
+
+    claim: Claim
+    staleness: StalenessT = StalenessT.STALE
+    source_url: str = ""
+    recommended_action: str = ""
+
+
+class EvidenceIntegrityReport(BaseModel):
+    """Full output of the Evidence Integrity Engine for one analysis run.
+
+    Two-axis model (from evidence-integrity-review.md Part V):
+      - integrity_score / integrity_grade  → consistency of the evidence base
+      - evidence_depth / confidence_adjusted → how much / how reliable our picture is
+
+    These two dimensions are always displayed together.  A standalone grade
+    without its depth qualifier is never shown to investors.
+    """
+
+    # ── Primary outputs ───────────────────────────────────────────────────────
+    integrity_score: float = Field(ge=0, le=100, default=100.0)
+    integrity_grade: IntegrityGrade = IntegrityGrade.A
+
+    # ── Two-axis signals ─────────────────────────────────────────────────────
+    evidence_depth: EvidenceDepth = EvidenceDepth.THIN
+    consistency_status: ConsistencyStatus = ConsistencyStatus.CLEAN
+
+    # ── Corpus metadata ──────────────────────────────────────────────────────
+    sparse_mode: bool = False          # True when < 5 sources or < 2 high-authority
+    claim_count: int = 0               # Total claims extracted
+    source_count: int = 0              # Total sources analysed
+    high_authority_count: int = 0      # Sources classified as high_authority_web
+
+    # ── Findings ─────────────────────────────────────────────────────────────
+    contradictions: list[Contradiction] = Field(default_factory=list)
+    ignored_conflicts: list[IgnoredConflict] = Field(default_factory=list)
+    unsupported_claims: list[UnsupportedClaim] = Field(default_factory=list)
+    stale_claims: list[StaleClaim] = Field(default_factory=list)
+
+    # ── Scoring detail ────────────────────────────────────────────────────────
+    corroboration_bonus: float = 0.0   # Points added for well-corroborated claims
+
+    # ── Narrative ─────────────────────────────────────────────────────────────
+    integrity_summary: str = ""        # Plain-English summary for the IC
+    extraction_notes: str = ""         # Notes on extraction quality / failures
+
+    # ── Confidence adjustment (the only numeric impact on InvestmentBrief) ────
+    # EIE adjusts InvestmentBrief.confidence by this delta — never overall_score,
+    # trust_score, founder_score, startup_score, market_score, or risk_score.
+    confidence_adjusted: float = Field(ge=0, le=1, default=0.0)
+    confidence_delta: float = 0.0      # Negative means reduced confidence
+
+    # ── Display helpers ───────────────────────────────────────────────────────
+    # Two-axis quadrant label: "A", "B", "C", or "D" per the model in the review
+    two_axis_label: str = ""
+    # Numbered action items for the IC (e.g. "Verify funding with founder")
+    verification_checklist: list[str] = Field(default_factory=list)
+
+    # ── Audit trail ──────────────────────────────────────────────────────────
+    generated_at: datetime | None = None
+
+
+# ── VC Thesis Engine Models ──────────────────────────────────────────────────
+
+
+class ThesisStatus(str, Enum):
+    PASS = "PASS"
+    WARN = "WARN"
+    BLOCK = "BLOCK"
+
+
+class FundProfile(BaseModel):
+    name: str = "Kulima Africa Tech Fund I"
+    preferred_sectors: list[str] = Field(
+        default_factory=lambda: [
+            "FinTech",
+            "AgTech",
+            "HealthTech",
+            "ClimateTech",
+            "Logistics",
+            "EdTech",
+            "InsurTech",
+            "Mobility",
+        ]
+    )
+    preferred_stages: list[str] = Field(
+        default_factory=lambda: ["Pre-Seed", "Seed", "Series A", "Early Stage"]
+    )
+    preferred_geographies: list[str] = Field(
+        default_factory=lambda: [
+            "Nigeria",
+            "Kenya",
+            "South Africa",
+            "Egypt",
+            "Ghana",
+            "Pan-Africa",
+            "East Africa",
+            "West Africa",
+        ]
+    )
+    check_size_min: float = 50_000.0
+    check_size_max: float = 1_000_000.0
+    exclusions: list[str] = Field(
+        default_factory=lambda: ["Crypto", "Gambling", "Real Estate", "Tobacco", "Weapons"]
+    )
+
+
+class ThesisMatchResult(BaseModel):
+    overall_match: float = Field(ge=0, le=100)
+    sector_fit: str = "High"
+    stage_fit: str = "High"
+    geography_fit: str = "High"
+    evidence_fit: str = "High"
+    notes: list[str] = Field(default_factory=list)
+    status: ThesisStatus = ThesisStatus.PASS
+
+
 class InvestmentBrief(BaseModel):
     founder_name: str
     startup_name: str
@@ -176,3 +431,7 @@ class InvestmentBrief(BaseModel):
     future_simulation: FutureSimulation | None = None
     sources: list[SourceAttribution] = Field(default_factory=list)
     explainability: list[str] = Field(default_factory=list)
+    # Trust Layer — None for all pre-EIE runs; populated by EvidenceIntegrityEngine
+    evidence_integrity: EvidenceIntegrityReport | None = None
+    # VC Thesis Engine — None for all pre-thesis runs; populated by evaluate_thesis_match
+    thesis_match: ThesisMatchResult | None = None

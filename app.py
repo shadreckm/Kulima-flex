@@ -40,15 +40,33 @@ from kulima.ui import (
     render_success_banner,
     render_twin_syndicate_committee,
     syndicate_bar,
-    trust_graph_table,
+)
+from kulima.trust_layer_ui import (
+    render_reliability_badge,
+    render_reliability_card,
+    render_reliability_report,
+    render_thesis_fit_card,
+    render_trust_graph_coverage_note,
+)
+from kulima.trust_graph_viz import (
+    render_trust_network_preview,
+    render_trust_graph_explorer,
 )
 from kulima.compare_ui import render_comparison_selector, render_comparison_view
+from kulima.portfolio_intelligence import render_portfolio_dashboard
 
 st.set_page_config(
-    page_title="Kulima FLEX | Investment Intelligence OS",
-    page_icon="◈",
+    page_title="Kulima FLEX VC Brain",
+    page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+# Viewport meta — ensures mobile browsers use device width, not 980px desktop default
+st.markdown(
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, '
+    'maximum-scale=5.0">',
+    unsafe_allow_html=True,
 )
 
 inject_styles()
@@ -179,155 +197,224 @@ def render_brief(brief: InvestmentBrief) -> None:
     elif st.session_state.get("show_success_banner"):
         render_success_banner(brief)
 
-    render_dashboard_shell_open()
-    render_recommendation_banner(brief)
-    render_score_row(brief)
-
-    c1, c2 = st.columns([1.1, 1])
-    with c1:
-        st.plotly_chart(
-            radar_figure(brief), use_container_width=True, key="deal_dna_radar_main"
-        )
-    with c2:
-        fig = syndicate_bar(brief)
-        if fig:
-            st.plotly_chart(
-                fig, use_container_width=True, key="syndicate_bar_dashboard"
-            )
-
-        m1, m2 = st.columns(2)
-        m1.metric("Growth Potential", f"{brief.growth_potential:.0f}")
-        m2.metric("Investment Readiness", f"{brief.investment_readiness:.0f}")
-        m3, m4 = st.columns(2)
-        m3.metric("Evidence Sources", len(brief.sources))
-        m4.metric("Red Flags", len(brief.red_flags))
-    render_dashboard_shell_close()
-
-    render_twin_syndicate_committee(brief, key_suffix="_main")
-    render_continental_futures_simulator(brief, key_suffix="_main")
-    render_export_buttons(brief, key_prefix="main")
-
-    st.markdown("### Executive Summary")
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.write(brief.executive_summary)
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    # New 6-tab structure
     tabs = st.tabs(
         [
-            "Founder",
-            "Startup",
-            "Market",
-            "Risk & Flags",
-            "IC Memo",
-            "Twin Syndicate",
-            "Futures",
-            "Trust Graph",
-            "Sources",
-            "Explainability",
-            "💬 Ask IC",
+            "📊 Executive Overview",
+            "💬 Committee Debate",
+            "📈 Continental Futures",
+            "🤖 Ask IC Assistant",
+            "📥 Reports & Memory",
+            "📂 Portfolio Intelligence",
         ]
     )
 
+    # TAB 1: Executive Overview
     with tabs[0]:
-        st.markdown("#### Founder Assessment")
-        st.write(brief.founder_assessment)
-        fr = brief.agent_results.get("founder")
-        if fr:
-            for s in fr.scores:
-                st.progress(
-                    min(s.score / 100, 1.0),
-                    text=f"{s.name}: {s.score:.0f}/100 — {s.rationale}",
-                )
-            for f in fr.findings:
-                st.markdown(f"- {f}")
+        render_dashboard_shell_open()
+        render_recommendation_banner(brief)
+        # Trust Layer — reliability badge inline below rec banner (gated)
+        if brief.evidence_integrity:
+            render_reliability_badge(brief.evidence_integrity)
+        render_score_row(brief)
+        # Trust Layer — reliability card below scorecard (gated)
+        if brief.evidence_integrity:
+            render_reliability_card(brief.evidence_integrity)
 
-    with tabs[1]:
-        st.markdown("#### Startup Assessment")
-        st.write(brief.startup_assessment)
-        meta = brief.agent_results.get("startup")
-        if meta:
-            st.caption(
-                f"Sector: {brief.sector or '—'} · Geography: {brief.geography or '—'} · "
-                f"Stage: {brief.stage or '—'}"
+        # VC Thesis Engine — Thesis Fit Card directly below Reliability Rating
+        from kulima.thesis import evaluate_thesis_match
+
+        thesis_match = brief.thesis_match or evaluate_thesis_match(brief)
+        render_thesis_fit_card(thesis_match)
+
+        # Trust Network Preview — compact stats bar (gated on trust_graph)
+        render_trust_network_preview(brief, key="trust_net_preview_tab1")
+
+        # Charts row — flex container stacks to single column on mobile
+        st.markdown(
+            '<div style="display:flex;flex-wrap:wrap;gap:0.75rem;'
+            'align-items:flex-start;">',
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns([1.1, 1])
+        with c1:
+            st.plotly_chart(
+                radar_figure(brief), use_container_width=True, key="deal_dna_radar_overview"
             )
-            for s in meta.scores:
-                st.progress(
-                    min(s.score / 100, 1.0), text=f"{s.name}: {s.score:.0f}/100"
+        with c2:
+            fig = syndicate_bar(brief)
+            if fig:
+                st.plotly_chart(
+                    fig, use_container_width=True, key="syndicate_bar_overview"
                 )
 
-    with tabs[2]:
-        st.markdown("#### Market Assessment")
-        st.write(brief.market_assessment)
-        g1, g2 = st.columns(2)
-        g1.metric("Growth Potential", f"{brief.growth_potential:.0f}/100")
-        g2.metric("Investment Readiness", f"{brief.investment_readiness:.0f}/100")
+            m1, m2 = st.columns(2)
+            m1.metric("Growth Potential", f"{brief.growth_potential:.0f}")
+            m2.metric("Investment Readiness", f"{brief.investment_readiness:.0f}")
+            m3, m4 = st.columns(2)
+            m3.metric("Evidence Sources", len(brief.sources))
+            m4.metric("Red Flags", len(brief.red_flags))
+        st.markdown("</div>", unsafe_allow_html=True)
+        render_dashboard_shell_close()
 
-    with tabs[3]:
-        st.markdown("#### Risk Assessment")
-        st.write(brief.risk_assessment)
-        if brief.red_flags:
-            st.markdown("##### Red Flag Alerts")
-            for rf in brief.red_flags:
-                css = (
-                    f"flag-{rf.severity.lower()}"
-                    if rf.severity.lower() in {"critical", "high", "medium", "low"}
-                    else "flag-medium"
-                )
-                st.markdown(
-                    f"<div class='{css}'><strong>{rf.severity.upper()}: {rf.title}</strong><br/>"
-                    f"{rf.detail}<br/><em>Mitigation: {rf.mitigation or 'TBD'}</em></div>",
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.success("No critical red flags surfaced from open-source intelligence.")
+        st.markdown("### Executive Summary")
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.write(brief.executive_summary)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with tabs[4]:
-        st.markdown("#### Investment Recommendation")
-        st.write(brief.investment_recommendation)
-        st.markdown("#### Next Steps")
-        for i, step in enumerate(brief.next_steps, 1):
-            st.markdown(f"{i}. {step}")
-        render_export_buttons(brief, key_prefix="memo_tab")
+        # Detailed assessments in expanders
+        with st.expander("👤 Founder Assessment", expanded=False):
+            st.write(brief.founder_assessment)
+            fr = brief.agent_results.get("founder")
+            if fr:
+                for s in fr.scores:
+                    st.progress(
+                        min(s.score / 100, 1.0),
+                        text=f"{s.name}: {s.score:.0f}/100 — {s.rationale}",
+                    )
+                for f in fr.findings:
+                    st.markdown(f"- {f}")
 
-    with tabs[5]:
-        render_twin_syndicate_committee(brief, key_suffix="_tab")
-
-    with tabs[6]:
-        render_continental_futures_simulator(brief, key_suffix="_tab")
-
-    with tabs[7]:
-        st.markdown("#### Trust Graph")
-        if brief.trust_graph:
-            st.write(brief.trust_graph.explanation)
-            df = trust_graph_table(brief)
-            if df is not None:
-                st.dataframe(
-                    df, use_container_width=True, key="trust_graph_nodes_table"
-                )
-            st.caption(
-                f"Nodes: {len(brief.trust_graph.nodes)} · "
-                f"Edges: {len(brief.trust_graph.edges)} · "
-                f"Density: {brief.trust_graph.density:.2f}"
-            )
-
-    with tabs[8]:
-        st.markdown("#### Source Attribution")
-        for i, src in enumerate(brief.sources, 1):
-            with st.expander(f"[{i}] {src.title}", expanded=i <= 3):
-                st.write(src.snippet)
-                st.markdown(f"[Open source]({src.url})")
+        with st.expander("🚀 Startup Assessment", expanded=False):
+            st.write(brief.startup_assessment)
+            meta = brief.agent_results.get("startup")
+            if meta:
                 st.caption(
-                    f"Relevance: {src.relevance:.2f} · Confidence: {getattr(src, 'confidence_score', 0.0):.2f} · Type: {getattr(src, 'source_type', 'web')}"
+                    f"Sector: {brief.sector or '—'} · Geography: {brief.geography or '—'} · "
+                    f"Stage: {brief.stage or '—'}"
+                )
+                for s in meta.scores:
+                    st.progress(
+                        min(s.score / 100, 1.0), text=f"{s.name}: {s.score:.0f}/100"
+                    )
+
+        with st.expander("🌍 Market Assessment", expanded=False):
+            st.write(brief.market_assessment)
+            g1, g2 = st.columns(2)
+            g1.metric("Growth Potential", f"{brief.growth_potential:.0f}/100")
+            g2.metric("Investment Readiness", f"{brief.investment_readiness:.0f}/100")
+
+        with st.expander("⚠️ Risk Assessment", expanded=False):
+            st.write(brief.risk_assessment)
+            if brief.red_flags:
+                st.markdown("##### Red Flag Alerts")
+                for rf in brief.red_flags:
+                    css = (
+                        f"flag-{rf.severity.lower()}"
+                        if rf.severity.lower() in {"critical", "high", "medium", "low"}
+                        else "flag-medium"
+                    )
+                    st.markdown(
+                        f"<div class='{css}'><strong>{rf.severity.upper()}: {rf.title}</strong><br/>"
+                        f"{rf.detail}<br/><em>Mitigation: {rf.mitigation or 'TBD'}</em></div>",
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.success("No critical red flags surfaced from open-source intelligence.")
+
+        with st.expander("📝 Investment Recommendation", expanded=False):
+            st.write(brief.investment_recommendation)
+            st.markdown("#### Next Steps")
+            for i, step in enumerate(brief.next_steps, 1):
+                st.markdown(f"{i}. {step}")
+
+        with st.expander("🕸️ Trust Graph Explorer", expanded=False):
+            render_trust_graph_explorer(brief, key_prefix="tge_tab1")
+
+        with st.expander("🔬 Full Reliability Report", expanded=False):
+            # Trust Layer — full Layer 3 analyst view (gated)
+            if brief.evidence_integrity:
+                render_reliability_report(brief.evidence_integrity)
+            else:
+                st.caption("Evidence Integrity Engine not run for this analysis.")
+
+        with st.expander("📚 Source Attribution", expanded=False):
+            for i, src in enumerate(brief.sources, 1):
+                with st.expander(f"[{i}] {src.title}", expanded=i <= 3):
+                    st.write(src.snippet)
+                    st.markdown(f"[Open source]({src.url})")
+                    st.caption(
+                        f"Relevance: {src.relevance:.2f} · Confidence: {getattr(src, 'confidence_score', 0.0):.2f} · Type: {getattr(src, 'source_type', 'web')}"
+                    )
+
+        with st.expander("🔍 Explainable AI Decisions", expanded=False):
+            for reason in brief.explainability:
+                st.markdown(f"- {reason}")
+
+    # TAB 2: Committee Debate
+    with tabs[1]:
+        render_twin_syndicate_committee(brief, key_suffix="_debate")
+
+    # TAB 3: Continental Futures
+    with tabs[2]:
+        render_continental_futures_simulator(brief, key_suffix="_futures")
+
+    # TAB 4: Ask IC Assistant
+    with tabs[3]:
+        render_ask_ic_tab(brief)
+
+    # TAB 5: Reports & Memory
+    with tabs[4]:
+        st.markdown("### Export Reports")
+        st.markdown("Download IC-ready documents in multiple formats.")
+        render_export_buttons(brief, key_prefix="reports_tab")
+
+        st.divider()
+        st.markdown("### Founder Memory")
+        st.caption("Load and review previous intelligence runs.")
+        history = repo.recent_runs(20)
+        selected_run_id = render_history_panel(history)
+
+        if selected_run_id is not None:
+            if selected_run_id != st.session_state.get("loaded_run_id"):
+                loaded_brief = repo.load_brief(selected_run_id)
+                if loaded_brief is not None:
+                    matching_rows = [r for r in history if int(r["id"]) == selected_run_id]
+                    created_at = matching_rows[0]["created_at"] if matching_rows else ""
+
+                    st.session_state["latest_brief"] = loaded_brief
+                    st.session_state["loaded_from_archive"] = {
+                        "run_id": selected_run_id,
+                        "created_at": created_at,
+                    }
+                    st.session_state["loaded_run_id"] = selected_run_id
+                    st.session_state["show_success_banner"] = False
+                    st.toast(
+                        f"Loaded run #{selected_run_id} · "
+                        f"{loaded_brief.recommendation.value} · "
+                        f"{loaded_brief.overall_score:.0f}/100",
+                        icon="📂",
+                    )
+                    st.rerun()
+                else:
+                    st.error(
+                        f"Run #{selected_run_id} could not be restored — "
+                        "the stored data may be from an older schema version.",
+                        icon="⚠️",
+                    )
+
+        st.divider()
+        with st.expander("⚖️ Compare Two Deals", expanded=False):
+            try:
+                compare_id_a, compare_id_b = render_comparison_selector(history)
+                if compare_id_a is not None and compare_id_b is not None:
+                    brief_a = repo.load_brief(compare_id_a)
+                    brief_b = repo.load_brief(compare_id_b)
+                    if brief_a is None:
+                        st.error(f"Run #{compare_id_a} could not be loaded.", icon="⚠️")
+                    elif brief_b is None:
+                        st.error(f"Run #{compare_id_b} could not be loaded.", icon="⚠️")
+                    else:
+                        render_comparison_view(brief_a, brief_b, compare_id_a, compare_id_b)
+            except Exception as _cmp_exc:
+                st.error(
+                    f"Deal comparison unavailable — {type(_cmp_exc).__name__}: {_cmp_exc}",
+                    icon="⚠️",
                 )
 
-    with tabs[9]:
-        st.markdown("#### Explainable AI Decisions")
-        for reason in brief.explainability:
-            st.markdown(f"- {reason}")
-
-
-    with tabs[10]:
-        render_ask_ic_tab(brief)
+    # TAB 6: Portfolio Intelligence
+    with tabs[5]:
+        render_portfolio_dashboard(repo, key_prefix="brief_portfolio")
 
 
 if run:
@@ -437,59 +524,5 @@ if "latest_brief" in st.session_state:
     render_brief(st.session_state["latest_brief"])
 else:
     render_empty_state()
-
-st.divider()
-st.markdown("### Founder Memory")
-history = repo.recent_runs(20)
-
-selected_run_id = render_history_panel(history)
-
-if selected_run_id is not None:
-    # Guard: skip if this run is already loaded — prevents an infinite rerun
-    # loop when Streamlit re-evaluates the page after st.rerun().
-    if selected_run_id != st.session_state.get("loaded_run_id"):
-        loaded_brief = repo.load_brief(selected_run_id)
-        if loaded_brief is not None:
-            # Locate the matching row so we can surface the original timestamp.
-            matching_rows = [r for r in history if int(r["id"]) == selected_run_id]
-            created_at = matching_rows[0]["created_at"] if matching_rows else ""
-
-            st.session_state["latest_brief"] = loaded_brief
-            st.session_state["loaded_from_archive"] = {
-                "run_id": selected_run_id,
-                "created_at": created_at,
-            }
-            st.session_state["loaded_run_id"] = selected_run_id
-            st.session_state["show_success_banner"] = False
-            st.toast(
-                f"Loaded run #{selected_run_id} · "
-                f"{loaded_brief.recommendation.value} · "
-                f"{loaded_brief.overall_score:.0f}/100",
-                icon="📂",
-            )
-            st.rerun()
-        else:
-            st.error(
-                f"Run #{selected_run_id} could not be restored — "
-                "the stored data may be from an older schema version.",
-                icon="⚠️",
-            )
-
-st.divider()
-with st.expander("⚖️ Compare Two Deals", expanded=False):
-    try:
-        compare_id_a, compare_id_b = render_comparison_selector(history)
-        if compare_id_a is not None and compare_id_b is not None:
-            brief_a = repo.load_brief(compare_id_a)
-            brief_b = repo.load_brief(compare_id_b)
-            if brief_a is None:
-                st.error(f"Run #{compare_id_a} could not be loaded.", icon="⚠️")
-            elif brief_b is None:
-                st.error(f"Run #{compare_id_b} could not be loaded.", icon="⚠️")
-            else:
-                render_comparison_view(brief_a, brief_b, compare_id_a, compare_id_b)
-    except Exception as _cmp_exc:
-        st.error(
-            f"Deal comparison unavailable — {type(_cmp_exc).__name__}: {_cmp_exc}",
-            icon="⚠️",
-        )
+    st.divider()
+    render_portfolio_dashboard(repo, key_prefix="empty_portfolio")

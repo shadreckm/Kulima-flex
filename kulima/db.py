@@ -57,6 +57,34 @@ class IntelligenceRepository:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
             conn.commit()
+        # Non-destructive migration: add Trust Layer columns to existing databases.
+        # Opens a second connection so the migration runs on a committed schema.
+        with self._connect() as conn:
+            self._migrate_schema(conn)
+            conn.commit()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Add Trust Layer flat columns to intelligence_runs if absent.
+
+        Uses PRAGMA table_info to check for each column before issuing
+        ALTER TABLE — making this guard fully idempotent.  Existing rows
+        receive NULL for both new columns, which is the correct default for
+        pre-EIE runs.
+        """
+        existing = {
+            row[1]  # column name is index 1 in PRAGMA table_info rows
+            for row in conn.execute("PRAGMA table_info(intelligence_runs)")
+        }
+        if "integrity_score" not in existing:
+            conn.execute(
+                "ALTER TABLE intelligence_runs ADD COLUMN integrity_score REAL DEFAULT NULL"
+            )
+            _log.debug("_migrate_schema: added column integrity_score")
+        if "integrity_grade" not in existing:
+            conn.execute(
+                "ALTER TABLE intelligence_runs ADD COLUMN integrity_grade TEXT DEFAULT NULL"
+            )
+            _log.debug("_migrate_schema: added column integrity_grade")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -69,6 +97,10 @@ class IntelligenceRepository:
 
     def save_brief(self, brief: InvestmentBrief) -> int:
         payload = brief.model_dump(mode="json")
+        # Extract Trust Layer flat values — both are NULL when EIE has not run.
+        ei = brief.evidence_integrity
+        integrity_score: float | None = ei.integrity_score if ei is not None else None
+        integrity_grade: str | None = ei.integrity_grade.value if ei is not None else None
         with self._connect() as conn:
             cur = conn.execute(
                 """
@@ -76,8 +108,9 @@ class IntelligenceRepository:
                     created_at, founder_name, startup_name, sector, geography, stage,
                     overall_score, founder_score, startup_score, market_score, trust_score,
                     risk_score, growth_potential, investment_readiness, confidence,
-                    recommendation, executive_summary, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    recommendation, executive_summary, payload_json,
+                    integrity_score, integrity_grade
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
@@ -98,6 +131,8 @@ class IntelligenceRepository:
                     brief.recommendation.value,
                     brief.executive_summary,
                     json.dumps(payload),
+                    integrity_score,
+                    integrity_grade,
                 ),
             )
             # Legacy compatibility table
@@ -120,8 +155,9 @@ class IntelligenceRepository:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, created_at, founder_name, startup_name, overall_score,
-                       founder_score, trust_score, recommendation, confidence
+                SELECT id, created_at, founder_name, startup_name, sector, geography, stage,
+                       overall_score, founder_score, trust_score, recommendation, confidence,
+                       integrity_score, integrity_grade
                 FROM intelligence_runs
                 ORDER BY id DESC
                 LIMIT ?

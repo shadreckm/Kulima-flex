@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from kulima.agents.diligence_agent import DueDiligenceAgent
@@ -12,8 +13,9 @@ from kulima.agents.startup_agent import StartupIntelligenceAgent
 from kulima.breakthrough.futures import ContinentalFuturesEngine
 from kulima.breakthrough.syndicate import InvestorTwinSyndicate
 from kulima.config import FUTURES_MODEL, SYNDICATE_MODEL
+from kulima.evidence_integrity import EvidenceIntegrityEngine
 from kulima.llm import LLMClient
-from kulima.models import InvestmentBrief, Recommendation
+from kulima.models import EvidenceIntegrityReport, InvestmentBrief, Recommendation
 from kulima.research import ResearchEngine
 from kulima.scoring import (
     aggregate_agent_score,
@@ -25,6 +27,8 @@ from kulima.scoring import (
     recommendation_from_score,
 )
 from kulima.trust_graph import TrustGraphEngine
+
+_log = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float, str], None]
 
@@ -43,6 +47,7 @@ class IntelligenceOrchestrator:
         self.trust_engine = TrustGraphEngine(self.llm)
         self.syndicate = InvestorTwinSyndicate(LLMClient(model=SYNDICATE_MODEL))
         self.futures = ContinentalFuturesEngine(LLMClient(model=FUTURES_MODEL))
+        self.evidence_engine = EvidenceIntegrityEngine(self.llm)
 
     def analyze(
         self,
@@ -66,6 +71,29 @@ class IntelligenceOrchestrator:
         all_sources = ResearchEngine._dedupe(
             founder_sources + startup_sources + risk_sources
         )
+
+        # ── Evidence Integrity Engine — runs post-research, pre-agents ────────
+        # Wrapped in a blanket try/except: failure is logged and the pipeline
+        # continues with integrity_report = None.  No score is ever modified here.
+        integrity_report: EvidenceIntegrityReport | None = None
+        try:
+            progress(0.18, "Evidence Integrity Engine — source consistency analysis…")
+            integrity_report = self.evidence_engine.evaluate(
+                all_sources, founder, startup, sector=""
+            )
+            _log.info(
+                "EIE complete — grade %s (%.0f/100), sparse=%s, contradictions=%d",
+                integrity_report.integrity_grade.value,
+                integrity_report.integrity_score,
+                integrity_report.sparse_mode,
+                len(integrity_report.contradictions),
+            )
+        except Exception as _eie_exc:
+            _log.warning(
+                "EvidenceIntegrityEngine failed gracefully — pipeline continues: %s",
+                _eie_exc,
+            )
+            integrity_report = None
 
         progress(0.30, "Parallel agents — Founder ∥ Startup intelligence…")
         from concurrent.futures import ThreadPoolExecutor
@@ -172,11 +200,21 @@ class IntelligenceOrchestrator:
 
         rec_hint = recommendation_from_score(overall, risk_score, len(unique_flags))
 
-        dossier = (
+        _scores_line = (
             f"Founder score {founder_score:.0f} | Startup {startup_score:.0f} | "
-            f"Market {market_score:.0f} | Trust {trust_score:.0f} | Risk {risk_score:.0f}\n"
+            f"Market {market_score:.0f} | Trust {trust_score:.0f} | Risk {risk_score:.0f}"
+        )
+        _agents_lines = (
             f"Founder: {founder_result.summary}\nStartup: {startup_result.summary}\n"
             f"Diligence: {diligence_result.summary}\nRisk: {risk_result.summary}"
+        )
+        # Prepend a compact EIE summary so Syndicate twins vote knowing evidence quality.
+        # Max 500 chars; omitted entirely when integrity_report is None.
+        _eie_summary = _build_eie_dossier_line(integrity_report)
+        dossier = (
+            (_eie_summary + "\n" if _eie_summary else "")
+            + _scores_line + "\n"
+            + _agents_lines
         )
 
         progress(0.72, "Parallel IC — Twin Syndicate (5 votes) ∥ Continental Futures…")
@@ -276,7 +314,7 @@ class IntelligenceOrchestrator:
         )
 
         progress(1.0, "Intelligence complete — IC pack ready.")
-        return InvestmentBrief(
+        brief_out = InvestmentBrief(
             founder_name=founder,
             startup_name=startup,
             sector=str(startup_result.metadata.get("sector", "")),
@@ -313,7 +351,46 @@ class IntelligenceOrchestrator:
             future_simulation=future,
             sources=all_sources,
             explainability=explainability,
+            evidence_integrity=integrity_report,
         )
+        try:
+            from kulima.thesis import evaluate_thesis_match
+            brief_out.thesis_match = evaluate_thesis_match(brief_out)
+        except Exception as _th_exc:
+            _log.warning("Thesis evaluation failed gracefully: %s", _th_exc)
+
+        return brief_out
+
+
+def _build_eie_dossier_line(report: EvidenceIntegrityReport | None) -> str:
+    """Return a compact EIE summary for the Twin Syndicate dossier (≤ 500 chars).
+
+    Returns an empty string when the report is None — the caller omits the
+    section entirely in that case.
+    """
+    if report is None:
+        return ""
+
+    lines: list[str] = [
+        f"[EVIDENCE_INTEGRITY] Reliability: {report.integrity_grade.value} "
+        f"({report.integrity_score:.0f}/100) · "
+        f"Evidence Depth: {report.evidence_depth.value.title()} · "
+        f"Consistency: {report.consistency_status.value.replace('_', ' ').title()}"
+    ]
+
+    if report.sparse_mode:
+        lines.append("  Note: Sparse evidence corpus — limited OSINT available.")
+
+    if report.contradictions:
+        lines.append("  Top Issues:")
+        for con in report.contradictions[:3]:           # cap at 3 in the dossier
+            lines.append(f"  - {con.description[:120]}")
+
+    summary = "\n".join(lines)
+    # Hard cap at 500 chars as specified
+    if len(summary) > 500:
+        summary = summary[:497] + "…"
+    return summary
 
 
 def _blend_recommendation(

@@ -47,7 +47,26 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
         f"Investment recommendation: {_clip(brief.investment_recommendation, 1600)}",
         "Next steps:\n" + _bullet_list(brief.next_steps),
         "Explainability:\n" + _bullet_list(brief.explainability, 12),
-    ]
+    tm = brief.thesis_match
+    if tm is None:
+        try:
+            from kulima.thesis import evaluate_thesis_match
+            tm = evaluate_thesis_match(brief)
+        except Exception:
+            tm = None
+
+    if tm:
+        sections.append("[THESIS_FIT]")
+        st_str = tm.status.value if hasattr(tm.status, "value") else str(tm.status)
+        sections.append(
+            f"Overall Thesis Match: {tm.overall_match:.0f}% ({st_str}) | "
+            f"Sector Fit: {tm.sector_fit} | "
+            f"Stage Fit: {tm.stage_fit} | "
+            f"Geography Fit: {tm.geography_fit} | "
+            f"Evidence Fit: {tm.evidence_fit}"
+        )
+        if tm.notes:
+            sections.append("Thesis Notes:\n" + _bullet_list(tm.notes))
 
     if brief.red_flags:
         sections.append("[RISK_ANALYSIS]")
@@ -55,6 +74,24 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
             sections.append(
                 f"[R{i}] {flag.severity.upper()} — {flag.title}: "
                 f"{_clip(flag.detail, 700)} Mitigation: {_clip(flag.mitigation, 500)}"
+            )
+
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        sections.append("[EVIDENCE_INTEGRITY]")
+        sections.append(
+            f"Rating: Grade {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) | "
+            f"Depth: {ei.evidence_depth.value} | "
+            f"Consistency: {ei.consistency_status.value}"
+        )
+        for i, c in enumerate(ei.contradictions[:5], 1):
+            sections.append(
+                f"[C{i}] {c.severity.value.upper()} conflict — "
+                f"{_clip(c.claim_a.value_raw, 300)} vs {_clip(c.claim_b.value_raw, 300)}"
+            )
+        for i, u in enumerate(ei.unsupported_claims[:5], 1):
+            sections.append(
+                f"[U{i}] Unsupported claim: {_clip(u.description, 400)}"
             )
 
     if brief.agent_results:
@@ -150,6 +187,27 @@ def answer_ask_ic_question(
         - Style the response as if it comes from an investment committee analyst.
         """
     ).strip()
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        system += (
+            f"\n\nEvidence integrity grounding rules:"
+            f"\n- The evidence for this deal has been assessed as Grade {ei.integrity_grade.value} "
+            f"({ei.integrity_score:.0f}/100) with {ei.evidence_depth.value} depth and "
+            f"{ei.consistency_status.value} consistency. Cite [EVIDENCE_INTEGRITY] when "
+            f"answering questions about evidence quality, source reliability, or confidence."
+            f"\n- If contradictions [C#] or unsupported claims [U#] are relevant to the "
+            f"question, surface them explicitly. Do not downplay evidence-quality concerns."
+        )
+
+    tm = brief.thesis_match
+    if tm:
+        st_str = tm.status.value if hasattr(tm.status, "value") else str(tm.status)
+        system += (
+            f"\n\nVC Thesis Engine grounding rules:"
+            f"\n- The fund thesis match for this deal has been evaluated as {tm.overall_match:.0f}% "
+            f"(Status: {st_str}; Sector: {tm.sector_fit}, Stage: {tm.stage_fit}, Geo: {tm.geography_fit}, Evidence Fit: {tm.evidence_fit}). "
+            f"Cite [THESIS_FIT] when answering questions about fund thesis fit, sector alignment, check size, or thesis status."
+        )
     user = textwrap.dedent(
         f"""
         Context pack:

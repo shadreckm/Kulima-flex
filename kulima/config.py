@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Twin Syndicate must use this model for hackathon demo quality
+# Twin Syndicate and Futures models can be configured independently from the main agent model
 SYNDICATE_MODEL = os.getenv("SYNDICATE_MODEL", "gpt-4.1-mini")
 FUTURES_MODEL = os.getenv("FUTURES_MODEL", "gpt-4.1-mini")
 

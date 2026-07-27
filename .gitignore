@@ -1,19 +1,44 @@
-﻿venv/
+## Runtime environment
+venv/
 .env
 __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
+
+## Database (contains sensitive deal data — never commit)
 founders.db
 *.db
-.DS_Store
 
-# IDE settings
+## OS artifacts
+.DS_Store
+Thumbs.db
+
+## IDE settings
 .vscode/
 .idea/
 
-# Internal design & planning documents
+## Internal planning and design documents (not for public repo)
 repository_audit.md
+ARCHITECTURE_REVIEW.md
 deal-comparison-plan.md
 deal-comparison-mvp-plan.md
 load-previous-run-plan.md
+evidence-integrity-engine-plan.md
+evidence-integrity-review.md
+trust-layer-coding-plan.md
+trust-layer-implementation-blueprint.md
+trust-layer-product-design.md
+
+## Test output files and logs (captured in CI — not needed in tree)
+all_pytest_runs.txt
+all_tests_output.txt
+pytest_out.txt
+pytest_run1.txt
+run_all_tests_log.txt
+suite_results.txt
+test_results.txt
+test_output.txt
+test1_output.txt
+test1_full.txt
+ver_output.txt

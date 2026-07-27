@@ -112,56 +112,66 @@ def render_comparison_view(
         f"· No agents were re-run · Scores loaded from archive"
     )
 
-    # ── Header strip ──────────────────────────────────────────────────────────
-    h1, hmid, h2 = st.columns([2, 0.5, 2])
-
+    # ── Header strip — CSS grid reflows to single column on mobile ───────────
     def _rec_color(brief: InvestmentBrief) -> str:
         return REC_COLORS.get(brief.recommendation, "#0B3D2E")
 
-    with h1:
-        st.markdown(
-            f"""
+    st.markdown(
+        f"""
+        <div style="
+            display:grid;
+            grid-template-columns:1fr auto 1fr;
+            gap:0.5rem;
+            align-items:center;
+            margin-bottom:1rem;
+        ">
             <div style="background:{_rec_color(brief_a)};color:white;
-                border-radius:14px;padding:0.75rem 1rem;text-align:center;">
+                border-radius:14px;padding:0.75rem 1rem;text-align:center;
+                min-width:0;word-break:break-word;overflow-wrap:break-word;">
                 <div style="font-size:0.75rem;opacity:0.85;margin-bottom:0.2rem;">
                     Deal A · Run #{run_id_a}
                 </div>
-                <div style="font-family:Fraunces,Georgia,serif;font-size:1.2rem;font-weight:700;">
+                <div style="font-family:Fraunces,Georgia,serif;
+                    font-size:clamp(0.95rem,2vw,1.2rem);font-weight:700;
+                    word-break:break-word;">
                     {brief_a.founder_name} / {brief_a.startup_name}
                 </div>
-                <div style="font-size:1rem;margin-top:0.25rem;">
+                <div style="font-size:clamp(0.85rem,1.5vw,1rem);margin-top:0.25rem;">
                     {brief_a.recommendation.value} · {brief_a.overall_score:.0f}/100
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with hmid:
-        st.markdown(
-            "<div style='text-align:center;padding-top:1.4rem;"
-            "font-size:1.15rem;color:#5B6F64;font-weight:700;'>vs</div>",
-            unsafe_allow_html=True,
-        )
-    with h2:
-        st.markdown(
-            f"""
+            <div style="text-align:center;font-size:1.1rem;
+                color:#5B6F64;font-weight:700;white-space:nowrap;
+                padding:0 0.25rem;">vs</div>
             <div style="background:{_rec_color(brief_b)};color:white;
-                border-radius:14px;padding:0.75rem 1rem;text-align:center;">
+                border-radius:14px;padding:0.75rem 1rem;text-align:center;
+                min-width:0;word-break:break-word;overflow-wrap:break-word;">
                 <div style="font-size:0.75rem;opacity:0.85;margin-bottom:0.2rem;">
                     Deal B · Run #{run_id_b}
                 </div>
-                <div style="font-family:Fraunces,Georgia,serif;font-size:1.2rem;font-weight:700;">
+                <div style="font-family:Fraunces,Georgia,serif;
+                    font-size:clamp(0.95rem,2vw,1.2rem);font-weight:700;
+                    word-break:break-word;">
                     {brief_b.founder_name} / {brief_b.startup_name}
                 </div>
-                <div style="font-size:1rem;margin-top:0.25rem;">
+                <div style="font-size:clamp(0.85rem,1.5vw,1rem);margin-top:0.25rem;">
                     {brief_b.recommendation.value} · {brief_b.overall_score:.0f}/100
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
+        </div>
+        <style>
+        @media (max-width:600px) {{
+            div[data-cmp-header] {{
+                grid-template-columns: 1fr !important;
+            }}
+            div[data-cmp-header] > div:nth-child(2) {{
+                display: none !important;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ── Dual radar chart ──────────────────────────────────────────────────────
     label_a = f"A: {brief_a.founder_name}"

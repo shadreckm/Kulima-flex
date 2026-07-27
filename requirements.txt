@@ -1,10 +1,32 @@
+# Kulima FLEX VC Brain — Python Dependencies
+# Python 3.11+
+
+# Dashboard and UI
 streamlit>=1.32.0
+
+# LLM client
 openai>=1.30.0
+
+# OSINT research
 tavily-python>=0.3.3
+
+# Environment and configuration
 python-dotenv>=1.0.0
+
+# Data manipulation
 pandas>=2.0.0
+
+# Visualization
 plotly>=5.18.0
+
+# Graph construction (Trust Graph)
 networkx>=3.2
+
+# Data validation and domain models
 pydantic>=2.5.0
+
+# Retry logic for API calls
 tenacity>=8.2.0
+
+# PDF export
 reportlab>=4.0.0
