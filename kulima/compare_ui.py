@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+import textwrap
 
 from kulima.comparison import build_comparison_rows, build_winner_line
 from kulima.models import InvestmentBrief
@@ -116,8 +117,7 @@ def render_comparison_view(
     def _rec_color(brief: InvestmentBrief) -> str:
         return REC_COLORS.get(brief.recommendation, "#0B3D2E")
 
-    st.markdown(
-        f"""
+    html_block = textwrap.dedent(f"""
         <div style="
             display:grid;
             grid-template-columns:1fr auto 1fr;
@@ -169,15 +169,14 @@ def render_comparison_view(
             }}
         }}
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """)
+    st.markdown(html_block, unsafe_allow_html=True)
 
     # ── Dual radar chart ──────────────────────────────────────────────────────
     label_a = f"A: {brief_a.founder_name}"
     label_b = f"B: {brief_b.founder_name}"
     fig = radar_figure_dual(brief_a, brief_b, label_a, label_b)
-    st.plotly_chart(fig, use_container_width=True, key=_KEY_RADAR)
+    st.plotly_chart(fig, width="stretch", key=_KEY_RADAR)
 
     # ── Score comparison table ────────────────────────────────────────────────
     st.markdown("#### Score Comparison")
@@ -185,7 +184,7 @@ def render_comparison_view(
     df = pd.DataFrame(rows)
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key=_KEY_TABLE,
         column_config={

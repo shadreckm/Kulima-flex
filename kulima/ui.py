@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import textwrap
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -73,8 +74,7 @@ def _delta_color(score: float, invert: bool = False) -> str:
 
 
 def inject_styles() -> None:
-    st.markdown(
-        """
+    st.markdown(textwrap.dedent("""
         <style>
         /* ── Phase 1: Hide all Streamlit chrome ───────────────────────────── */
         #MainMenu {visibility: hidden !important; display: none !important;}
@@ -1039,14 +1039,11 @@ def inject_styles() -> None:
         @media (prefers-color-scheme: dark) {
             .reliability-card { background: rgba(13,43,33,0.88) !important; border-color: rgba(215,227,220,0.18) !important; }
         }
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
 
 def render_hero() -> None:
-    st.markdown(
-        """
+    st.markdown(textwrap.dedent("""
         <div class="kulima-hero">
             <p class="kulima-brand">Kulima FLEX</p>
             <p class="kulima-sub">AI Investment Intelligence Operating System for Africa</p>
@@ -1058,14 +1055,11 @@ def render_hero() -> None:
                 <span class="hero-pill">IC Memo Export</span>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
 
 def render_empty_state() -> None:
-    st.markdown(
-        """
+    st.markdown(textwrap.dedent("""
         <div class="empty-state">
             <h3>Executive IC Workspace</h3>
             <p>Enter a founder and startup in the sidebar, then run full intelligence.
@@ -1079,15 +1073,12 @@ def render_empty_state() -> None:
               <li>Export memo + full committee report</li>
             </ol>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
 
 def render_success_banner(brief: InvestmentBrief) -> None:
     flags = len(brief.red_flags)
-    st.markdown(
-        f"""
+    st.markdown(textwrap.dedent(f"""
         <div class="success-banner">
             <strong>Analysis complete</strong><br/>
             {html.escape(brief.founder_name)} / {html.escape(brief.startup_name)}
@@ -1095,9 +1086,7 @@ def render_success_banner(brief: InvestmentBrief) -> None:
             &nbsp;·&nbsp; Overall {brief.overall_score:.0f}/100
             &nbsp;·&nbsp; {flags} red flag{"s" if flags != 1 else ""} reviewed
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
 
 def render_recommendation_banner(brief: InvestmentBrief) -> None:
@@ -1109,17 +1098,14 @@ def render_recommendation_banner(brief: InvestmentBrief) -> None:
             f"Syndicate {final.value} · Consensus "
             f"{(brief.syndicate.consensus_score or brief.syndicate.average_score):.0f}/100"
         )
-    st.markdown(
-        f"""
+    st.markdown(textwrap.dedent(f"""
         <div class="rec-banner" style="background:{color};">
             IC Recommendation: {html.escape(brief.recommendation.value)}
             &nbsp;·&nbsp; Conviction {html.escape(brief.confidence_level.value)}
             &nbsp;·&nbsp; Overall {brief.overall_score:.0f}/100
             <span class="sub">{html.escape(syn) if syn else "Partner-grade diligence complete"}</span>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
 
 def render_score_row(brief: InvestmentBrief) -> None:
@@ -1641,16 +1627,13 @@ def render_twin_syndicate_committee(
     # ── Final Committee Outcome banner — moved to TOP (decision-first) ──
     st.markdown("### Final Committee Outcome")
     color = REC_COLORS.get(final, "#0B3D2E")
-    st.markdown(
-        f"""
+    st.markdown(textwrap.dedent(f"""
         <div class="rec-banner" style="background:{color};">
             Committee Decision: {html.escape(final.value)}
             &nbsp;·&nbsp; Consensus {consensus:.0f}/100
             &nbsp;·&nbsp; Dissent {dissent:.0f}/100
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """), unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
     c1.metric(
@@ -1675,7 +1658,7 @@ def render_twin_syndicate_committee(
     fig = syndicate_bar(brief)
     if fig:
         chart_key = f"syndicate_chart{key_suffix}" if key_suffix else "syndicate_chart"
-        st.plotly_chart(fig, use_container_width=True, key=chart_key)
+        st.plotly_chart(fig, width="stretch", key=chart_key)
 
     # ═══════════════════════════════════════════════════════════════════════
     # STEP 5 — Dissenting Views (minority opinions + reasons)
@@ -1814,14 +1797,14 @@ def render_twin_syndicate_committee(
         "⇅ Confidence",
         key=f"sort_conf_{sort_key}",
         type=("primary" if st.session_state[sort_key] == "confidence" else "secondary"),
-        use_container_width=True,
+        width="stretch",
     ):
         st.session_state[sort_key] = "confidence"
     if scol3.button(
         "⇅ Vote",
         key=f"sort_vote_{sort_key}",
         type=("primary" if st.session_state[sort_key] == "vote" else "secondary"),
-        use_container_width=True,
+        width="stretch",
     ):
         st.session_state[sort_key] = "vote"
 
@@ -1934,7 +1917,7 @@ def render_twin_syndicate_committee(
                         fname,
                         key=f"kw_{kb}_{fname}",
                         type="primary" if is_on else "secondary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         st.session_state[kb] = fname
 
@@ -1956,7 +1939,7 @@ def render_twin_syndicate_committee(
                         label,
                         key=f"sp_{sp}_{label}",
                         type="primary" if is_on else "secondary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         st.session_state[sp] = label
 
@@ -2135,7 +2118,7 @@ def render_continental_futures_simulator(
     fig = futures_chart(brief)
     if fig:
         chart_key = f"futures_chart{key_suffix}" if key_suffix else "futures_chart"
-        st.plotly_chart(fig, use_container_width=True, key=chart_key)
+        st.plotly_chart(fig, width="stretch", key=chart_key)
 
     cols = st.columns(3)
     # Outer wrapper: CSS flex-wrap reflows cards to full-width on mobile
@@ -2316,7 +2299,7 @@ def render_history_panel(rows: list[dict]) -> int | None:
 
     edited = st.data_editor(
         df_display,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key="history_panel_editor",
         column_config=base_col_config,

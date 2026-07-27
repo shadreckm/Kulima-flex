@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 import html as _html
+import textwrap
 from typing import Any
 
 import plotly.graph_objects as go
@@ -449,8 +450,7 @@ def render_trust_network_preview(
             f'Reliability {grade} · {stats["reliability_score"]:.0f}/100</span>'
         )
 
-    st.markdown(
-        f"""
+    html_block = textwrap.dedent(f"""
         <div style="background:rgba(255,255,255,0.68);border:1px solid rgba(11,61,46,0.10);
             border-radius:14px;padding:0.7rem 1rem 0.65rem;margin:0.4rem 0 0.6rem;
             display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;">
@@ -474,9 +474,8 @@ def render_trust_network_preview(
             {reliability_html}
             {conflict_badge}
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """)
+    st.markdown(html_block, unsafe_allow_html=True)
 
 
 def render_trust_graph_explorer(
@@ -565,7 +564,7 @@ def render_trust_graph_explorer(
     )
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         key=f"{key_prefix}_network_chart",
     )
 
@@ -593,7 +592,7 @@ def render_trust_graph_explorer(
             df = pd.DataFrame(rows)
             st.dataframe(
                 df[["Type", "Count"]],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 key=f"{key_prefix}_type_breakdown",
             )

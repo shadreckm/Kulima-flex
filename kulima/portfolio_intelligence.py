@@ -618,13 +618,13 @@ def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None
     with col1:
         st.plotly_chart(
             recommendation_chart(active_rows),
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_rec_chart",
         )
     with col2:
         st.plotly_chart(
             reliability_chart(active_rows),
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_rel_chart",
         )
 
@@ -632,19 +632,19 @@ def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None
     with col3:
         st.plotly_chart(
             sector_chart(active_rows),
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_sec_chart",
         )
     with col4:
         st.plotly_chart(
             thesis_distribution_chart(active_rows),
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_thesis_chart",
         )
     with col5:
         st.plotly_chart(
             score_vs_reliability_scatter(active_rows),
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_scatter_chart",
         )
 
@@ -657,7 +657,7 @@ def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None
     )
     st.plotly_chart(
         risk_matrix_figure(active_rows),
-        use_container_width=True,
+        width="stretch",
         key=f"{key_prefix}_risk_matrix",
     )
 
@@ -725,4 +725,4 @@ def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None
             }
         )
 
-    st.dataframe(table_data, use_container_width=True)
+    st.dataframe(table_data, width="stretch")

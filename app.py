@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import logging
 import traceback
+import textwrap
 
 import streamlit as st
 
@@ -92,7 +93,7 @@ with st.sidebar:
     run = st.button(
         "▶ Run Full Intelligence",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key="run_full_intelligence",
     )
     st.divider()
@@ -432,13 +433,13 @@ def render_brief(brief: InvestmentBrief) -> None:
         c1, c2 = st.columns([1.1, 1])
         with c1:
             st.plotly_chart(
-                radar_figure(brief), use_container_width=True, key="deal_dna_radar_overview"
+                radar_figure(brief), width="stretch", key="deal_dna_radar_overview"
             )
         with c2:
             fig = syndicate_bar(brief)
             if fig:
                 st.plotly_chart(
-                    fig, use_container_width=True, key="syndicate_bar_overview"
+                    fig, width="stretch", key="syndicate_bar_overview"
                 )
 
             m1, m2 = st.columns(2)
@@ -629,28 +630,22 @@ if run:
     else:
         progress_bar = st.progress(0, text="Warming up Investment Intelligence OS…")
         status_box = st.empty()
-        status_box.markdown(
-            """
+        status_box.markdown(textwrap.dedent("""
             <div class="pipeline-card">
               <div class="pipeline-step"><span class="pipeline-dot"></span> Connecting agents…</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """), unsafe_allow_html=True)
 
         def on_progress(pct: float, message: str) -> None:
             progress_bar.progress(min(max(pct, 0.0), 1.0), text=message)
-            status_box.markdown(
-                f"""
+            status_box.markdown(textwrap.dedent(f"""
                 <div class="pipeline-card">
                   <div class="pipeline-step">
                     <span class="pipeline-dot"></span>
                     <span><b>{int(pct * 100)}%</b> — {message}</span>
                   </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                """), unsafe_allow_html=True)
 
         with st.status(
             "Running multi-agent Investment Intelligence OS…", expanded=True

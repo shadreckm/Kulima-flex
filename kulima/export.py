@@ -811,7 +811,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             data=memo_pdf,
             file_name=names["memo_pdf"],
             mime="application/pdf",
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_dl_memo_pdf",
             help="Concise IC memo — 1-2 pages, suitable for partner review.",
         )
@@ -820,7 +820,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             data=memo_txt,
             file_name=names["memo_txt"],
             mime="text/plain",
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_dl_memo_txt",
             help="Plain-text version for email / Slack sharing.",
         )
@@ -837,7 +837,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             data=report_pdf,
             file_name=names["report_pdf"],
             mime="application/pdf",
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_dl_full_ic_pdf",
             type="primary",
             help=(
@@ -850,7 +850,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             data=report_txt,
             file_name=names["report_txt"],
             mime="text/plain",
-            use_container_width=True,
+            width="stretch",
             key=f"{key_prefix}_dl_full_ic_txt",
             help="Plain-text full report for archival or LLM ingestion.",
         )
