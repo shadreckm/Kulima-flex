@@ -351,7 +351,7 @@ def render_floating_ask_ic(brief: InvestmentBrief) -> None:
 
     # ── Drawer header (sticky top) ───────────────────────────────────────
     st.markdown(
-        '<div class="ask-ic-drawer-header'>
+        '<div class="ask-ic-drawer-header">'
         '<div class="ask-ic-drawer-title">💬 Ask IC Analyst</div>'
         '<div class="ask-ic-close-btn">',
         unsafe_allow_html=True,

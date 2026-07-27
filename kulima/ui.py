@@ -1680,8 +1680,7 @@ def render_twin_syndicate_committee(
                 css = _vote_css_class(dec)
                 reasoning = html.escape(getattr(v, "key_reasoning", None) or getattr(v, "thesis", "") or "—")
                 concern = html.escape(getattr(v, "major_concern", "") or "—")
-                st.markdown(
-                    f"""
+                dissent_html = f"""
                     <div class="persona-card vote-{css}" style="margin:0.35rem 0 0.55rem 0;">
                       <div class="persona-header">
                         <div>
@@ -1703,9 +1702,8 @@ def render_twin_syndicate_committee(
                       <div class="persona-reasoning">{reasoning}</div>
                       <div class="persona-concern"><strong>⚠ Reason for disagreement:</strong> {concern}</div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    """
+            st.markdown(textwrap.dedent(dissent_html), unsafe_allow_html=True)
 
     # ── Individual Committee Votes — persona cards (Step 1 compression) ──
     st.markdown("### Individual Committee Votes")
@@ -1759,7 +1757,7 @@ def render_twin_syndicate_committee(
         card_key = f"committee_persona_{idx}_{_vote_css_class(dec)}_{key_suffix or 'global'}"
         # Step 1: auto-expand if dissenting / negative, otherwise collapsed
         with st.expander(exp_title, expanded=bool(auto_expand)):
-            st.markdown(header_html, unsafe_allow_html=True)
+            st.markdown(textwrap.dedent(header_html), unsafe_allow_html=True)
 
             # Full Reasoning + Full Concerns + Full Thesis (all only shown
             # inside expanded card)
@@ -1887,7 +1885,9 @@ def render_twin_syndicate_committee(
       }
     </style>
     """
-    st.markdown(sb_html, unsafe_allow_html=True)
+    # Dedent HTML block to avoid Markdown interpreting leading indent as code block
+    html_block = textwrap.dedent(sb_html)
+    st.markdown(html_block, unsafe_allow_html=True)
 
     # ═══════════════════════════════════════════════════════════════════════
     # DEBATE TRANSCRIPT BLOCK — Steps 2+3+4 (filters + stable speaker identity)
@@ -1996,7 +1996,8 @@ def _render_debate_lines(
                 turns.append(("IC", line))
 
     if not turns:
-        st.write("\n".join(lines))
+        # Render as markdown to allow any embedded markup to display correctly
+        st.markdown(textwrap.dedent("\n".join(lines)), unsafe_allow_html=True)
         return
 
     # Apply Step 2 (keyword) + Step 4 (speaker) filters
@@ -2023,18 +2024,18 @@ def _render_debate_lines(
         # the emoji identity + color badge inside guarantees consistency.
         role = "assistant" if idx % 2 == 0 else "user"
         with st.chat_message(role, avatar=ident["avatar"]):
-            st.markdown(
-                f"<div style=\"display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;"
-                f"margin-bottom:0.25rem;\">"
-                f"<strong style=\"color:{ident['color']};\">{html.escape(speaker)}</strong>"
-                f"<span style=\"display:inline-block;padding:0.05rem 0.4rem;border-radius:999px;"
-                f"background:{ident['color']}22;border:1px solid {ident['color']}55;"
-                f"color:{ident['color']};font-size:0.7rem;font-weight:700;letter-spacing:0.02em;\">"
-                f"{html.escape(ident['label_short'])}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
+            html_header = (
+                f'<div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap; margin-bottom:0.25rem;">'
+                f'<strong style="color:{ident["color"]};">{html.escape(speaker)}</strong>'
+                f'<span style="display:inline-block;padding:0.05rem 0.4rem;border-radius:999px; '
+                f'background:{ident["color"]}22;border:1px solid {ident["color"]}55; '
+                f'color:{ident["color"]};font-size:0.7rem;font-weight:700;letter-spacing:0.02em;">'
+                f'{html.escape(ident["label_short"])}</span>'
+                f'</div>'
             )
-            st.write(content)
+            st.markdown(html_header, unsafe_allow_html=True)
+            # Render message content as markdown allowing HTML from trusted sources
+            st.markdown(content, unsafe_allow_html=True)
 
 
 def futures_chart(brief: InvestmentBrief) -> go.Figure | None:

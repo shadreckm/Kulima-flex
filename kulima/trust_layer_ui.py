@@ -301,8 +301,7 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
         con_label = _consistency_label(report.consistency_status)
         dots = _depth_dots(report.evidence_depth)
 
-        st.markdown(
-            f"""
+        html_block = textwrap.dedent(f"""
             <div data-reliability-grid="" style="
                 display:grid;
                 grid-template-columns:repeat(3,1fr);
@@ -360,9 +359,8 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
                     </div>
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """)
+        st.markdown(html_block, unsafe_allow_html=True)
 
         # Sparse evidence Africa-aware note
         if report.sparse_mode:

@@ -506,7 +506,10 @@ def render_trust_graph_explorer(
     conflict_urls = conflict_node_ids(ei)
 
     # ── Explanation + coverage note ───────────────────────────────────────
-    st.write(graph.explanation)
+    # Explanation may contain markup; render it as safe HTML-markdown
+    exp_html = textwrap.dedent(str(graph.explanation) if graph.explanation is not None else "")
+    if exp_html:
+        st.markdown(exp_html, unsafe_allow_html=True)
 
     # Inline coverage note from trust_layer_ui if EIE present
     if ei is not None:
