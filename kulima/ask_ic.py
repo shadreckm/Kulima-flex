@@ -47,6 +47,7 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
         f"Investment recommendation: {_clip(brief.investment_recommendation, 1600)}",
         "Next steps:\n" + _bullet_list(brief.next_steps),
         "Explainability:\n" + _bullet_list(brief.explainability, 12),
+    ]
     tm = brief.thesis_match
     if tm is None:
         try:
