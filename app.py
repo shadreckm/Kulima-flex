@@ -6,6 +6,7 @@ Executive dashboard + multi-agent diligence + Twin Syndicate breakthrough.
 
 from __future__ import annotations
 
+import html
 import logging
 import traceback
 
@@ -123,27 +124,99 @@ def _ask_ic_session_key(brief: InvestmentBrief) -> str:
     )
 
 
-def render_ask_ic_tab(brief: InvestmentBrief) -> None:
-    st.markdown("#### 💬 Ask the Investment Committee")
-    st.caption(
-        "Ask follow-up diligence questions. Answers are grounded only in this generated "
-        "report, evidence sources, syndicate outputs, risk analysis, and futures analysis."
-    )
+def render_ask_ic_panel(brief: InvestmentBrief, compact: bool = False) -> None:
+    """Shared Ask IC UI surface.
 
-    examples = [
-        "Why was this startup scored low?",
-        "What would change the recommendation?",
-        "Would you invest $25,000?",
-        "What are the biggest risks?",
-        "Compare this founder to similar founders.",
-        "What should the founder do next?",
-    ]
-    st.markdown("**Suggested committee prompts**")
-    chips = st.columns(3)
-    for i, prompt in enumerate(examples):
-        if chips[i % 3].button(prompt, key=f"ask_ic_example_{i}"):
-            st.session_state["ask_ic_pending_prompt"] = prompt
+    Renders (1) grounding context badges, (2) prompt-suggestion chips,
+    (3) the chat history + sticky input, and (4) a clear-history action.
 
+    Parameters
+    ----------
+    brief : InvestmentBrief
+        The active deal — answers are grounded strictly in this object's
+        artifacts via ``answer_ask_ic_question``.
+    compact : bool
+        If True, suggest a shorter chip list and hide the section title /
+        lead caption.  Used inside the floating right-side drawer where
+        vertical space is at a premium.
+    """
+    from kulima.thesis import evaluate_thesis_match
+
+    if not compact:
+        st.markdown("#### 💬 Ask the Investment Committee")
+        st.caption(
+            "Ask follow-up diligence questions. Answers are grounded only in this generated "
+            "report, evidence sources, syndicate outputs, risk analysis, and futures analysis."
+        )
+
+    # ── Grounding context row (compact badges: reliability + thesis fit) ──
+    ei = brief.evidence_integrity
+    tm = brief.thesis_match or evaluate_thesis_match(brief)
+    ctx_html = '<div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin:0.2rem 0 0.6rem 0;">'
+    if ei:
+        from kulima.trust_layer_ui import reliability_badge_html
+        ctx_html += reliability_badge_html(ei)
+    if tm:
+        from kulima.models import ThesisStatus
+        status_text = tm.status.value if hasattr(tm.status, "value") else str(tm.status)
+        status_color_map = {
+            "PASS":  "#0B6E4F", "WARN":  "#B8892D", "BLOCK": "#9B2226",
+        }
+        status_color = "#5B6F64"
+        for k, v in status_color_map.items():
+            if k.upper() in status_text.upper():
+                status_color = v
+                break
+        ctx_html += (
+            f'<span style="display:inline-flex;align-items:center;gap:0.25rem;'
+            f'padding:0.18rem 0.6rem;border-radius:999px;'
+            f'background:{status_color}1F;border:1px solid {status_color}4D;'
+            f'font-size:0.76rem;font-weight:700;color:{status_color};'
+            f'font-family:\'Source Sans 3\',sans-serif;letter-spacing:0.02em;">'
+            f'🎯 Thesis Match {tm.overall_match:.0f}% · {status_text}</span>'
+        )
+    ctx_html += "</div>"
+    st.markdown(ctx_html, unsafe_allow_html=True)
+
+    # ── Prompt suggestion chips ────────────────────────────────────────────
+    if compact:
+        examples = [
+            "Why invest?",
+            "Biggest risks?",
+            "Low reliability?",
+            "Low thesis fit?",
+            "What should I verify before IC?",
+        ]
+    else:
+        examples = [
+            "Why was this startup scored low?",
+            "What would change the recommendation?",
+            "Would you invest $25,000?",
+            "What are the biggest risks?",
+            "Compare this founder to similar founders.",
+            "What should the founder do next?",
+        ]
+    if compact:
+        st.caption("💡 Suggested prompts")
+        chips_html = (
+            '<div style="display:flex;flex-wrap:wrap;gap:0.3rem;'
+            'margin:0.1rem 0 0.55rem 0;">'
+        )
+        for i, prompt in enumerate(examples):
+            chip_id = f"ask_ic_fab_chip_{i}_{_ask_ic_session_key(brief)}"
+            btn = st.button(prompt, key=chip_id)
+            if btn:
+                st.session_state["ask_ic_pending_prompt"] = prompt
+        chips_html += "</div>"
+    else:
+        st.markdown("**Suggested committee prompts**")
+        cols = st.columns(3)
+        for i, prompt in enumerate(examples):
+            chip_id = f"ask_ic_example_{i}_{_ask_ic_session_key(brief)}"
+            if cols[i % 3].button(prompt, key=chip_id):
+                st.session_state["ask_ic_pending_prompt"] = prompt
+
+    # ── Session message state (shared key → tab + drawer share history) ────
     message_key = _ask_ic_session_key(brief)
     if message_key not in st.session_state:
         st.session_state[message_key] = [
@@ -157,19 +230,47 @@ def render_ask_ic_tab(brief: InvestmentBrief) -> None:
             }
         ]
 
-    if st.button("Clear Ask IC history", key="ask_ic_clear_history"):
-        st.session_state[message_key] = st.session_state[message_key][:1]
-        st.rerun()
+    # ── Clear history (small CTA; drawer places it in header too) ──────────
+    clear_key = f"ask_ic_clear_history_{_ask_ic_session_key(brief)}"
+    if compact:
+        if st.button("🧹 Clear", key=clear_key, help="Clear Ask IC conversation"):
+            st.session_state[message_key] = st.session_state[message_key][:1]
+            st.rerun()
+    else:
+        if st.button("Clear Ask IC history", key=clear_key):
+            st.session_state[message_key] = st.session_state[message_key][:1]
+            st.rerun()
 
+    # ── Chat history scroll area + sticky input ────────────────────────────
+    if compact:
+        st.markdown(
+            '<div class="ask-ic-drawer-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;'
+            'padding:0 0.1rem 0.5rem 0.1rem;">',
+            unsafe_allow_html=True,
+        )
     for message in st.session_state[message_key]:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+    if compact:
+        st.markdown("</div>", unsafe_allow_html=True)
 
     pending_prompt = st.session_state.pop("ask_ic_pending_prompt", None)
+    input_key = f"ask_ic_chat_input_{message_key}"
+    if compact:
+        st.markdown(
+            '<div class="ask-ic-sticky-input" '
+            'style="position:sticky;bottom:0;padding:0.5rem 0 0.15rem;'
+            'background:inherit;border-top:1px solid rgba(0,0,0,0.06);'
+            'backdrop-filter:blur(6px);">',
+            unsafe_allow_html=True,
+        )
     typed_prompt = st.chat_input(
         "Ask the IC analyst a follow-up question…",
-        key=f"ask_ic_chat_input_{message_key}",
+        key=input_key,
     )
+    if compact:
+        st.markdown("</div>", unsafe_allow_html=True)
+
     question = pending_prompt or typed_prompt
     if question:
         st.session_state[message_key].append({"role": "user", "content": question})
@@ -187,6 +288,105 @@ def render_ask_ic_tab(brief: InvestmentBrief) -> None:
         st.session_state[message_key].append({"role": "assistant", "content": response})
 
 
+def render_ask_ic_tab(brief: InvestmentBrief) -> None:
+    """Tab 4 — full-width Ask IC experience.  Delegates to shared panel."""
+    render_ask_ic_panel(brief, compact=False)
+
+
+def render_floating_ask_ic(brief: InvestmentBrief) -> None:
+    """Render the persistent Floating Ask IC: FAB + backdrop + drawer.
+
+    The floating experience is available from every tab.  The drawer uses
+    ``render_ask_ic_panel(compact=True)`` to render a density-optimised
+    chat UI.  The message history is shared with Tab 4 via the same
+    ``_ask_ic_session_key()``, so questions/answers persist across
+    both surfaces.
+    """
+    drawer_state_key = f"ask_ic_drawer_open::{_ask_ic_session_key(brief)}"
+    if drawer_state_key not in st.session_state:
+        st.session_state[drawer_state_key] = False
+
+    # ── Floating Action Button (fixed bottom-right) ──────────────────────
+    # Render via HTML wrapper for fixed positioning.
+    fab_key = f"ask_ic_fab_open::{_ask_ic_session_key(brief)}"
+    close_key = f"ask_ic_drawer_close::{_ask_ic_session_key(brief)}"
+
+    # Use Streamlit checkboxes + CSS trick to handle open/close.
+    # Because Streamlit's fixed HTML wrapper cannot intercept button clicks,
+    # we use two Streamlit buttons wrapped inside fixed HTML containers:
+    # 1. The FAB sits inside .ask-ic-fab-wrapper (always visible).
+    # 2. The Close button sits inside the drawer header area.
+    if st.session_state.get(fab_key, False):
+        st.session_state[drawer_state_key] = True
+        # Clear the transient trigger so FAB can be re-clicked next render
+        st.session_state[fab_key] = False
+    if st.session_state.get(close_key, False):
+        st.session_state[drawer_state_key] = False
+        st.session_state[close_key] = False
+
+    is_open = bool(st.session_state[drawer_state_key])
+
+    # Backdrop (overlay behind drawer; click to dismiss on wide screens)
+    # Note: Streamlit cannot capture clicks on HTML overlays; dismiss via
+    # the explicit Close button in header. Render only for visual dim.
+    bd_open = "open" if is_open else ""
+    st.markdown(
+        f'<div class="ask-ic-backdrop {bd_open}" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── FAB (always rendered; z-index forces it above all tabs) ─────────
+    # Use st.button wrapped in HTML wrapper.  We need to render a Streamlit
+    # button for the event to fire, so we use the wrapper via markdown before
+    # the button (Streamlit outputs the button into its standard column block,
+    # so we style the wrapper's inner stButton via CSS).
+    st.markdown(
+        '<div class="ask-ic-fab-wrapper" data-fab-wrap="true">',
+        unsafe_allow_html=True,
+    )
+    st.button("💬 Ask IC", key=fab_key)
+    # After the button element is emitted by Streamlit, close wrapper
+    # We inject the closing tag via another markdown call.  To ensure the
+    # wrapper actually contains the button, we use CSS position:fixed on
+    # the wrapper itself; Streamlit places our <div> marker immediately
+    # before the button in DOM, and the class styles target the following
+    # stButton block via adjacent combinator in our injected CSS (already
+    # handled by the generic .ask-ic-fab-wrapper rule).
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Drawer shell (fixed; transform slides it in when .open is set) ───
+    drawer_open_class = "open" if is_open else ""
+    st.markdown(
+        f'<div class="ask-ic-drawer-shell {drawer_open_class}" '
+        f'role="dialog" aria-modal="true" aria-label="Ask IC Analyst">',
+        unsafe_allow_html=True,
+    )
+
+    # ── Drawer header (sticky top) ───────────────────────────────────────
+    st.markdown(
+        '<div class="ask-ic-drawer-header">'
+        '<div class="ask-ic-drawer-title">💬 Ask IC Analyst</div>'
+        '<div class="ask-ic-close-btn">',
+        unsafe_allow_html=True,
+    )
+    st.button("✕", key=close_key)
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # ── Drawer body (flex-fill scroll) — compact chat panel ─────────────
+    st.markdown('<div class="ask-ic-drawer-body">', unsafe_allow_html=True)
+    if is_open:
+        # Only render the Streamlit chat widgets when open to avoid wasting
+        # computation + session state on a hidden surface.
+        render_ask_ic_panel(brief, compact=True)
+    else:
+        # Hidden state — emit minimal spacer so Streamlit block order stays
+        # stable between renders (widget key ordering invariant).
+        st.container(height=0, border=False)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div><!-- /ask-ic-drawer-shell -->", unsafe_allow_html=True)
+
+
 def render_brief(brief: InvestmentBrief) -> None:
     archive_meta = st.session_state.get("loaded_from_archive")
     if archive_meta:
@@ -196,6 +396,9 @@ def render_brief(brief: InvestmentBrief) -> None:
         )
     elif st.session_state.get("show_success_banner"):
         render_success_banner(brief)
+
+    # ── Floating Ask IC (FAB + right-side drawer) — available on ALL tabs
+    render_floating_ask_ic(brief)
 
     # New 6-tab structure
     tabs = st.tabs(
@@ -290,29 +493,31 @@ def render_brief(brief: InvestmentBrief) -> None:
 
         with st.expander("🌍 Market Assessment", expanded=False):
             st.write(brief.market_assessment)
-            g1, g2 = st.columns(2)
-            g1.metric("Growth Potential", f"{brief.growth_potential:.0f}/100")
-            g2.metric("Investment Readiness", f"{brief.investment_readiness:.0f}/100")
 
-        with st.expander("⚠️ Risk Assessment", expanded=False):
-            st.write(brief.risk_assessment)
+        with st.expander("⚠️ Top Risks", expanded=True):
             if brief.red_flags:
-                st.markdown("##### Red Flag Alerts")
                 for rf in brief.red_flags:
                     css = (
                         f"flag-{rf.severity.lower()}"
                         if rf.severity.lower() in {"critical", "high", "medium", "low"}
                         else "flag-medium"
                     )
+                    safe_sev = html.escape(rf.severity.upper())
+                    safe_title = html.escape(rf.title)
+                    safe_detail = html.escape(rf.detail)
+                    safe_mitigation = html.escape(rf.mitigation or "TBD")
                     st.markdown(
-                        f"<div class='{css}'><strong>{rf.severity.upper()}: {rf.title}</strong><br/>"
-                        f"{rf.detail}<br/><em>Mitigation: {rf.mitigation or 'TBD'}</em></div>",
+                        f"<div class='{css}'><strong>{safe_sev}: {safe_title}</strong><br/>"
+                        f"{safe_detail}<br/><em>Mitigation: {safe_mitigation}</em></div>",
                         unsafe_allow_html=True,
                     )
             else:
                 st.success("No critical red flags surfaced from open-source intelligence.")
 
-        with st.expander("📝 Investment Recommendation", expanded=False):
+        with st.expander("📄 Full Risk Assessment Narrative", expanded=False):
+            st.write(brief.risk_assessment)
+
+        with st.expander("📝 Investment Recommendation", expanded=True):
             st.write(brief.investment_recommendation)
             st.markdown("#### Next Steps")
             for i, step in enumerate(brief.next_steps, 1):
@@ -329,13 +534,22 @@ def render_brief(brief: InvestmentBrief) -> None:
                 st.caption("Evidence Integrity Engine not run for this analysis.")
 
         with st.expander("📚 Source Attribution", expanded=False):
-            for i, src in enumerate(brief.sources, 1):
-                with st.expander(f"[{i}] {src.title}", expanded=i <= 3):
-                    st.write(src.snippet)
-                    st.markdown(f"[Open source]({src.url})")
+            if not brief.sources:
+                st.caption("No sources were captured for this analysis.")
+            else:
+                for i, src in enumerate(brief.sources, 1):
+                    st.markdown(f"**[{i}] {src.title}**")
+                    src_type = getattr(src, "source_type", "web")
+                    conf = getattr(src, "confidence_score", 0.0)
                     st.caption(
-                        f"Relevance: {src.relevance:.2f} · Confidence: {getattr(src, 'confidence_score', 0.0):.2f} · Type: {getattr(src, 'source_type', 'web')}"
+                        f"Type: {src_type} · "
+                        f"Relevance: {src.relevance:.2f} · "
+                        f"Confidence: {conf:.2f}"
                     )
+                    st.write(src.snippet)
+                    st.markdown(f"🔗 [Open source]({src.url})")
+                    if i < len(brief.sources):
+                        st.divider()
 
         with st.expander("🔍 Explainable AI Decisions", expanded=False):
             for reason in brief.explainability:
@@ -470,11 +684,6 @@ if run:
                     icon="✅",
                 )
                 st.balloons()
-                st.success(
-                    f"**Analysis complete.** Recommendation: **{brief.recommendation.value}** · "
-                    f"Overall score **{brief.overall_score:.0f}/100** · "
-                    f"{len(brief.sources)} sources · {len(brief.red_flags)} red flags"
-                )
             except Exception as e:
                 # Collect full diagnostics
                 exc_type = type(e).__name__

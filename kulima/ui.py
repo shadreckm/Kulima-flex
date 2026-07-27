@@ -854,6 +854,149 @@ def inject_styles() -> None:
                 flex: 1 1 100% !important;
             }
         }
+
+        /* ── Trust Layer Reliability Card — 3-col → 1-col below 480 px ──── */
+        @media (max-width: 480px) {
+            div[data-reliability-grid=""] {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        /* ── Floating Ask IC — FAB + right-side drawer ──────────────────── */
+        .ask-ic-fab-wrapper {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            display: block;
+        }
+        .ask-ic-fab-wrapper button,
+        div[data-testid="stVerticalBlock"] > div[data-testid="stButton"] > button.ask-ic-fab-btn {
+            border-radius: 9999px !important;
+            background: #0B3D2E !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            box-shadow: 0 10px 28px rgba(11,61,46,0.32), 0 2px 6px rgba(0,0,0,0.18) !important;
+            padding: 0.7rem 1.05rem !important;
+            font-weight: 700 !important;
+            font-family: 'Source Sans 3', sans-serif !important;
+            font-size: 0.92rem !important;
+            letter-spacing: 0.01em !important;
+            min-width: 56px !important;
+            min-height: 56px !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+        }
+        .ask-ic-fab-wrapper button:hover,
+        div[data-testid="stVerticalBlock"] > div[data-testid="stButton"] > button.ask-ic-fab-btn:hover {
+            background: #0F4A38 !important;
+            transform: translateY(-2px);
+            box-shadow: 0 14px 36px rgba(11,61,46,0.42), 0 4px 10px rgba(0,0,0,0.22) !important;
+        }
+        .ask-ic-fab-wrapper button:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* Drawer shell */
+        .ask-ic-drawer-shell {
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            width: min(440px, 92vw);
+            background: rgba(252,253,252,0.985);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-left: 1px solid rgba(0,0,0,0.08);
+            box-shadow: -20px 0 60px rgba(0,0,0,0.18);
+            z-index: 9998;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .ask-ic-drawer-shell.open {
+            transform: translateX(0%);
+        }
+        /* Tablet breakpoint (769-1024): 60vw */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .ask-ic-drawer-shell { width: 60vw !important; }
+        }
+        /* Mobile breakpoint (≤768px): 100vw */
+        @media (max-width: 768px) {
+            .ask-ic-drawer-shell {
+                width: 100vw !important;
+                right: 0 !important;
+                left: 0 !important;
+                border-left: none !important;
+                border-bottom: none !important;
+            }
+            .ask-ic-fab-wrapper {
+                bottom: 1rem;
+                right: 1rem;
+            }
+            .ask-ic-fab-wrapper button {
+                min-width: 56px;
+                min-height: 56px;
+                padding: 0.7rem 0.9rem !important;
+            }
+        }
+        /* Drawer header */
+        .ask-ic-drawer-header {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 1rem 0.7rem 1.05rem;
+            border-bottom: 1px solid rgba(0,0,0,0.07);
+            background: linear-gradient(180deg, rgba(11,61,46,0.03), transparent);
+        }
+        .ask-ic-drawer-title {
+            font-family: 'Fraunces', Georgia, serif;
+            font-weight: 700;
+            font-size: 1.08rem;
+            color: #0B3D2E;
+            letter-spacing: -0.01em;
+        }
+        .ask-ic-close-btn button {
+            background: transparent !important;
+            border: 1px solid rgba(0,0,0,0.10) !important;
+            color: #5B6F64 !important;
+            border-radius: 8px !important;
+            padding: 0.25rem 0.5rem !important;
+            font-weight: 700 !important;
+            font-size: 0.82rem !important;
+            line-height: 1 !important;
+            min-height: 0 !important;
+        }
+        .ask-ic-close-btn button:hover {
+            background: rgba(0,0,0,0.04) !important;
+            color: #0B3D2E !important;
+        }
+        /* Drawer body (holds compact panel content): flex-fill scrollable */
+        .ask-ic-drawer-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0.6rem 0.9rem 0.25rem 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Desktop overlay when drawer is open */
+        .ask-ic-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 31, 24, 0.35);
+            backdrop-filter: blur(2px);
+            z-index: 9997;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .ask-ic-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
         @keyframes fadeRise {
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -985,9 +1128,8 @@ def render_score_row(brief: InvestmentBrief) -> None:
 
     HTML chips are rendered in a CSS grid (.score-chip-grid) that reflows
     automatically: 6 columns on desktop, 3 on tablet, 2 on phone.
-    Below the grid, 6 st.metric widgets (collapsed labels) provide
-    accessibility / screen-reader support — Streamlit handles their own
-    responsive reflow natively.
+    Each chip carries a native ``title`` attribute for screen readers and
+    mouse-hover tooltips, matching the Phase 3 help strings.
     """
     st.markdown(
         '<div class="dashboard-kicker">Executive Scorecard</div>',
@@ -1003,7 +1145,6 @@ def render_score_row(brief: InvestmentBrief) -> None:
         ("Risk ↓",  brief.risk_score,     True,  "Lower is better",      _SCORE_HELP["Risk"]),
     ]
 
-    # ── HTML chip grid — reflows via CSS at tablet/phone breakpoints ──────
     chips_html = '<div class="score-chip-grid">'
     for label, value, invert, hint, tooltip in metrics:
         chips_html += (
@@ -1016,22 +1157,6 @@ def render_score_row(brief: InvestmentBrief) -> None:
         )
     chips_html += '</div>'
     st.markdown(chips_html, unsafe_allow_html=True)
-
-    # ── Accessible st.metric row — screen-readers & keyboard nav ─────────
-    # st.columns(6) is fine here: these are slim metric widgets whose own
-    # Streamlit layout wraps gracefully; labels are hidden (collapsed).
-    a_cols = st.columns(6)
-    for col, (label, value, invert, hint, tooltip) in zip(a_cols, metrics):
-        with col:
-            delta_val = value - 75 if not invert else 75 - value
-            st.metric(
-                label=label,
-                value=f"{value:.0f}/100",
-                delta=f"{'▲' if delta_val >= 0 else '▼'} {abs(delta_val):.0f} vs threshold",
-                delta_color=_delta_color(value, invert=invert),
-                help=tooltip,
-                label_visibility="collapsed",
-            )
 
 
 def render_dashboard_shell_open() -> None:
@@ -1224,17 +1349,281 @@ def _vote_css_class(decision) -> str:
     return "pass"
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Twin Syndicate — speaker identity registry + UI helpers
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Stable, one-role-per-speaker identity registry.  Every archetype is mapped
+# once here so that the same speaker name always renders with the same
+# avatar / color / persona badge across scoreboard, cards, dissent block
+# AND debate transcript.  Previously transcript speakers used idx%N rotation
+# → same speaker got different avatar/color each run / each mention.
+COMMITTEE_SPEAKERS: dict[str, dict] = {
+    "african_vc": {
+        "id": "african_vc",
+        "speaker_names": ["Amina Okonkwo", "Amina"],
+        "label_short": "VC",
+        "avatar": "🏦",
+        "color": "#0B6E4F",
+        "persona": "African VC Partner",
+        "firm": "Sahel Horizon Ventures",
+    },
+    "diaspora_angel": {
+        "id": "diaspora_angel",
+        "speaker_names": ["Fatima Diallo", "Fatima"],
+        "label_short": "Operator",
+        "avatar": "🧑‍💼",
+        "color": "#B8892D",
+        "persona": "Diaspora Angel Investor",
+        "firm": "Lagos–London Angel Network",
+    },
+    "dfi_officer": {
+        "id": "dfi_officer",
+        "speaker_names": ["James Mwangi-Reed", "James"],
+        "label_short": "Impact",
+        "avatar": "🌍",
+        "color": "#1B9AAA",
+        "persona": "Development Finance Institution Officer",
+        "firm": "Continental Development Partners",
+    },
+    "cvc_investor": {
+        "id": "cvc_investor",
+        "speaker_names": ["Thabo Nkosi", "Thabo"],
+        "label_short": "Banker",
+        "avatar": "🏢",
+        "color": "#5B21B6",
+        "persona": "Corporate Venture Capital Investor",
+        "firm": "AfriTel Corporate Ventures",
+    },
+    "global_tier1": {
+        "id": "global_tier1",
+        "speaker_names": ["Elena Vargas", "Elena"],
+        "label_short": "Market Specialist",
+        "avatar": "🌐",
+        "color": "#9B2226",
+        "persona": "Global Tier-1 VC Partner",
+        "firm": "Atlantic Bridge Capital",
+    },
+}
+
+# Inverse mapping: speaker name → full identity.  Built lazily because
+# LLM-returned debate transcript often uses short names.
+def _committee_speaker_lookup() -> dict[str, dict]:
+    lookup: dict[str, dict] = {}
+    for ident in COMMITTEE_SPEAKERS.values():
+        for nm in ident["speaker_names"]:
+            lookup[nm.lower()] = ident
+            lookup[nm] = ident
+    return lookup
+
+
+def _vote_for_speaker_name(name: str, votes) -> object | None:
+    """Resolve a speaker-name string (from debate transcript line) back to
+    the matching InvestorVote, using first-match over speaker-names / persona
+    / title / investor_name.  Returns None if no match."""
+    if not name or not votes:
+        return None
+    nm = name.strip().lower()
+    for v in votes:
+        for hay in (
+            getattr(v, "investor_name", None) or "",
+            getattr(v, "persona", "") or "",
+            getattr(v, "title", "") or "",
+        ):
+            if nm in hay.lower() or hay.lower() in nm:
+                return v
+    # Also check COMMITTEE_SPEAKERS identity short labels
+    for ident in COMMITTEE_SPEAKERS.values():
+        for s in ident["speaker_names"]:
+            if nm == s.lower() or s.lower() in nm or nm in s.lower():
+                # Now find vote whose persona/firm/title matches identity
+                for v in votes:
+                    if (
+                        ident["firm"] == getattr(v, "firm", None)
+                        or ident["persona"].lower() in (getattr(v, "persona", "") or "").lower()
+                    ):
+                        return v
+    return None
+
+
+def _speaker_identity_for(vote_or_speaker, votes=None) -> dict:
+    """Given either an InvestorVote *or* a speaker-name string, return the
+    COMMITTEE_SPEAKERS identity dict.  Falls back to a synthetic identity
+    keyed off label_short if no match is found."""
+    import kulima.models as km
+
+    if isinstance(vote_or_speaker, km.InvestorVote):
+        v = vote_or_speaker
+        # Match by archetype_id first
+        aid = getattr(v, "archetype_id", None) or ""
+        if aid and aid in COMMITTEE_SPEAKERS:
+            return COMMITTEE_SPEAKERS[aid]
+        # Fall back: match by firm / persona
+        for ident in COMMITTEE_SPEAKERS.values():
+            if ident["firm"] == getattr(v, "firm", None):
+                return ident
+            if ident["persona"].lower() in (getattr(v, "persona", "") or "").lower():
+                return ident
+        # Final synthetic identity using vote attributes
+        label = (getattr(v, "title", None) or getattr(v, "persona", "") or "Analyst")[:10]
+        return {
+            "id": aid or "synthetic",
+            "speaker_names": [getattr(v, "investor_name", "Analyst")],
+            "label_short": label,
+            "avatar": "👤",
+            "color": "#5B6F64",
+            "persona": getattr(v, "persona", ""),
+            "firm": getattr(v, "firm", ""),
+        }
+    # Speaker-name string path
+    name = str(vote_or_speaker)
+    lookup = _committee_speaker_lookup()
+    if name.lower() in lookup:
+        return lookup[name.lower()]
+    if votes:
+        v = _vote_for_speaker_name(name, votes)
+        if v is not None:
+            return _speaker_identity_for(v)
+    # Synthetic fallback (keeps transcript visually stable even for unknowns)
+    safe = name.strip() or "Analyst"
+    return {
+        "id": f"unknown-{safe.lower()}",
+        "speaker_names": [safe],
+        "label_short": safe[:10],
+        "avatar": "💬",
+        "color": "#5B6F64",
+        "persona": "IC Analyst",
+        "firm": "",
+    }
+
+
+# ── Step 1: Persona card summary line ────────────────────────────────────────
+
+def _persona_one_line_summary(vote) -> str:
+    """Condense a vote into one punchy summary line.  Composes: thesis +
+    major_concern (if any) + vote.  Used as collapsed-card visible line."""
+    thesis = (getattr(vote, "key_reasoning", None) or getattr(vote, "thesis", "") or "").strip()
+    concern = (getattr(vote, "major_concern", None) or "").strip()
+    if not thesis:
+        # Build one from first concern / condition we can find
+        extras = getattr(vote, "concerns", None) or []
+        thesis = extras[0] if extras else "Submitted vote without commentary."
+    # Take first sentence (period-delimited, up to ~130 chars)
+    first_sent = thesis.split(". ")[0].split("\n")[0].strip()
+    if not first_sent.endswith((".", "!", "?")):
+        first_sent += "."
+    if len(first_sent) > 140:
+        first_sent = first_sent[:137].rsplit(" ", 1)[0] + "…"
+    if concern:
+        c = concern.strip()
+        if len(c) > 80:
+            c = c[:77].rsplit(" ", 1)[0] + "…"
+        return f"{first_sent}  ⚠ {c}"
+    return first_sent
+
+
+def _vote_is_negative_or_dissenting(vote, majority) -> bool:
+    """Rule for Step-1 auto-expand: PASS (negative) *or* any vote that
+    disagrees with the majority outcome (dissenting)."""
+    from kulima.models import Recommendation
+    dec = getattr(vote, "decision", None) or getattr(vote, "vote", Recommendation.OBSERVE)
+    if dec == Recommendation.PASS:
+        return True
+    if majority is not None and dec != majority:
+        return True
+    return False
+
+
+# ── Step 2: Debate transcript keyword filters ────────────────────────────────
+
+DEBATE_FILTER_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "All": (),
+    "Objections": (
+        "disagree", "object", "against", "not convince", "push back", "concern",
+        "doubt", "skeptic", "risk", "hesitate", "block", "veto", "don't", "do not",
+        "won't", "not invest", "pass on this", "no",
+    ),
+    "Support": (
+        "invest", "support", "convince", "buy-in", "buy in", "conviction",
+        "confident", "bull", "excited", "great team", "love", "founder-market fit",
+        "strong", "clear path",
+    ),
+    "Risks": (
+        "risk", "danger", "red flag", "threat", "downside", "exposure",
+        "volatil", "fx risk", "currency", "regulat", "governance", "dilution",
+        "competition", "churn", "moat",
+    ),
+    "Opportunities": (
+        "opportunit", "upside", "market", "traction", "growth", "scale",
+        "expand", "category", "moat", "distribution", "partner", "synergy",
+        "revenue", "path to", "series b", "series a",
+    ),
+}
+
+
+def _debate_line_matches_filter(content: str, filter_name: str) -> bool:
+    if not content or filter_name == "All":
+        return True
+    keywords = DEBATE_FILTER_KEYWORDS.get(filter_name, ())
+    if not keywords:
+        return True
+    text = content.lower()
+    return any(kw.lower() in text for kw in keywords)
+
+
+# ── Step 4: Speaker label ↔ vote(s) for speaker filter pills ─────────────────
+
+def _speaker_present_in_turn(speaker_label: str, turn_speaker_name: str, votes) -> bool:
+    """Return True if a transcript turn belongs to the given speaker-label
+    filter (e.g. \"VC\", \"Operator\", \"Banker\", \"Impact\", \"Market Specialist\")."""
+    if speaker_label == "All":
+        return True
+    ident = _speaker_identity_for(turn_speaker_name, votes=votes)
+    return ident.get("label_short", "") == speaker_label
+
+
+# ── Step 6: Scoreboard sort keys ─────────────────────────────────────────────
+
+def _sort_votes(votes, sort_by: str, rec_value: object) -> list:
+    from kulima.models import Recommendation
+    order = {
+        Recommendation.INVEST: 0,
+        Recommendation.CO_INVEST: 1,
+        Recommendation.OBSERVE: 2,
+        Recommendation.FOLLOW_ON_WATCH: 3,
+        Recommendation.PASS: 4,
+    }
+    if sort_by == "vote":
+        return sorted(
+            votes,
+            key=lambda v: (
+                order.get(getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE), 9),
+                -getattr(v, "confidence_score", 0),
+            ),
+        )
+    # Default / confidence
+    return sorted(votes, key=lambda v: -getattr(v, "confidence_score", 0))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+
 def render_twin_syndicate_committee(
     brief: InvestmentBrief, key_suffix: str = ""
 ) -> None:
     """
-    Phase 2: Committee Debate tab.
-    - Summary metrics
-    - Syndicate bar chart
-    - Individual persona cards (HTML) with colour-coded decision badges
-    - Debate transcript rendered via st.chat_message()
-    - Final committee outcome banner
+    Phase 3: Committee Intelligence workspace.
+
+    Decision-first layout PLUS:
+    - Step 1: collapsed persona cards with one-line summary (auto-expand
+      dissenting / negative votes).
+    - Step 5: Dissenting Views analysis block.
+    - Step 6: IC scoreboard above transcript.
+    - Steps 2 + 4: keyword + speaker filter pills above transcript.
+    - Step 3: stable speaker identity (same avatar / color / badge).
     """
+    from kulima.models import Recommendation, InvestorVote  # noqa: F401 (for typing paths)
+
     st.markdown("## 🏛 Twin Syndicate Investment Committee")
     st.caption(
         "Five independent investor twins vote Invest / Observe / Pass using GPT-4.1-mini."
@@ -1248,6 +1637,20 @@ def render_twin_syndicate_committee(
     final = syn.final_recommendation or syn.majority_vote
     consensus = syn.consensus_score if syn.consensus_score else syn.average_score
     dissent = syn.dissent_score if syn.dissent_score else syn.dissent_index * 100
+
+    # ── Final Committee Outcome banner — moved to TOP (decision-first) ──
+    st.markdown("### Final Committee Outcome")
+    color = REC_COLORS.get(final, "#0B3D2E")
+    st.markdown(
+        f"""
+        <div class="rec-banner" style="background:{color};">
+            Committee Decision: {html.escape(final.value)}
+            &nbsp;·&nbsp; Consensus {consensus:.0f}/100
+            &nbsp;·&nbsp; Dissent {dissent:.0f}/100
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     c1, c2, c3 = st.columns(3)
     c1.metric(
@@ -1274,76 +1677,324 @@ def render_twin_syndicate_committee(
         chart_key = f"syndicate_chart{key_suffix}" if key_suffix else "syndicate_chart"
         st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
-    # ── Individual Committee Votes — persona cards ────────────────────────
-    st.markdown("### Individual Committee Votes")
-    for v in syn.votes:
-        role = v.title or v.persona
-        css = _vote_css_class(v.decision)
-        badge_css = f"badge-{css}"
-        concern_html = ""
-        concern_text = v.major_concern or (v.concerns[0] if v.concerns else "")
-        if concern_text:
-            concern_html = (
-                f'<div class="persona-concern">'
-                f'<strong>⚠ Major Concern:</strong> {html.escape(concern_text)}'
-                f"</div>"
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 5 — Dissenting Views (minority opinions + reasons)
+    # ═══════════════════════════════════════════════════════════════════════
+    majority_decision = final
+    dissenting_votes = [
+        v for v in syn.votes
+        if _vote_is_negative_or_dissenting(v, majority_decision)
+    ]
+    if dissenting_votes:
+        with st.expander("⚠ Dissenting Views", expanded=True):
+            st.caption(
+                f"{len(dissenting_votes)} committee member(s) disagree with the "
+                f"{final.value} outcome or voted PASS (negative).  Review these before IC."
             )
-        reasoning = html.escape(v.key_reasoning or v.thesis or "—")
-        st.markdown(
-            f"""
-            <div class="persona-card vote-{css}">
-                <div class="persona-header">
-                    <div>
-                        <div class="persona-name">{html.escape(role)}</div>
-                        <div class="persona-firm">{html.escape(v.investor_name)} · {html.escape(v.firm)}</div>
-                    </div>
-                    <div>
-                        <span class="persona-badge {badge_css}">{html.escape(v.decision.value)}</span>
-                        <div style="font-size:0.78rem;color:#5B6F64;text-align:right;margin-top:0.2rem;">
-                            {v.confidence_score:.0f}/100
+            for v in dissenting_votes:
+                ident = _speaker_identity_for(v)
+                dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
+                css = _vote_css_class(dec)
+                reasoning = html.escape(getattr(v, "key_reasoning", None) or getattr(v, "thesis", "") or "—")
+                concern = html.escape(getattr(v, "major_concern", "") or "—")
+                st.markdown(
+                    f"""
+                    <div class="persona-card vote-{css}" style="margin:0.35rem 0 0.55rem 0;">
+                      <div class="persona-header">
+                        <div>
+                          <div class="persona-name">{ident['avatar']} {html.escape(getattr(v, 'investor_name', ident['persona']))}
+                            <span style="display:inline-block;margin-left:0.4rem;padding:0.05rem 0.45rem;border-radius:999px;
+                                background:{ident['color']}22;border:1px solid {ident['color']}55;
+                                color:{ident['color']};font-size:0.72rem;font-weight:700;">
+                              {html.escape(ident['label_short'])}</span>
+                          </div>
+                          <div class="persona-firm">{html.escape(getattr(v, 'firm', '') or ident['firm'])}</div>
                         </div>
+                        <div>
+                          <span class="persona-badge badge-{css}">{html.escape(dec.value)}</span>
+                          <div style="font-size:0.78rem;color:#5B6F64;text-align:right;margin-top:0.2rem;">
+                              {getattr(v, 'confidence_score', 0):.0f}/100
+                          </div>
+                        </div>
+                      </div>
+                      <div class="persona-reasoning">{reasoning}</div>
+                      <div class="persona-concern"><strong>⚠ Reason for disagreement:</strong> {concern}</div>
                     </div>
-                </div>
-                <div class="persona-reasoning">{reasoning}</div>
-                {concern_html}
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # ── Individual Committee Votes — persona cards (Step 1 compression) ──
+    st.markdown("### Individual Committee Votes")
+    for idx, v in enumerate(syn.votes):
+        ident = _speaker_identity_for(v)
+        role = getattr(v, "title", None) or getattr(v, "persona", "") or ident["persona"]
+        dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
+        css = _vote_css_class(dec)
+        badge_css = f"badge-{css}"
+        auto_expand = _vote_is_negative_or_dissenting(v, majority_decision)
+
+        summary_line = _persona_one_line_summary(v)
+        firm_line = f"{html.escape(getattr(v, 'investor_name', '') or ident['speaker_names'][0])} · {html.escape(getattr(v, 'firm', '') or ident['firm'])}"
+        header_html = f"""
+        <div style="display:flex;align-items:center;gap:0.6rem;justify-content:space-between;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:0.55rem;min-width:0;">
+            <div style="width:38px;height:38px;border-radius:999px;background:{ident['color']}22;
+                        color:{ident['color']};display:flex;align-items:center;justify-content:center;
+                        border:1px solid {ident['color']}55;font-size:1.1rem;flex:0 0 auto;">
+              {ident['avatar']}
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # ── Debate Transcript — rendered as chat messages ─────────────────────
-    if syn.debate_transcript:
-        st.markdown("### IC Debate Transcript")
-        st.caption("Live deliberation between committee members as recorded by the IC.")
-        # Split transcript by line — attempt to detect speaker patterns
-        lines = [ln.strip() for ln in syn.debate_transcript.splitlines() if ln.strip()]
-        _render_debate_lines(lines, key_suffix=key_suffix)
-
-    # ── Final outcome banner ──────────────────────────────────────────────
-    st.markdown("### Final Committee Outcome")
-    color = REC_COLORS.get(final, "#0B3D2E")
-    st.markdown(
-        f"""
-        <div class="rec-banner" style="background:{color};">
-            Committee Decision: {html.escape(final.value)}
-            &nbsp;·&nbsp; Consensus {consensus:.0f}/100
-            &nbsp;·&nbsp; Dissent {dissent:.0f}/100
+            <div style="min-width:0;">
+              <div style="font-family:'Fraunces',Georgia,serif;font-weight:700;font-size:1.02rem;color:#0B3D2E;letter-spacing:-0.01em;
+                          display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;">
+                {html.escape(role)}
+                <span style="font-size:0.72rem;padding:0.08rem 0.45rem;border-radius:999px;
+                            background:{ident['color']}22;border:1px solid {ident['color']}55;color:{ident['color']};font-weight:700;
+                            font-family:'Source Sans 3',sans-serif;">
+                  {html.escape(ident['label_short'])}
+                </span>
+              </div>
+              <div style="font-size:0.82rem;color:#5B6F64;overflow:hidden;text-overflow:ellipsis;">
+                {firm_line}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <div style="font-size:0.78rem;color:#5B6F64;font-weight:700;">
+              {getattr(v, 'confidence_score', 0):.0f}/100
+            </div>
+            <span class="persona-badge {badge_css}">{html.escape(dec.value)}</span>
+          </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div style="margin-top:0.45rem;padding:0.45rem 0.65rem;background:rgba(11,61,46,0.04);
+                    border-radius:10px;font-size:0.88rem;color:#1B2A24;border-left:3px solid {ident['color']};">
+          {html.escape(summary_line)}
+        </div>
+        """
+
+        exp_title = f"{ident['avatar']} {role}"
+        card_key = f"committee_persona_{idx}_{_vote_css_class(dec)}_{key_suffix or 'global'}"
+        # Step 1: auto-expand if dissenting / negative, otherwise collapsed
+        with st.expander(exp_title, expanded=bool(auto_expand)):
+            st.markdown(header_html, unsafe_allow_html=True)
+
+            # Full Reasoning + Full Concerns + Full Thesis (all only shown
+            # inside expanded card)
+            with st.expander("🔍 View Full Reasoning", expanded=False):
+                reasoning = html.escape(
+                    getattr(v, "key_reasoning", None) or getattr(v, "thesis", "") or "—"
+                )
+                st.markdown(f"**Thesis / Key Reasoning**  \n{reasoning}")
+                concerns = getattr(v, "concerns", None) or []
+                if getattr(v, "major_concern", None):
+                    concerns = [getattr(v, "major_concern", "")] + [c for c in concerns if c != getattr(v, "major_concern", "")]
+                if concerns:
+                    st.markdown("**Concerns**")
+                    for c in concerns:
+                        if c:
+                            st.markdown(f"- {html.escape(c)}")
+                conditions = getattr(v, "conditions", None) or []
+                if conditions:
+                    st.markdown("**Conditions to proceed**")
+                    for cond in conditions:
+                        if cond:
+                            st.markdown(f"- {html.escape(cond)}")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 6 — Investment Committee Scoreboard
+    # ═══════════════════════════════════════════════════════════════════════
+    sort_key = f"committee_scoreboard_sort_{key_suffix or 'global'}"
+    if sort_key not in st.session_state:
+        st.session_state[sort_key] = "confidence"
+
+    st.markdown("### Investment Committee Scoreboard")
+    scol1, scol2, scol3 = st.columns([1.4, 1, 1])
+    scol1.caption("Sort scoreboard by")
+    if scol2.button(
+        "⇅ Confidence",
+        key=f"sort_conf_{sort_key}",
+        type=("primary" if st.session_state[sort_key] == "confidence" else "secondary"),
+        use_container_width=True,
+    ):
+        st.session_state[sort_key] = "confidence"
+    if scol3.button(
+        "⇅ Vote",
+        key=f"sort_vote_{sort_key}",
+        type=("primary" if st.session_state[sort_key] == "vote" else "secondary"),
+        use_container_width=True,
+    ):
+        st.session_state[sort_key] = "vote"
+
+    sorted_votes = _sort_votes(syn.votes, st.session_state[sort_key], final)
+
+    # Scoreboard body — desktop: 5-column grid.  Mobile (≤640px): each row
+    # uses st.columns([2,1,1]) so it reflows naturally w/o horizontal scroll.
+    # We emit as HTML grid with media queries for full control + mobile 1-col.
+    sb_html = """
+    <div style="
+        display:grid;
+        grid-template-columns: 2fr 1fr 1fr 1.2fr;
+        gap: 0.45rem 0.75rem;
+        background: rgba(255,255,255,0.72);
+        border: 1px solid rgba(11,61,46,0.10);
+        border-radius: 14px;
+        padding: 0.7rem 0.85rem;
+        margin: 0.3rem 0 0.1rem;
+    " class="committee-scoreboard-grid">
+    """
+    headers = ["Member", "Role", "Vote", "Confidence"]
+    for h in headers:
+        sb_html += (
+            f'<div style="font-size:0.72rem;font-weight:800;color:#5B6F64;'
+            f'text-transform:uppercase;letter-spacing:0.05em;">{h}</div>'
+        )
+    for v in sorted_votes:
+        ident = _speaker_identity_for(v)
+        dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
+        css = _vote_css_class(dec)
+        conf = getattr(v, "confidence_score", 0)
+        # Confidence bar: thin inline strip
+        bar_pct = max(0, min(100, int(round(conf))))
+        bar_color = ident["color"]
+        sb_html += f"""
+          <div style="display:flex;align-items:center;gap:0.45rem;">
+            <div style="width:26px;height:26px;border-radius:999px;background:{ident['color']}22;
+                        color:{ident['color']};display:flex;align-items:center;justify-content:center;
+                        border:1px solid {ident['color']}55;font-size:0.85rem;">
+              {ident['avatar']}</div>
+            <div style="min-width:0;">
+              <div style="font-weight:700;font-size:0.88rem;color:#0B3D2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                {html.escape(getattr(v, 'investor_name', '') or ident['speaker_names'][0])}
+              </div>
+              <div style="font-size:0.7rem;color:#5B6F64;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                {html.escape(getattr(v, 'firm', '') or ident['firm'])}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;">
+            <span style="display:inline-block;padding:0.1rem 0.45rem;border-radius:999px;
+                         background:{ident['color']}22;border:1px solid {ident['color']}55;
+                         color:{ident['color']};font-size:0.72rem;font-weight:700;">
+              {html.escape(ident['label_short'])}</span>
+          </div>
+          <div style="display:flex;align-items:center;">
+            <span class="persona-badge badge-{css}">{html.escape(dec.value)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <div style="flex:1 1 auto;height:6px;border-radius:999px;background:rgba(11,61,46,0.10);overflow:hidden;">
+              <div style="width:{bar_pct}%;height:100%;background:{bar_color};"></div>
+            </div>
+            <div style="font-size:0.82rem;font-weight:800;color:#0B3D2E;">{conf:.0f}</div>
+          </div>
+        """
+    sb_html += """
+    </div>
+    <style>
+      @media (max-width: 768px) {
+        .committee-scoreboard-grid {
+          grid-template-columns: 1.6fr 1fr !important;
+        }
+        .committee-scoreboard-grid > div:nth-child(-n+4) { display: none; }
+        .committee-scoreboard-grid > div:nth-child(4n+1) { border-top: none !important; }
+      }
+      @media (max-width: 480px) {
+        .committee-scoreboard-grid {
+          grid-template-columns: 1fr !important;
+        }
+      }
+    </style>
+    """
+    st.markdown(sb_html, unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # DEBATE TRANSCRIPT BLOCK — Steps 2+3+4 (filters + stable speaker identity)
+    # ═══════════════════════════════════════════════════════════════════════
+    if syn.debate_transcript:
+        with st.expander("📜 IC Debate Transcript", expanded=False):
+            st.caption(
+                "Live deliberation between committee members as recorded by the IC. "
+                "Use filters below to narrow the view."
+            )
+
+            # ── Session-state filter keys (scoped per brief+suffix) ────────
+            kb = f"committee_debate_keyword_{key_suffix or 'global'}"
+            sp = f"committee_debate_speaker_{key_suffix or 'global'}"
+            if kb not in st.session_state:
+                st.session_state[kb] = "All"
+            if sp not in st.session_state:
+                st.session_state[sp] = "All"
+
+            # Step 2: keyword filter chip row
+            st.markdown("**Debate Filters**")
+            kw_pills = st.columns(len(DEBATE_FILTER_KEYWORDS))
+            for i, (fname, _kws) in enumerate(DEBATE_FILTER_KEYWORDS.items()):
+                is_on = st.session_state[kb] == fname
+                with kw_pills[i]:
+                    if st.button(
+                        fname,
+                        key=f"kw_{kb}_{fname}",
+                        type="primary" if is_on else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state[kb] = fname
+
+            # Step 4: speaker filter pill row
+            st.markdown("**Speaker Filters**")
+            speaker_labels = ["All"] + [
+                COMMITTEE_SPEAKERS[k]["label_short"]
+                for k in ("african_vc", "diaspora_angel", "cvc_investor", "dfi_officer", "global_tier1")
+                if any(
+                    _speaker_identity_for(v).get("label_short") == COMMITTEE_SPEAKERS[k]["label_short"]
+                    for v in syn.votes
+                )
+            ]
+            sp_pills_cols = st.columns(len(speaker_labels))
+            for i, label in enumerate(speaker_labels):
+                is_on = st.session_state[sp] == label
+                with sp_pills_cols[i]:
+                    if st.button(
+                        label,
+                        key=f"sp_{sp}_{label}",
+                        type="primary" if is_on else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state[sp] = label
+
+            lines = [ln.strip() for ln in syn.debate_transcript.splitlines() if ln.strip()]
+            _render_debate_lines(
+                lines,
+                votes=syn.votes,
+                keyword_filter=st.session_state[kb],
+                speaker_filter=st.session_state[sp],
+                key_suffix=key_suffix,
+            )
+
     if syn.blocking_concerns:
         st.error("Blocking concerns: " + " · ".join(syn.blocking_concerns))
 
 
-def _render_debate_lines(lines: list[str], key_suffix: str = "") -> None:
+def _render_debate_lines(
+    lines: list[str],
+    votes=None,
+    keyword_filter: str = "All",
+    speaker_filter: str = "All",
+    key_suffix: str = "",
+) -> None:
     """
-    Phase 2: Render debate transcript lines using st.chat_message().
+    Phase 3 — Analyst workspace transcript renderer.
 
-    Heuristic: if a line starts with a capitalised name followed by ':' treat it
-    as a new speaker turn.  Otherwise concatenate continuation lines into the
-    previous message.  Alternates assistant / user avatars by position to give
-    visual variety without changing any underlying data.
+    Changes vs. Phase 2 (summary of Step 2 + Step 3 + Step 4):
+    * Step 3 — **Consistent speaker identity**.  Same speaker name always
+      maps to the same avatar / color / persona badge.  Renderer looks up
+      speaker via identity map (including InvestorVote fallback) so the
+      speaker Amina Okonkwo always gets 🏦 VC green — regardless of
+      position.  No more idx%N alternating.
+    * Step 2 — Keyword filter.  Turns whose *content* matches the keyword
+      filter are kept.
+    * Step 4 — Speaker filter.  Turns whose *speaker label_short* matches
+      the filter (e.g. \"VC\", \"Operator\") are kept.
+    * Otherwise behaviour is preserved: unknowns → "IC" fallback,
+      continuation lines → concatenated, markdown output.
     """
     import re
 
@@ -1365,12 +2016,41 @@ def _render_debate_lines(lines: list[str], key_suffix: str = "") -> None:
         st.write("\n".join(lines))
         return
 
-    avatars = ["👤", "🧑‍💼", "👩‍💼", "🏦", "🌍"]
-    for idx, (speaker, content) in enumerate(turns):
+    # Apply Step 2 (keyword) + Step 4 (speaker) filters
+    filtered: list[tuple[str, str]] = []
+    for speaker, content in turns:
+        if not _debate_line_matches_filter(content, keyword_filter):
+            continue
+        if not _speaker_present_in_turn(speaker_filter, speaker, votes or []):
+            continue
+        filtered.append((speaker, content))
+
+    if not filtered:
+        st.info(
+            "No debate turns match the current filters.  Try switching back to **All** "
+            "for both Debate and Speaker filters."
+        )
+        return
+
+    # Step 3 — Stable speaker rendering (same avatar/color/badge every time)
+    for idx, (speaker, content) in enumerate(filtered):
+        ident = _speaker_identity_for(speaker, votes=votes or [])
+        # Streamlit chat_message avatar arg can be emoji string; use ident avatar
+        # We keep the role alternating so we still get distinct bubbles, but
+        # the emoji identity + color badge inside guarantees consistency.
         role = "assistant" if idx % 2 == 0 else "user"
-        avatar = avatars[idx % len(avatars)]
-        with st.chat_message(role, avatar=avatar):
-            st.markdown(f"**{html.escape(speaker)}**")
+        with st.chat_message(role, avatar=ident["avatar"]):
+            st.markdown(
+                f"<div style=\"display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;"
+                f"margin-bottom:0.25rem;\">"
+                f"<strong style=\"color:{ident['color']};\">{html.escape(speaker)}</strong>"
+                f"<span style=\"display:inline-block;padding:0.05rem 0.4rem;border-radius:999px;"
+                f"background:{ident['color']}22;border:1px solid {ident['color']}55;"
+                f"color:{ident['color']};font-size:0.7rem;font-weight:700;letter-spacing:0.02em;\">"
+                f"{html.escape(ident['label_short'])}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
             st.write(content)
 
 

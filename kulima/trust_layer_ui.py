@@ -303,7 +303,7 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
 
         st.markdown(
             f"""
-            <div style="
+            <div data-reliability-grid="" style="
                 display:grid;
                 grid-template-columns:repeat(3,1fr);
                 gap:0.75rem;
@@ -360,13 +360,6 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
                     </div>
                 </div>
             </div>
-            <style>
-            @media (max-width:480px) {{
-                div[data-reliability-grid] {{
-                    grid-template-columns: 1fr !important;
-                }}
-            }}
-            </style>
             """,
             unsafe_allow_html=True,
         )
