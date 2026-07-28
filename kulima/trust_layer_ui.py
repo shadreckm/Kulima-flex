@@ -42,6 +42,13 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     if thesis is None:
         return
 
+    # Stabilization release: temporarily disable Thesis Fit UI card rendering.
+    # Backend thesis engine remains fully active; only the visual card is hidden.
+    import streamlit as st  # local import to avoid circulars at module import time
+
+    st.info("Thesis Fit UI temporarily disabled during stabilization release.")
+    return
+
     status = thesis.status
     status_text = status.value if hasattr(status, "value") else str(status)
 
@@ -133,10 +140,6 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     _log.debug("DIAG_THESIS html_block type: %s", type(html_block))
     _log.debug("DIAG_THESIS html_block repr[:500]: %s", repr(html_block[:500]))
     _log.debug("render_thesis_fit_card html_block: %s", repr(html_block))
-    _log.debug("TRACE_THESIS created html_block type: %s", type(html_block))
-    _log.debug("TRACE_THESIS created html_block repr[:300]: %s", repr(html_block[:300]))
-    _log.debug("TRACE_THESIS before st.markdown type: %s", type(html_block))
-    _log.debug("TRACE_THESIS before st.markdown repr[:300]: %s", repr(html_block[:300]))
     st.markdown(html_block, unsafe_allow_html=True)
 
     if thesis.notes:

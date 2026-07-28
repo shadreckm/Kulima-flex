@@ -1639,12 +1639,6 @@ def render_twin_syndicate_committee(
             &nbsp;·&nbsp; Dissent {dissent:.0f}/100
         </div>
         """)
-    # TRACE: log repr immediately after creation
-    _log.debug("TRACE_REC created rec_html type: %s", type(rec_html))
-    _log.debug("TRACE_REC created rec_html repr[:300]: %s", repr(rec_html[:300]))
-    # TRACE: log again immediately before render
-    _log.debug("TRACE_REC before st.markdown type: %s", type(rec_html))
-    _log.debug("TRACE_REC before st.markdown repr[:300]: %s", repr(rec_html[:300]))
     st.markdown(rec_html, unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
@@ -1722,12 +1716,7 @@ def render_twin_syndicate_committee(
                     """
                 _log.debug("render_twin_syndicate_committee dissent_html (RAW): %s", repr(dissent_html))
                 _log.debug("render_twin_syndicate_committee dissent_html (DEDENT): %s", repr(textwrap.dedent(dissent_html)))
-                # TRACE: log repr immediately after creation
-                _log.debug("TRACE_DISSENT created dissent_html type: %s", type(dissent_html))
-                _log.debug("TRACE_DISSENT created dissent_html repr[:300]: %s", repr(dissent_html[:300]))
                 dedent_dissent = textwrap.dedent(dissent_html)
-                _log.debug("TRACE_DISSENT before st.markdown type: %s", type(dedent_dissent))
-                _log.debug("TRACE_DISSENT before st.markdown repr[:300]: %s", repr(dedent_dissent[:300]))
                 st.markdown(dedent_dissent, unsafe_allow_html=True)
 
     # ── Individual Committee Votes — persona cards (Step 1 compression) ──
@@ -1796,12 +1785,7 @@ def render_twin_syndicate_committee(
         with st.expander(exp_title, expanded=bool(auto_expand)):
             _log.debug("render_twin_syndicate_committee header_html (RAW): %s", repr(header_html))
             _log.debug("render_twin_syndicate_committee header_html (DEDENT): %s", repr(textwrap.dedent(header_html)))
-            # TRACE: log repr immediately after creation
-            _log.debug("TRACE_HEADER created header_html type: %s", type(header_html))
-            _log.debug("TRACE_HEADER created header_html repr[:300]: %s", repr(header_html[:300]))
             dedent_header = textwrap.dedent(header_html)
-            _log.debug("TRACE_HEADER before st.markdown type: %s", type(dedent_header))
-            _log.debug("TRACE_HEADER before st.markdown repr[:300]: %s", repr(dedent_header[:300]))
             st.markdown(dedent_header, unsafe_allow_html=True)
 
             # Full Reasoning + Full Concerns + Full Thesis (all only shown
@@ -1826,129 +1810,13 @@ def render_twin_syndicate_committee(
                         if cond:
                             st.markdown(f"- {html.escape(cond)}")
 
+    # 
+    # 
     # ═══════════════════════════════════════════════════════════════════════
     # STEP 6 — Investment Committee Scoreboard
     # ═══════════════════════════════════════════════════════════════════════
-    sort_key = f"committee_scoreboard_sort_{key_suffix or 'global'}"
-    if sort_key not in st.session_state:
-        st.session_state[sort_key] = "confidence"
-
     st.markdown("### Investment Committee Scoreboard")
-    scol1, scol2, scol3 = st.columns([1.4, 1, 1])
-    scol1.caption("Sort scoreboard by")
-    if scol2.button(
-        "⇅ Confidence",
-        key=f"sort_conf_{sort_key}",
-        type=("primary" if st.session_state[sort_key] == "confidence" else "secondary"),
-        width="stretch",
-    ):
-        st.session_state[sort_key] = "confidence"
-    if scol3.button(
-        "⇅ Vote",
-        key=f"sort_vote_{sort_key}",
-        type=("primary" if st.session_state[sort_key] == "vote" else "secondary"),
-        width="stretch",
-    ):
-        st.session_state[sort_key] = "vote"
-
-    sorted_votes = _sort_votes(syn.votes, st.session_state[sort_key], final)
-
-    # Scoreboard body — desktop: 5-column grid.  Mobile (≤640px): each row
-    # uses st.columns([2,1,1]) so it reflows naturally w/o horizontal scroll.
-    # We emit as HTML grid with media queries for full control + mobile 1-col.
-    sb_html = """
-    <div style="
-        display:grid;
-        grid-template-columns: 2fr 1fr 1fr 1.2fr;
-        gap: 0.45rem 0.75rem;
-        background: rgba(255,255,255,0.72);
-        border: 1px solid rgba(11,61,46,0.10);
-        border-radius: 14px;
-        padding: 0.7rem 0.85rem;
-        margin: 0.3rem 0 0.1rem;
-    " class="committee-scoreboard-grid">
-    """
-    headers = ["Member", "Role", "Vote", "Confidence"]
-    for h in headers:
-        sb_html += (
-            f'<div style="font-size:0.72rem;font-weight:800;color:#5B6F64;'
-            f'text-transform:uppercase;letter-spacing:0.05em;">{h}</div>'
-        )
-    for v in sorted_votes:
-        ident = _speaker_identity_for(v)
-        dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
-        css = _vote_css_class(dec)
-        conf = getattr(v, "confidence_score", 0)
-        # Confidence bar: thin inline strip
-        bar_pct = max(0, min(100, int(round(conf))))
-        bar_color = ident["color"]
-        sb_html += f"""
-          <div style="display:flex;align-items:center;gap:0.45rem;">
-            <div style="width:26px;height:26px;border-radius:999px;background:{ident['color']}22;
-                        color:{ident['color']};display:flex;align-items:center;justify-content:center;
-                        border:1px solid {ident['color']}55;font-size:0.85rem;">
-              {ident['avatar']}</div>
-            <div style="min-width:0;">
-              <div style="font-weight:700;font-size:0.88rem;color:#0B3D2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                {html.escape(getattr(v, 'investor_name', '') or ident['speaker_names'][0])}
-              </div>
-              <div style="font-size:0.7rem;color:#5B6F64;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                {html.escape(getattr(v, 'firm', '') or ident['firm'])}
-              </div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;">
-            <span style="display:inline-block;padding:0.1rem 0.45rem;border-radius:999px;
-                         background:{ident['color']}22;border:1px solid {ident['color']}55;
-                         color:{ident['color']};font-size:0.72rem;font-weight:700;">
-              {html.escape(ident['label_short'])}</span>
-          </div>
-          <div style="display:flex;align-items:center;">
-            <span class="persona-badge badge-{css}">{html.escape(dec.value)}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:0.5rem;">
-            <div style="flex:1 1 auto;height:6px;border-radius:999px;background:rgba(11,61,46,0.10);overflow:hidden;">
-              <div style="width:{bar_pct}%;height:100%;background:{bar_color};"></div>
-            </div>
-            <div style="font-size:0.82rem;font-weight:800;color:#0B3D2E;">{conf:.0f}</div>
-          </div>
-        """
-    sb_html += """
-    </div>
-    <style>
-      @media (max-width: 768px) {
-        .committee-scoreboard-grid {
-          grid-template-columns: 1.6fr 1fr !important;
-        }
-        .committee-scoreboard-grid > div:nth-child(-n+4) { display: none; }
-        .committee-scoreboard-grid > div:nth-child(4n+1) { border-top: none !important; }
-      }
-      @media (max-width: 480px) {
-        .committee-scoreboard-grid {
-          grid-template-columns: 1fr !important;
-        }
-      }
-    </style>
-    """
-    # Dedent HTML block to avoid Markdown interpreting leading indent as code block
-    _log.debug("render_twin_syndicate_committee sb_html (RAW): %s", repr(sb_html))
-    _log.debug("render_twin_syndicate_committee sb_html (DEDENT): %s", repr(textwrap.dedent(sb_html)))
-    html_block = textwrap.dedent(sb_html)
-    # DIAGNOSTIC: print html_block type and repr before final render
-    _log.debug("DIAG_SCOREBOARD html_block type: %s", type(html_block))
-    try:
-        _log.debug("DIAG_SCOREBOARD html_block repr[:500]: %s", repr(html_block[:500]))
-    except Exception:
-        _log.debug("DIAG_SCOREBOARD html_block: <unrepr-able>")
-    # TRACE: log repr immediately after creation
-    _log.debug("TRACE_SB created sb_html type: %s", type(sb_html))
-    _log.debug("TRACE_SB created sb_html repr[:300]: %s", repr(sb_html[:300]))
-    _log.debug("TRACE_SB created html_block type: %s", type(html_block))
-    _log.debug("TRACE_SB created html_block repr[:300]: %s", repr(html_block[:300]))
-    # TRACE: log again immediately before render
-    _log.debug("TRACE_SB before st.markdown type: %s", type(html_block))
-    _log.debug("TRACE_SB before st.markdown repr[:300]: %s", repr(html_block[:300]))
-    st.markdown(html_block, unsafe_allow_html=True)
+    st.info("Committee Scoreboard temporarily disabled during stabilization release.")
 
     # ═══════════════════════════════════════════════════════════════════════
     # DEBATE TRANSCRIPT BLOCK — Steps 2+3+4 (filters + stable speaker identity)
