@@ -186,6 +186,7 @@ def answer_ask_ic_question(
         - Include citations whenever possible using the context labels, e.g. [REPORT],
           [R1], [V2], [F1], [S3]. For source-backed claims, prefer [S#].
         - Style the response as if it comes from an investment committee analyst.
+
         """
     ).strip()
     if brief.evidence_integrity:

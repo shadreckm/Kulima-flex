@@ -133,12 +133,10 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     _log.debug("DIAG_THESIS html_block type: %s", type(html_block))
     _log.debug("DIAG_THESIS html_block repr[:500]: %s", repr(html_block[:500]))
     _log.debug("render_thesis_fit_card html_block: %s", repr(html_block))
-    # TRACE: print repr immediately after creation
-    print("TRACE_THESIS created html_block type:", type(html_block))
-    print("TRACE_THESIS created html_block repr[:300]:", repr(html_block[:300]))
-    # TRACE: print again immediately before render
-    print("TRACE_THESIS before st.markdown type:", type(html_block))
-    print("TRACE_THESIS before st.markdown repr[:300]:", repr(html_block[:300]))
+    _log.debug("TRACE_THESIS created html_block type: %s", type(html_block))
+    _log.debug("TRACE_THESIS created html_block repr[:300]: %s", repr(html_block[:300]))
+    _log.debug("TRACE_THESIS before st.markdown type: %s", type(html_block))
+    _log.debug("TRACE_THESIS before st.markdown repr[:300]: %s", repr(html_block[:300]))
     st.markdown(html_block, unsafe_allow_html=True)
 
     if thesis.notes:

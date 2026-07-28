@@ -241,48 +241,24 @@ Return ONLY valid JSON with these exact keys:
             for v in votes
         )
         den = sum(max(v.confidence_score, 1.0) for v in votes)
-        return _clamp(num / den if den else 50.0, 0, 100)
+        return num / den if den else 50.0
 
-    @staticmethod
-    def _final_recommendation(votes: list[InvestorVote]) -> Recommendation:
-        weights = {
-            Recommendation.INVEST: 0.0,
-            Recommendation.OBSERVE: 0.0,
-            Recommendation.PASS: 0.0,
-        }
-        for v in votes:
-            if v.decision in weights:
-                weights[v.decision] += max(v.confidence_score, 1.0)
-        return max(weights, key=weights.get)
+    def _final_recommendation(self, votes: list[InvestorVote]) -> Recommendation:
+        from collections import Counter
 
-    @staticmethod
-    def _dissent_score(votes: list[InvestorVote]) -> float:
-        """0 = full agreement, 100 = maximum disagreement."""
+        if not votes:
+            return Recommendation.OBSERVE
+        counts = Counter(v.decision for v in votes)
+        ordered = sorted(counts.items(), key=lambda x: -x[1])
+        return ordered[0][0] if ordered else Recommendation.OBSERVE
+
+    def _dissent_score(self, votes: list[InvestorVote]) -> float:
         if not votes:
             return 0.0
-        unique = {v.decision for v in votes}
-        label_component = ((len(unique) - 1) / 2.0) * 55.0  # 0, 27.5, or 55
-        confidences = [v.confidence_score for v in votes]
-        spread = max(confidences) - min(confidences)
-        points = [_VOTE_POINTS.get(v.decision, 50.0) for v in votes]
-        point_spread = max(points) - min(points)
-        score = label_component + (spread / 100.0) * 20.0 + (point_spread / 100.0) * 25.0
-        return _clamp(score, 0, 100)
+        # Measure dispersion as std of normalized vote points
+        import math
 
-
-def _parse_syndicate_decision(raw: str) -> Recommendation:
-    normalized = raw.strip().lower().replace("_", " ").replace("-", " ")
-    if "invest" in normalized and "co" not in normalized:
-        return Recommendation.INVEST
-    if "pass" in normalized:
-        return Recommendation.PASS
-    if "observe" in normalized or "watch" in normalized:
-        return Recommendation.OBSERVE
-    # Map legacy labels into the three-way ballot
-    if "co invest" in normalized or "coinvest" in normalized:
-        return Recommendation.INVEST
-    return Recommendation.OBSERVE
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
+        vals = [(_VOTE_POINTS.get(v.decision, 50.0)) for v in votes]
+        mean = sum(vals) / len(vals)
+        var = sum((x - mean) ** 2 for x in vals) / len(vals)
+        return math.sqrt(var)

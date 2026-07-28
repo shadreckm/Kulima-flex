@@ -1639,12 +1639,12 @@ def render_twin_syndicate_committee(
             &nbsp;·&nbsp; Dissent {dissent:.0f}/100
         </div>
         """)
-    # TRACE: print repr immediately after creation
-    print("TRACE_REC created rec_html type:", type(rec_html))
-    print("TRACE_REC created rec_html repr[:300]:", repr(rec_html[:300]))
-    # TRACE: print again immediately before render
-    print("TRACE_REC before st.markdown type:", type(rec_html))
-    print("TRACE_REC before st.markdown repr[:300]:", repr(rec_html[:300]))
+    # TRACE: log repr immediately after creation
+    _log.debug("TRACE_REC created rec_html type: %s", type(rec_html))
+    _log.debug("TRACE_REC created rec_html repr[:300]: %s", repr(rec_html[:300]))
+    # TRACE: log again immediately before render
+    _log.debug("TRACE_REC before st.markdown type: %s", type(rec_html))
+    _log.debug("TRACE_REC before st.markdown repr[:300]: %s", repr(rec_html[:300]))
     st.markdown(rec_html, unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
@@ -1722,12 +1722,12 @@ def render_twin_syndicate_committee(
                     """
                 _log.debug("render_twin_syndicate_committee dissent_html (RAW): %s", repr(dissent_html))
                 _log.debug("render_twin_syndicate_committee dissent_html (DEDENT): %s", repr(textwrap.dedent(dissent_html)))
-                # TRACE: print repr immediately after creation
-                print("TRACE_DISSENT created dissent_html type:", type(dissent_html))
-                print("TRACE_DISSENT created dissent_html repr[:300]:", repr(dissent_html[:300]))
+                # TRACE: log repr immediately after creation
+                _log.debug("TRACE_DISSENT created dissent_html type: %s", type(dissent_html))
+                _log.debug("TRACE_DISSENT created dissent_html repr[:300]: %s", repr(dissent_html[:300]))
                 dedent_dissent = textwrap.dedent(dissent_html)
-                print("TRACE_DISSENT before st.markdown type:", type(dedent_dissent))
-                print("TRACE_DISSENT before st.markdown repr[:300]:", repr(dedent_dissent[:300]))
+                _log.debug("TRACE_DISSENT before st.markdown type: %s", type(dedent_dissent))
+                _log.debug("TRACE_DISSENT before st.markdown repr[:300]: %s", repr(dedent_dissent[:300]))
                 st.markdown(dedent_dissent, unsafe_allow_html=True)
 
     # ── Individual Committee Votes — persona cards (Step 1 compression) ──
@@ -1796,12 +1796,12 @@ def render_twin_syndicate_committee(
         with st.expander(exp_title, expanded=bool(auto_expand)):
             _log.debug("render_twin_syndicate_committee header_html (RAW): %s", repr(header_html))
             _log.debug("render_twin_syndicate_committee header_html (DEDENT): %s", repr(textwrap.dedent(header_html)))
-            # TRACE: print repr immediately after creation
-            print("TRACE_HEADER created header_html type:", type(header_html))
-            print("TRACE_HEADER created header_html repr[:300]:", repr(header_html[:300]))
+            # TRACE: log repr immediately after creation
+            _log.debug("TRACE_HEADER created header_html type: %s", type(header_html))
+            _log.debug("TRACE_HEADER created header_html repr[:300]: %s", repr(header_html[:300]))
             dedent_header = textwrap.dedent(header_html)
-            print("TRACE_HEADER before st.markdown type:", type(dedent_header))
-            print("TRACE_HEADER before st.markdown repr[:300]:", repr(dedent_header[:300]))
+            _log.debug("TRACE_HEADER before st.markdown type: %s", type(dedent_header))
+            _log.debug("TRACE_HEADER before st.markdown repr[:300]: %s", repr(dedent_header[:300]))
             st.markdown(dedent_header, unsafe_allow_html=True)
 
             # Full Reasoning + Full Concerns + Full Thesis (all only shown
@@ -1940,14 +1940,14 @@ def render_twin_syndicate_committee(
         _log.debug("DIAG_SCOREBOARD html_block repr[:500]: %s", repr(html_block[:500]))
     except Exception:
         _log.debug("DIAG_SCOREBOARD html_block: <unrepr-able>")
-    # TRACE: print repr immediately after creation
-    print("TRACE_SB created sb_html type:", type(sb_html))
-    print("TRACE_SB created sb_html repr[:300]:", repr(sb_html[:300]))
-    print("TRACE_SB created html_block type:", type(html_block))
-    print("TRACE_SB created html_block repr[:300]:", repr(html_block[:300]))
-    # TRACE: print again immediately before render
-    print("TRACE_SB before st.markdown type:", type(html_block))
-    print("TRACE_SB before st.markdown repr[:300]:", repr(html_block[:300]))
+    # TRACE: log repr immediately after creation
+    _log.debug("TRACE_SB created sb_html type: %s", type(sb_html))
+    _log.debug("TRACE_SB created sb_html repr[:300]: %s", repr(sb_html[:300]))
+    _log.debug("TRACE_SB created html_block type: %s", type(html_block))
+    _log.debug("TRACE_SB created html_block repr[:300]: %s", repr(html_block[:300]))
+    # TRACE: log again immediately before render
+    _log.debug("TRACE_SB before st.markdown type: %s", type(html_block))
+    _log.debug("TRACE_SB before st.markdown repr[:300]: %s", repr(html_block[:300]))
     st.markdown(html_block, unsafe_allow_html=True)
 
     # ═══════════════════════════════════════════════════════════════════════
