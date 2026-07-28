@@ -165,27 +165,42 @@ def inject_styles() -> None:
         .stTextInput input, textarea, [data-baseweb="input"] input {
             background: #FFFFFF !important;
             border: 1px solid rgba(11,61,46,0.24) !important;
-            color: #10251C !important;
+            color: #111111 !important;
             caret-color: #0B6E4F !important;
-            -webkit-text-fill-color: #10251C !important;
+            -webkit-text-fill-color: #111111 !important;
         }
         .stTextInput input::placeholder, textarea::placeholder {
-            color: #5B6F64 !important;
+            color: #44564D !important;
             opacity: 1 !important;
         }
         [data-testid="stSidebar"] .stTextInput input {
             background: #F8FBF8 !important;
             border: 1px solid rgba(255,255,255,0.45) !important;
-            color: #10251C !important;
+            color: #111111 !important;
             caret-color: #0B6E4F !important;
-            -webkit-text-fill-color: #10251C !important;
+            -webkit-text-fill-color: #111111 !important;
         }
         [data-testid="stSidebar"] .stTextInput input::placeholder {
-            color: #496055 !important;
+            color: #4A5D53 !important;
             opacity: 1 !important;
         }
-        [data-testid="stSidebar"] .stTextInput input::-webkit-input-placeholder { color: #496055 !important; }
-        [data-testid="stSidebar"] .stTextInput input::-moz-placeholder { color: #496055 !important; opacity: 1 !important; }
+        [data-testid="stSidebar"] .stTextInput input::-webkit-input-placeholder { color: #4A5D53 !important; }
+        [data-testid="stSidebar"] .stTextInput input::-moz-placeholder { color: #4A5D53 !important; opacity: 1 !important; }
+
+        /* Explicit styling for IC Analyst chat input to maximise readability */
+        [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInput"] input {
+            background: #FFFFFF !important;
+            border: 1px solid rgba(11,61,46,0.30) !important;
+            color: #111111 !important;
+            -webkit-text-fill-color: #111111 !important;
+            caret-color: #0B6E4F !important;
+        }
+        [data-testid="stChatInput"] textarea::placeholder,
+        [data-testid="stChatInput"] input::placeholder {
+            color: #4A5D53 !important;
+            opacity: 1 !important;
+        }
 
         /* ── Layout ───────────────────────────────────────────────────────── */
         .block-container {
