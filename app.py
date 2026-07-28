@@ -307,87 +307,15 @@ def render_ask_ic_tab(brief: InvestmentBrief) -> None:
 
 
 def render_floating_ask_ic(brief: InvestmentBrief) -> None:
-    """Render the persistent Floating Ask IC: FAB + backdrop + drawer.
+    """Render Ask IC in a standard inline container (no floating drawer).
 
-    The floating experience is available from every tab.  The drawer uses
-    ``render_ask_ic_panel(compact=True)`` to render a density-optimised
-    chat UI.  The message history is shared with Tab 4 via the same
-    ``_ask_ic_session_key()``, so questions/answers persist across
-    both surfaces.
+    Stabilization release: the previous floating FAB + backdrop + drawer
+    implementation is temporarily disabled to avoid overlay issues.
+    This now simply exposes the shared Ask IC panel inside an expander,
+    without any fixed-position elements or page overlays.
     """
-    drawer_state_key = f"ask_ic_drawer_open::{_ask_ic_session_key(brief)}"
-    if drawer_state_key not in st.session_state:
-        st.session_state[drawer_state_key] = False
-
-    # ── Floating Action Button (fixed bottom-right) ──────────────────────
-    # Render via HTML wrapper for fixed positioning.
-    # Separate widget keys (used by Streamlit widgets) from session state keys.
-    fab_widget_key = f"ask_ic_fab_widget::{_ask_ic_session_key(brief)}"
-    close_widget_key = f"ask_ic_close_widget::{_ask_ic_session_key(brief)}"
-
-    # Drawer open/closed state lives in session state under a dedicated key.
-    is_open = bool(st.session_state[drawer_state_key])
-
-    # Backdrop (overlay behind drawer; click to dismiss on wide screens)
-    # Note: Streamlit cannot capture clicks on HTML overlays; dismiss via
-    # the explicit Close button in header. Render only for visual dim.
-    bd_open = "open" if is_open else ""
-    st.markdown(
-        f'<div class="ask-ic-backdrop {bd_open}" aria-hidden="true"></div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── FAB (always rendered; z-index forces it above all tabs) ─────────
-    # Use st.button wrapped in HTML wrapper.  We need to render a Streamlit
-    # button for the event to fire, so we use the wrapper via markdown before
-    # the button (Streamlit outputs the button into its standard column block,
-    # so we style the wrapper's inner stButton via CSS).
-    st.markdown(
-        '<div class="ask-ic-fab-wrapper" data-fab-wrap="true">',
-        unsafe_allow_html=True,
-    )
-    # Use the button return value to update drawer open state. Do NOT
-    # write directly to the widget key in session_state.
-    fab_clicked = st.button("💬 Ask IC", key=fab_widget_key)
-    if fab_clicked:
-        st.session_state[drawer_state_key] = True
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Drawer shell (fixed; transform slides it in when .open is set) ───
-    drawer_open_class = "open" if is_open else ""
-    st.markdown(
-        f'<div class="ask-ic-drawer-shell {drawer_open_class}" '
-        f'role="dialog" aria-modal="true" aria-label="Ask IC Analyst">',
-        unsafe_allow_html=True,
-    )
-
-    # ── Drawer header (sticky top) ───────────────────────────────────────
-    st.markdown(
-        '<div class="ask-ic-drawer-header">'
-        '<div class="ask-ic-drawer-title">💬 Ask IC Analyst</div>'
-        '<div class="ask-ic-close-btn">',
-        unsafe_allow_html=True,
-    )
-    close_clicked = st.button("✕", key=close_widget_key)
-    if close_clicked:
-        st.session_state[drawer_state_key] = False
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    # ── Drawer body (flex-fill scroll) — compact chat panel ─────────────
-    st.markdown('<div class="ask-ic-drawer-body">', unsafe_allow_html=True)
-    if is_open:
-        # Only render the Streamlit chat widgets when open to avoid wasting
-        # computation + session state on a hidden surface.
-        render_ask_ic_panel(brief, compact=True, surface="drawer")
-    else:
-        # Hidden state — emit minimal spacer so Streamlit block order stays
-        # stable between renders (widget key ordering invariant).
-        # Use st.empty() as a lightweight placeholder (container() does not
-        # accept height/border kwargs across Streamlit versions).
-        st.empty()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("</div><!-- /ask-ic-drawer-shell -->", unsafe_allow_html=True)
+    with st.expander("💬 Ask the Investment Committee", expanded=False):
+        render_ask_ic_panel(brief, compact=False, surface="floating")
 
 
 def render_brief(brief: InvestmentBrief) -> None:
