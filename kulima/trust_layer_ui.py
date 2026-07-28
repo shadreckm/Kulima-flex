@@ -45,6 +45,29 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     status = thesis.status
     status_text = status.value if hasattr(status, "value") else str(status)
 
+    # DIAGNOSTIC: raw thesis fields before template interpolation
+    _log.debug("DIAG_THESIS status_text repr: %s", repr(status_text))
+    try:
+        _log.debug("DIAG_THESIS thesis.notes repr: %s", repr(thesis.notes))
+    except Exception:
+        _log.debug("DIAG_THESIS thesis.notes: <unavailable>")
+    try:
+        _log.debug("DIAG_THESIS sector_fit repr: %s", repr(thesis.sector_fit))
+    except Exception:
+        _log.debug("DIAG_THESIS sector_fit: <unavailable>")
+    try:
+        _log.debug("DIAG_THESIS stage_fit repr: %s", repr(thesis.stage_fit))
+    except Exception:
+        _log.debug("DIAG_THESIS stage_fit: <unavailable>")
+    try:
+        _log.debug("DIAG_THESIS geography_fit repr: %s", repr(thesis.geography_fit))
+    except Exception:
+        _log.debug("DIAG_THESIS geography_fit: <unavailable>")
+    try:
+        _log.debug("DIAG_THESIS evidence_fit repr: %s", repr(thesis.evidence_fit))
+    except Exception:
+        _log.debug("DIAG_THESIS evidence_fit: <unavailable>")
+
     status_colors = {
         ThesisStatus.PASS: ("#0B6E4F", "rgba(11, 110, 79, 0.12)", "rgba(11, 110, 79, 0.3)"),
         ThesisStatus.WARN: ("#B8892D", "rgba(184, 137, 45, 0.12)", "rgba(184, 137, 45, 0.3)"),
@@ -106,7 +129,16 @@ def render_thesis_fit_card(thesis: ThesisMatchResult | None) -> None:
     </div>
     """)
 
+    # DIAGNOSTIC: value passed to Streamlit for rendering
+    _log.debug("DIAG_THESIS html_block type: %s", type(html_block))
+    _log.debug("DIAG_THESIS html_block repr[:500]: %s", repr(html_block[:500]))
     _log.debug("render_thesis_fit_card html_block: %s", repr(html_block))
+    # TRACE: print repr immediately after creation
+    print("TRACE_THESIS created html_block type:", type(html_block))
+    print("TRACE_THESIS created html_block repr[:300]:", repr(html_block[:300]))
+    # TRACE: print again immediately before render
+    print("TRACE_THESIS before st.markdown type:", type(html_block))
+    print("TRACE_THESIS before st.markdown repr[:300]:", repr(html_block[:300]))
     st.markdown(html_block, unsafe_allow_html=True)
 
     if thesis.notes:

@@ -1632,13 +1632,20 @@ def render_twin_syndicate_committee(
     # ── Final Committee Outcome banner — moved to TOP (decision-first) ──
     st.markdown("### Final Committee Outcome")
     color = REC_COLORS.get(final, "#0B3D2E")
-    st.markdown(textwrap.dedent(f"""
+    rec_html = textwrap.dedent(f"""
         <div class="rec-banner" style="background:{color};">
             Committee Decision: {html.escape(final.value)}
             &nbsp;·&nbsp; Consensus {consensus:.0f}/100
             &nbsp;·&nbsp; Dissent {dissent:.0f}/100
         </div>
-        """), unsafe_allow_html=True)
+        """)
+    # TRACE: print repr immediately after creation
+    print("TRACE_REC created rec_html type:", type(rec_html))
+    print("TRACE_REC created rec_html repr[:300]:", repr(rec_html[:300]))
+    # TRACE: print again immediately before render
+    print("TRACE_REC before st.markdown type:", type(rec_html))
+    print("TRACE_REC before st.markdown repr[:300]:", repr(rec_html[:300]))
+    st.markdown(rec_html, unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
     c1.metric(
@@ -1683,8 +1690,13 @@ def render_twin_syndicate_committee(
                 ident = _speaker_identity_for(v)
                 dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
                 css = _vote_css_class(dec)
-                reasoning = html.escape(getattr(v, "key_reasoning", None) or getattr(v, "thesis", "") or "—")
-                concern = html.escape(getattr(v, "major_concern", "") or "—")
+                # DIAGNOSTIC: print raw reasoning / concern before html.escape
+                raw_reasoning = getattr(v, "key_reasoning", None) or getattr(v, "thesis", "") or "—"
+                _log.debug("DIAG_COMMITTEE raw_reasoning repr: %s", repr(raw_reasoning))
+                reasoning = html.escape(raw_reasoning)
+                raw_concern = getattr(v, "major_concern", "") or "—"
+                _log.debug("DIAG_COMMITTEE raw_concern repr: %s", repr(raw_concern))
+                concern = html.escape(raw_concern)
                 dissent_html = f"""
                     <div class="persona-card vote-{css}" style="margin:0.35rem 0 0.55rem 0;">
                       <div class="persona-header">
@@ -1708,22 +1720,40 @@ def render_twin_syndicate_committee(
                       <div class="persona-concern"><strong>⚠ Reason for disagreement:</strong> {concern}</div>
                     </div>
                     """
-            _log.debug("render_twin_syndicate_committee dissent_html (RAW): %s", repr(dissent_html))
-            _log.debug("render_twin_syndicate_committee dissent_html (DEDENT): %s", repr(textwrap.dedent(dissent_html)))
-            st.markdown(textwrap.dedent(dissent_html), unsafe_allow_html=True)
+                _log.debug("render_twin_syndicate_committee dissent_html (RAW): %s", repr(dissent_html))
+                _log.debug("render_twin_syndicate_committee dissent_html (DEDENT): %s", repr(textwrap.dedent(dissent_html)))
+                # TRACE: print repr immediately after creation
+                print("TRACE_DISSENT created dissent_html type:", type(dissent_html))
+                print("TRACE_DISSENT created dissent_html repr[:300]:", repr(dissent_html[:300]))
+                dedent_dissent = textwrap.dedent(dissent_html)
+                print("TRACE_DISSENT before st.markdown type:", type(dedent_dissent))
+                print("TRACE_DISSENT before st.markdown repr[:300]:", repr(dedent_dissent[:300]))
+                st.markdown(dedent_dissent, unsafe_allow_html=True)
 
     # ── Individual Committee Votes — persona cards (Step 1 compression) ──
     st.markdown("### Individual Committee Votes")
     for idx, v in enumerate(syn.votes):
         ident = _speaker_identity_for(v)
+        # DIAGNOSTIC: print speaker_names identity
+        try:
+            _log.debug("DIAG_COMMITTEE ident['speaker_names'] repr: %s", repr(ident.get('speaker_names')))
+        except Exception:
+            _log.debug("DIAG_COMMITTEE speaker_names: <unavailable>")
         role = getattr(v, "title", None) or getattr(v, "persona", "") or ident["persona"]
+        # DIAGNOSTIC: print raw role before html.escape
+        _log.debug("DIAG_COMMITTEE raw_role repr: %s", repr(role))
         dec = getattr(v, "decision", None) or getattr(v, "vote", Recommendation.OBSERVE)
         css = _vote_css_class(dec)
         badge_css = f"badge-{css}"
         auto_expand = _vote_is_negative_or_dissenting(v, majority_decision)
 
         summary_line = _persona_one_line_summary(v)
-        firm_line = f"{html.escape(getattr(v, 'investor_name', '') or ident['speaker_names'][0])} · {html.escape(getattr(v, 'firm', '') or ident['firm'])}"
+        # DIAGNOSTIC: print raw investor_name and firm before html.escape
+        raw_investor = getattr(v, 'investor_name', '') or ident['speaker_names'][0]
+        raw_firm = getattr(v, 'firm', '') or ident['firm']
+        _log.debug("DIAG_COMMITTEE raw_investor repr: %s", repr(raw_investor))
+        _log.debug("DIAG_COMMITTEE raw_firm repr: %s", repr(raw_firm))
+        firm_line = f"{html.escape(raw_investor)} · {html.escape(raw_firm)}"
         header_html = f"""
         <div style="display:flex;align-items:center;gap:0.6rem;justify-content:space-between;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:0.55rem;min-width:0;">
@@ -1766,7 +1796,13 @@ def render_twin_syndicate_committee(
         with st.expander(exp_title, expanded=bool(auto_expand)):
             _log.debug("render_twin_syndicate_committee header_html (RAW): %s", repr(header_html))
             _log.debug("render_twin_syndicate_committee header_html (DEDENT): %s", repr(textwrap.dedent(header_html)))
-            st.markdown(textwrap.dedent(header_html), unsafe_allow_html=True)
+            # TRACE: print repr immediately after creation
+            print("TRACE_HEADER created header_html type:", type(header_html))
+            print("TRACE_HEADER created header_html repr[:300]:", repr(header_html[:300]))
+            dedent_header = textwrap.dedent(header_html)
+            print("TRACE_HEADER before st.markdown type:", type(dedent_header))
+            print("TRACE_HEADER before st.markdown repr[:300]:", repr(dedent_header[:300]))
+            st.markdown(dedent_header, unsafe_allow_html=True)
 
             # Full Reasoning + Full Concerns + Full Thesis (all only shown
             # inside expanded card)
@@ -1898,6 +1934,20 @@ def render_twin_syndicate_committee(
     _log.debug("render_twin_syndicate_committee sb_html (RAW): %s", repr(sb_html))
     _log.debug("render_twin_syndicate_committee sb_html (DEDENT): %s", repr(textwrap.dedent(sb_html)))
     html_block = textwrap.dedent(sb_html)
+    # DIAGNOSTIC: print html_block type and repr before final render
+    _log.debug("DIAG_SCOREBOARD html_block type: %s", type(html_block))
+    try:
+        _log.debug("DIAG_SCOREBOARD html_block repr[:500]: %s", repr(html_block[:500]))
+    except Exception:
+        _log.debug("DIAG_SCOREBOARD html_block: <unrepr-able>")
+    # TRACE: print repr immediately after creation
+    print("TRACE_SB created sb_html type:", type(sb_html))
+    print("TRACE_SB created sb_html repr[:300]:", repr(sb_html[:300]))
+    print("TRACE_SB created html_block type:", type(html_block))
+    print("TRACE_SB created html_block repr[:300]:", repr(html_block[:300]))
+    # TRACE: print again immediately before render
+    print("TRACE_SB before st.markdown type:", type(html_block))
+    print("TRACE_SB before st.markdown repr[:300]:", repr(html_block[:300]))
     st.markdown(html_block, unsafe_allow_html=True)
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -1956,6 +2006,12 @@ def render_twin_syndicate_committee(
 
             # Normalize debate_transcript into a list of "Speaker: message" lines.
             raw_transcript = syn.debate_transcript
+            # DIAGNOSTIC: print raw stored debate_transcript before normalization
+            _log.debug("DIAG_COMMITTEE raw_transcript type: %s", type(raw_transcript))
+            try:
+                _log.debug("DIAG_COMMITTEE raw_transcript repr[:500]: %s", repr(raw_transcript)[:500])
+            except Exception:
+                _log.debug("DIAG_COMMITTEE raw_transcript: <unrepr-able>")
             lines = []
             parsed_entries = None
             if isinstance(raw_transcript, list):
@@ -1982,12 +2038,22 @@ def render_twin_syndicate_committee(
                     if isinstance(item, dict):
                         speaker_name = item.get("speaker") or item.get("name") or item.get("role") or ""
                         msg = item.get("message") or item.get("content") or item.get("text") or ""
+                        # DIAGNOSTIC: print parsed entry before concatenation
+                        _log.debug("DIAG_COMMITTEE parsed entry (speaker): %s", repr(speaker_name))
+                        _log.debug("DIAG_COMMITTEE parsed entry (message snippet): %s", repr(msg)[:200])
                         lines.append(f"{speaker_name}: {msg}")
                     else:
                         lines.append(str(item))
             else:
                 # Fallback to legacy plain-text transcript
                 lines = [ln.strip() for ln in (raw_transcript or "").splitlines() if ln.strip()]
+
+            # DIAGNOSTIC: print lines type and sample before rendering
+            _log.debug("DIAG_COMMITTEE lines type: %s", type(lines))
+            try:
+                _log.debug("DIAG_COMMITTEE lines repr[:5]: %s", repr(lines[:5]))
+            except Exception:
+                _log.debug("DIAG_COMMITTEE lines: <unrepr-able>")
 
             _render_debate_lines(
                 lines,
