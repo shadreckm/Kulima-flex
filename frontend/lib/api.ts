@@ -33,6 +33,28 @@ function withAuth(headers: HeadersInit = {}): HeadersInit {
   return base
 }
 
+async function readResponseText(res: Response): Promise<string> {
+  try {
+    return await res.text()
+  } catch {
+    return ''
+  }
+}
+
+async function parseJsonResponse<T>(res: Response, context: string): Promise<T> {
+  const raw = await readResponseText(res)
+  if (!raw) {
+    throw new Error(`${context} returned an empty response`)
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    const preview = raw.length > 500 ? `${raw.slice(0, 500)}…` : raw
+    throw new Error(`${context} returned non-JSON response: ${preview}`)
+  }
+}
+
 export type RunStatus = {
   runId: string;
   status: string;
@@ -79,32 +101,32 @@ export async function createRun(founder: string, startup?: string): Promise<{ ru
     headers: withAuth({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ founder, startup }),
   })
-  if (!res.ok) throw new Error(`createRun failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`createRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ runId: string; status: string }>(res, 'createRun')
 }
 
 export async function getRunStatus(runId: string): Promise<RunStatus> {
   const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(runId)}`, {
     headers: withAuth(),
   })
-  if (!res.ok) throw new Error(`getRunStatus failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`getRunStatus failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<RunStatus>(res, 'getRunStatus')
 }
 
 export async function getDecisionSnapshot(runId: string): Promise<DecisionSnapshot> {
   const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(runId)}/brief`, {
     headers: withAuth(),
   })
-  if (!res.ok) throw new Error(`getDecisionSnapshot failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`getDecisionSnapshot failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<DecisionSnapshot>(res, 'getDecisionSnapshot')
 }
 
 export async function getSignalsSummary(runId: string): Promise<SignalsSummary> {
   const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(runId)}/signals`, {
     headers: withAuth(),
   })
-  if (!res.ok) throw new Error(`getSignalsSummary failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`getSignalsSummary failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<SignalsSummary>(res, 'getSignalsSummary')
 }
 
 export async function askIC(runId: string, question: string, history: Array<any> = []): Promise<{ answer: string }> {
@@ -113,8 +135,8 @@ export async function askIC(runId: string, question: string, history: Array<any>
     headers: withAuth({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ runId, question, history }),
   })
-  if (!res.ok) throw new Error(`askIC failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`askIC failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ answer: string }>(res, 'askIC')
 }
 
 export function askICStream(runId: string, question: string, history: Array<any> = []) {
@@ -185,8 +207,8 @@ export async function askSignals(runId: string, question: string, history: Array
     headers: withAuth({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ runId, question, history }),
   })
-  if (!res.ok) throw new Error(`askSignals failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`askSignals failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ answer: string }>(res, 'askSignals')
 }
 
 export function askSignalsStream(runId: string, question: string, history: Array<any> = []) {
@@ -259,6 +281,6 @@ export async function uploadDocument(file: File, runId?: string | null): Promise
     headers: withAuth(),
     body: form,
   })
-  if (!res.ok) throw new Error(`uploadDocument failed: ${res.status} ${await res.text()}`)
-  return res.json()
+  if (!res.ok) throw new Error(`uploadDocument failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ id: string; name: string; url: string }>(res, 'uploadDocument')
 }

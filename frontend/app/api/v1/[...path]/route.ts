@@ -58,7 +58,29 @@ async function proxy(request: NextRequest) {
   responseHeaders.delete('transfer-encoding')
   responseHeaders.delete('connection')
 
-  return new NextResponse(upstreamResponse.body, {
+  const contentType = responseHeaders.get('content-type') || ''
+  const isJson = contentType.includes('application/json')
+  const isEventStream = contentType.includes('text/event-stream')
+  const isEmptyBody = upstreamResponse.status === 204 || upstreamResponse.body === null
+
+  if (isJson || isEventStream || isEmptyBody) {
+    return new NextResponse(upstreamResponse.body, {
+      status: upstreamResponse.status,
+      headers: responseHeaders,
+    })
+  }
+
+  const bodyText = await upstreamResponse.text()
+  const payload = {
+    error: upstreamResponse.status >= 400,
+    status: upstreamResponse.status,
+    message: bodyText || upstreamResponse.statusText || 'Upstream response was not JSON',
+  }
+
+  responseHeaders.delete('content-type')
+  responseHeaders.delete('content-length')
+
+  return NextResponse.json(payload, {
     status: upstreamResponse.status,
     headers: responseHeaders,
   })

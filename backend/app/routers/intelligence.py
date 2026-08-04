@@ -1,4 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+
+from kulima.core.cases.adapters import from_investment_brief
+from kulima.models import InvestmentBrief
+from kulima.signals.models import Signal, SignalLevel
+from kulima.signals.orchestrator import SignalsOrchestrator
+from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
+
+from ..core.auth import AuthenticatedUser, get_current_user
+from ..core.rate_limit import check_rate_limit
 from ..schemas.dtos import (
     DecisionSnapshot,
     IntelligenceCreateRequest,
@@ -7,18 +17,9 @@ from ..schemas.dtos import (
     SignalItem,
     SignalsSummary,
 )
-from ..services.orchestrator_adapter import start_intelligence_run, get_run_status, get_brief_for_run
-from ..core.auth import get_current_user, AuthenticatedUser
-from ..core.rate_limit import check_rate_limit
+from ..services.orchestrator_adapter import get_brief_for_run, get_run_status, start_intelligence_run
 
 router = APIRouter()
-
-
-from kulima.models import InvestmentBrief
-from kulima.core.cases.adapters import from_investment_brief
-from kulima.signals.models import Signal, SignalLevel
-from kulima.signals.orchestrator import SignalsOrchestrator
-from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
 
 _signals_orchestrator = SignalsOrchestrator()
 
@@ -34,7 +35,7 @@ async def create_intelligence(
     if not req.founder:
         raise HTTPException(status_code=400, detail="founder is required")
     run_id = start_intelligence_run(req.founder, req.startup or "", user.user_id)
-    return {"runId": run_id, "status": "running"}
+    return JSONResponse(content={"runId": run_id, "status": "running"})
 
 
 @router.get("/{run_id}", response_model=IntelligenceStatusResponse)
