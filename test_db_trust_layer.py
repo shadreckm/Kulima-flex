@@ -265,6 +265,7 @@ def test_save_brief_grade_a_writes_correctly() -> None:
     run_id = repo.save_brief(brief)
     row = repo.get_run(run_id)
 
+    assert row is not None
     assert row["integrity_score"] == pytest.approx(92.0)
     assert row["integrity_grade"] == "A"
 
@@ -282,10 +283,21 @@ def test_recent_runs_returns_integrity_columns() -> None:
 
     rows = repo.recent_runs(limit=10)
     assert len(rows) == 2
-
     for row in rows:
         assert "integrity_score" in row, "integrity_score key must be present"
         assert "integrity_grade" in row, "integrity_grade key must be present"
+        for key in (
+            "id",
+            "created_at",
+            "founder_name",
+            "startup_name",
+            "overall_score",
+            "founder_score",
+            "trust_score",
+            "recommendation",
+            "confidence",
+        ):
+            assert key in row, f"existing key '{key}' must still be present"
 
     # The brief with integrity should have values; the one without should have NULL
     # recent_runs returns newest first
@@ -294,12 +306,23 @@ def test_recent_runs_returns_integrity_columns() -> None:
     assert rows[1]["integrity_score"] is None
     assert rows[1]["integrity_grade"] is None
 
-    # Existing keys must still be present (no regression)
-    for row in rows:
-        for key in ("id", "created_at", "founder_name", "startup_name",
-                    "overall_score", "founder_score", "trust_score",
-                    "recommendation", "confidence"):
-            assert key in row, f"existing key '{key}' must still be present"
+
+def test_recent_runs_filters_by_user_id() -> None:
+    """recent_runs(user_id=...) should only return the authenticated user's runs."""
+    repo, path = _tmp_repo()
+
+    repo.save_brief(_minimal_brief(founder="Alice N", startup="Startup A"), user_id="user-a")
+    repo.save_brief(_minimal_brief(founder="Bob M", startup="Startup B"), user_id="user-b")
+
+    user_a_rows = repo.recent_runs(limit=10, user_id="user-a")
+    assert len(user_a_rows) == 1
+    assert user_a_rows[0]["user_id"] == "user-a"
+    assert user_a_rows[0]["founder_name"] == "Alice N"
+
+    user_b_rows = repo.recent_runs(limit=10, user_id="user-b")
+    assert len(user_b_rows) == 1
+    assert user_b_rows[0]["user_id"] == "user-b"
+    assert user_b_rows[0]["founder_name"] == "Bob M"
 
 
 # ── Test 7 — load_brief on pre-migration row returns brief with None ──────────

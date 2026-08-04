@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS intelligence_runs (
     confidence REAL,
     recommendation TEXT,
     executive_summary TEXT,
-    payload_json TEXT NOT NULL
+    payload_json TEXT NOT NULL,
+    user_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS founders (
@@ -99,6 +100,11 @@ class IntelligenceRepository:
                 "ALTER TABLE intelligence_runs ADD COLUMN archived_at TEXT DEFAULT NULL"
             )
             _log.debug("_migrate_schema: added column archived_at")
+        if "user_id" not in existing:
+            conn.execute(
+                "ALTER TABLE intelligence_runs ADD COLUMN user_id TEXT DEFAULT NULL"
+            )
+            _log.debug("_migrate_schema: added column user_id")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -109,7 +115,7 @@ class IntelligenceRepository:
         finally:
             conn.close()
 
-    def save_brief(self, brief: InvestmentBrief) -> int:
+    def save_brief(self, brief: InvestmentBrief, user_id: str | None = None) -> int:
         payload = brief.model_dump(mode="json")
         # Extract Trust Layer flat values — both are NULL when EIE has not run.
         ei = brief.evidence_integrity
@@ -123,8 +129,8 @@ class IntelligenceRepository:
                     overall_score, founder_score, startup_score, market_score, trust_score,
                     risk_score, growth_potential, investment_readiness, confidence,
                     recommendation, executive_summary, payload_json,
-                    integrity_score, integrity_grade
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    integrity_score, integrity_grade, user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
@@ -147,6 +153,7 @@ class IntelligenceRepository:
                     json.dumps(payload),
                     integrity_score,
                     integrity_grade,
+                    user_id,
                 ),
             )
             # Legacy compatibility table
@@ -171,28 +178,37 @@ class IntelligenceRepository:
         self,
         limit: int = 20,
         include_archived: bool = False,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         with self._connect() as conn:
             query = """
                 SELECT id, created_at, founder_name, startup_name, sector, geography, stage,
                        overall_score, founder_score, trust_score, recommendation, confidence,
-                       integrity_score, integrity_grade, archived_at
+                       integrity_score, integrity_grade, archived_at, user_id
                 FROM intelligence_runs
             """
-            params: tuple[Any, ...] = (limit,)
-            if include_archived:
-                query += " ORDER BY id DESC LIMIT ?"
-            else:
-                query += " WHERE archived_at IS NULL ORDER BY id DESC LIMIT ?"
-            rows = conn.execute(query, params).fetchall()
+            params: list[Any] = []
+            conditions: list[str] = []
+            if not include_archived:
+                conditions.append("archived_at IS NULL")
+            if user_id is not None:
+                conditions.append("user_id = ?")
+                params.append(user_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, tuple(params)).fetchall()
             return [dict(r) for r in rows]
 
-    def get_run(self, run_id: int) -> dict[str, Any] | None:
+    def get_run(self, run_id: int, user_id: str | None = None) -> dict[str, Any] | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM intelligence_runs WHERE id = ?",
-                (run_id,),
-            ).fetchone()
+            query = "SELECT * FROM intelligence_runs WHERE id = ?"
+            params: list[Any] = [run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            row = conn.execute(query, tuple(params)).fetchone()
             return dict(row) if row else None
 
     def load_brief(self, run_id: int) -> InvestmentBrief | None:
@@ -221,30 +237,36 @@ class IntelligenceRepository:
             )
             return None
 
-    def archive_run(self, run_id: int) -> bool:
+    def archive_run(self, run_id: int, user_id: str | None = None) -> bool:
         with self._connect() as conn:
-            cur = conn.execute(
-                "UPDATE intelligence_runs SET archived_at = ? WHERE id = ?",
-                (datetime.now(timezone.utc).isoformat(), run_id),
-            )
+            query = "UPDATE intelligence_runs SET archived_at = ? WHERE id = ?"
+            params: list[Any] = [datetime.now(timezone.utc).isoformat(), run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            cur = conn.execute(query, tuple(params))
             conn.commit()
             return cur.rowcount > 0
 
-    def reopen_run(self, run_id: int) -> bool:
+    def reopen_run(self, run_id: int, user_id: str | None = None) -> bool:
         with self._connect() as conn:
-            cur = conn.execute(
-                "UPDATE intelligence_runs SET archived_at = NULL WHERE id = ?",
-                (run_id,),
-            )
+            query = "UPDATE intelligence_runs SET archived_at = NULL WHERE id = ?"
+            params: list[Any] = [run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            cur = conn.execute(query, tuple(params))
             conn.commit()
             return cur.rowcount > 0
 
-    def delete_run(self, run_id: int) -> bool:
+    def delete_run(self, run_id: int, user_id: str | None = None) -> bool:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT founder_name, startup_name FROM intelligence_runs WHERE id = ?",
-                (run_id,),
-            ).fetchone()
+            query = "SELECT founder_name, startup_name FROM intelligence_runs WHERE id = ?"
+            params: list[Any] = [run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            row = conn.execute(query, tuple(params)).fetchone()
             if row is None:
                 return False
             conn.execute("DELETE FROM intelligence_runs WHERE id = ?", (run_id,))
@@ -269,8 +291,17 @@ class IntelligenceRepository:
         user_name: str,
         rating: int,
         comment: str,
+        user_id: str | None = None,
     ) -> int:
         with self._connect() as conn:
+            query = "SELECT id FROM intelligence_runs WHERE id = ?"
+            params: list[Any] = [run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            run_row = conn.execute(query, tuple(params)).fetchone()
+            if run_row is None:
+                raise ValueError("run not found")
             cur = conn.execute(
                 """
                 INSERT INTO run_feedback (run_id, user_name, rating, comment, created_at)

@@ -121,6 +121,8 @@ def _refs_str(refs: list[str]) -> str:
 def build_ask_signals_context(
     case: Case,
     signals: List[Signal],
+    *,
+    user_id: str | None = None,
 ) -> str:
     """Assemble a bounded, citable context pack for the SIGNALS analyst.
 
@@ -314,6 +316,7 @@ def build_ask_signals_context(
             subj.name,
             max_documents=3,
             max_chars=MAX_CONTEXT_CHARS // 5,
+            user_id=user_id,
         )
         if doc_section:
             sections.append(doc_section)
@@ -432,7 +435,9 @@ def answer_ask_signals_question(
     case: Case,
     signals: List[Signal],
     question: str,
-    history: list[dict] | None = None,
+    history: list[dict[str, str]] | None = None,
+    *,
+    user_id: str | None = None,
 ) -> str:
     """Answer a follow-up question as the Risk & Opportunity Analyst.
 
@@ -456,7 +461,7 @@ def answer_ask_signals_question(
     )
 
     # Build context pack
-    context = build_ask_signals_context(case, signals)
+    context = build_ask_signals_context(case, signals, user_id=user_id)
 
     # Dynamic grounding appendix — injected when EIE is present
     system = _SYSTEM_PROMPT

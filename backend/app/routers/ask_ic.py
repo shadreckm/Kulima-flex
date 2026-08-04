@@ -16,14 +16,14 @@ async def post_ask_ic(req: AskRequest, user: AuthenticatedUser = Depends(get_cur
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(user.user_id, "ask_ic:post")
 
-    info = get_run_status(req.runId)
-    if not info or info.get("user_id") != user.user_id:
+    info = get_run_status(req.runId, user.user_id)
+    if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
     # Fail fast if still running
     if info.get("status") != "completed":
         raise HTTPException(status_code=409, detail="run not completed yet")
     try:
-        answer = ask_ic(req.runId, req.question, req.history)
+        answer = ask_ic(req.runId, req.question, req.history, user_id=user.user_id)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"answer": answer}
@@ -34,15 +34,15 @@ async def post_ask_ic_stream(req: AskRequest, user: AuthenticatedUser = Depends(
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(user.user_id, "ask_ic:stream")
 
-    info = get_run_status(req.runId)
-    if not info or info.get("user_id") != user.user_id:
+    info = get_run_status(req.runId, user.user_id)
+    if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
     if info.get('status') != 'completed':
         raise HTTPException(status_code=409, detail='run not completed yet')
 
     try:
         # Get full answer synchronously from existing logic
-        answer = ask_ic(req.runId, req.question, req.history)
+        answer = ask_ic(req.runId, req.question, req.history, user_id=user.user_id)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

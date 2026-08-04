@@ -158,7 +158,13 @@ class DocumentRepository:
             ).fetchall()
         return [self._row_to_chunk(r) for r in rows]
 
-    def get_documents_for_subject(self, founder: str, startup: str) -> list[Document]:
+    def get_documents_for_subject(
+        self,
+        founder: str,
+        startup: str,
+        *,
+        user_id: str | None = None,
+    ) -> list[Document]:
         """Return all documents associated with the given founder/startup pair.
 
         Association is inferred via the ``run_id`` column joined against
@@ -166,16 +172,18 @@ class DocumentRepository:
         allowing FLEX to attach documents to specific deals.
         """
         with self._connect() as conn:
-            rows = conn.execute(
-                """
+            query = """
                 SELECT d.*
                 FROM documents d
                 JOIN intelligence_runs r ON d.run_id = r.id
                 WHERE r.founder_name = ? AND r.startup_name = ?
-                ORDER BY d.uploaded_at ASC
-                """,
-                (founder, startup),
-            ).fetchall()
+            """
+            params: list[object] = [founder, startup]
+            if user_id is not None:
+                query += " AND r.user_id = ?"
+                params.append(user_id)
+            query += " ORDER BY d.uploaded_at ASC"
+            rows = conn.execute(query, tuple(params)).fetchall()
         return [self._row_to_document(r) for r in rows]
 
     # ── Helpers ──────────────────────────────────────────────────────────

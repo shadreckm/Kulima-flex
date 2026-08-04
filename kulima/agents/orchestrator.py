@@ -55,6 +55,8 @@ class IntelligenceOrchestrator:
         founder: str,
         startup: str,
         on_progress: ProgressCallback | None = None,
+        *,
+        user_id: str | None = None,
     ) -> InvestmentBrief:
         def progress(pct: float, message: str) -> None:
             if on_progress:
@@ -104,7 +106,7 @@ class IntelligenceOrchestrator:
         try:
             doc_repo = DocumentRepository()
             doc_sources: list[SourceAttribution] = []
-            for d in doc_repo.get_documents_for_subject(founder, startup):
+            for d in doc_repo.get_documents_for_subject(founder, startup, user_id=user_id):
                 # Reconstruct a SourceAttribution using the filename as title
                 # and a synthetic URL; snippet will be filled from the first
                 # available chunk when retrieved later by EIE if needed.

@@ -41,8 +41,18 @@ _brief_repo = IntelligenceRepository()
 _live_run_repo = RunRepository()
 
 
-def _load_brief_model(run_id: int) -> InvestmentBrief:
-    brief_json = get_brief_for_run(str(run_id))
+def _load_brief_model(run_id: int, user_id: str | None = None) -> InvestmentBrief:
+    stored_row = _brief_repo.get_run(run_id, user_id=user_id)
+    if stored_row is None and user_id is not None:
+        legacy_row = _brief_repo.get_run(run_id)
+        if legacy_row is not None and legacy_row.get("user_id") is None:
+            stored_row = legacy_row
+    if stored_row is not None:
+        brief = _brief_repo.load_brief(run_id)
+        if brief is not None:
+            return brief
+
+    brief_json = get_brief_for_run(str(run_id), user_id=user_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
     return InvestmentBrief.model_validate(brief_json) if isinstance(brief_json, dict) else brief_json
@@ -81,7 +91,7 @@ async def list_live_runs(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     check_rate_limit(user.user_id, "intelligence:runs_live")
-    rows = _live_run_repo.list_runs(limit=limit)
+    rows = _live_run_repo.list_runs(limit=limit, user_id=user.user_id)
     return {
         "runs": [
             {
@@ -106,7 +116,7 @@ async def list_run_history(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     check_rate_limit(user.user_id, "intelligence:runs_history")
-    rows = _brief_repo.recent_runs(limit=limit, include_archived=include_archived)
+    rows = _brief_repo.recent_runs(limit=limit, include_archived=include_archived, user_id=user.user_id)
     return {
         "runs": [
             {
@@ -134,14 +144,14 @@ async def list_run_history(
 @router.get("/runs/analytics")
 async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:runs_analytics")
-    rows = _brief_repo.recent_runs(limit=100, include_archived=True)
+    rows = _brief_repo.recent_runs(limit=100, include_archived=True, user_id=user.user_id)
     return build_pilot_analytics_metrics(rows)
 
 
 @router.post("/{run_id}/archive")
 async def archive_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:archive")
-    if not _brief_repo.archive_run(run_id):
+    if not _brief_repo.archive_run(run_id, user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "archived": True}
 
@@ -149,7 +159,7 @@ async def archive_run(run_id: int, user: AuthenticatedUser = Depends(get_current
 @router.post("/{run_id}/reopen")
 async def reopen_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:reopen")
-    if not _brief_repo.reopen_run(run_id):
+    if not _brief_repo.reopen_run(run_id, user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "archived": False}
 
@@ -157,7 +167,7 @@ async def reopen_run(run_id: int, user: AuthenticatedUser = Depends(get_current_
 @router.delete("/{run_id}")
 async def delete_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:delete")
-    if not _brief_repo.delete_run(run_id):
+    if not _brief_repo.delete_run(run_id, user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "deleted": True}
 
@@ -165,7 +175,7 @@ async def delete_run(run_id: int, user: AuthenticatedUser = Depends(get_current_
 @router.get("/{run_id}/brief/full")
 async def get_full_brief(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:full_brief")
-    brief = _load_brief_model(run_id)
+    brief = _load_brief_model(run_id, user.user_id)
     return brief.model_dump(mode="json")
 
 
@@ -177,7 +187,7 @@ async def download_report(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     check_rate_limit(user.user_id, f"intelligence:report:{report_kind}")
-    brief = _load_brief_model(run_id)
+    brief = _load_brief_model(run_id, user.user_id)
     body, media_type, ext = _report_payload(brief, report_kind, format)
     filename_map = {
         "memo": f"Kulima_IC_Memo_{run_id}.{ext}",
@@ -205,7 +215,11 @@ async def save_run_feedback(
         rating = 0
     if rating < 1 or rating > 5:
         raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
-    if not _brief_repo.save_feedback(run_id, user_name, rating, comment):
+    try:
+        feedback_id = _brief_repo.save_feedback(run_id, user_name, rating, comment, user_id=user.user_id)
+    except ValueError:
+        raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
+    if not feedback_id:
         raise HTTPException(status_code=500, detail="feedback could not be saved")
     return {"ok": True, "runId": run_id, "rating": rating}
 
@@ -229,8 +243,8 @@ async def get_intelligence(run_id: str, user: AuthenticatedUser = Depends(get_cu
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(user.user_id, "intelligence:get")
 
-    info = get_run_status(run_id)
-    if not info or info.get("user_id") != user.user_id:
+    info = get_run_status(run_id, user.user_id)
+    if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
     return {
         "runId": info.get("run_id") or run_id,
@@ -253,11 +267,11 @@ async def get_decision_snapshot(run_id: str, user: AuthenticatedUser = Depends(g
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(user.user_id, "intelligence:brief")
 
-    info = get_run_status(run_id)
-    if not info or info.get("user_id") != user.user_id:
+    info = get_run_status(run_id, user.user_id)
+    if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
-    brief_json = get_brief_for_run(run_id)
+    brief_json = get_brief_for_run(run_id, user.user_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
 
@@ -335,11 +349,11 @@ async def get_signals_summary(run_id: str, user: AuthenticatedUser = Depends(get
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(user.user_id, "intelligence:signals")
 
-    info = get_run_status(run_id)
-    if not info or info.get("user_id") != user.user_id:
+    info = get_run_status(run_id, user.user_id)
+    if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
-    brief_json = get_brief_for_run(run_id)
+    brief_json = get_brief_for_run(run_id, user.user_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
 

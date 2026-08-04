@@ -26,12 +26,12 @@ def start_intelligence_run(founder: str, startup: str, user_id: str | None = Non
     # Persist run record so it survives restarts
     _run_repo.create_run(run_id, status="running", user_id=user_id)
 
-    def _worker(rid: str, founder: str, startup: str) -> None:
+    def _worker(rid: str, founder: str, startup: str, owner_id: str | None) -> None:
         try:
             _log.info("Orchestrator: starting analysis for %s / %s", founder, startup)
-            brief: InvestmentBrief = _orchestrator.analyze(founder, startup)
+            brief: InvestmentBrief = _orchestrator.analyze(founder, startup, user_id=owner_id)
             # Persist to DB (synchronous)
-            db_id = _repo.save_brief(brief)
+            db_id = _repo.save_brief(brief, user_id=owner_id)
             # Mark run completed in persistent store
             _run_repo.update_run_completed(rid, db_id=db_id)
             _log.info("Orchestrator: analysis complete — run_id=%s db_id=%s", rid, db_id)
@@ -39,18 +39,18 @@ def start_intelligence_run(founder: str, startup: str, user_id: str | None = Non
             _log.exception("Orchestrator worker failed: %s", exc)
             _run_repo.update_run_failed(rid, error_message=str(exc))
 
-    t = threading.Thread(target=_worker, args=(run_id, founder, startup), daemon=True)
+    t = threading.Thread(target=_worker, args=(run_id, founder, startup, user_id), daemon=True)
     t.start()
     return run_id
 
 
-def get_run_status(run_id: str) -> Optional[Dict[str, Any]]:
+def get_run_status(run_id: str, user_id: str | None = None) -> Optional[Dict[str, Any]]:
     # Return persistent run record
-    return _run_repo.get_run(run_id)
+    return _run_repo.get_run(run_id, user_id=user_id)
 
 
-def get_brief_for_run(run_id: str) -> Optional[InvestmentBrief | dict]:
-    info = _run_repo.get_run(run_id)
+def get_brief_for_run(run_id: str, user_id: str | None = None) -> Optional[InvestmentBrief | dict]:
+    info = _run_repo.get_run(run_id, user_id=user_id)
     if not info:
         return None
     db_id = info.get("db_id")
@@ -64,9 +64,14 @@ def get_brief_for_run(run_id: str) -> Optional[InvestmentBrief | dict]:
     return None
 
 
-def ask_ic(run_id: str, question: str, history: list[dict] | None = None) -> str:
+def ask_ic(
+    run_id: str,
+    question: str,
+    history: list[dict] | None = None,
+    user_id: str | None = None,
+) -> str:
     # Lazy-load brief
-    brief_json = get_brief_for_run(run_id)
+    brief_json = get_brief_for_run(run_id, user_id=user_id)
     if brief_json is None:
         raise RuntimeError("Run not complete or not found")
     # Rehydrate into InvestmentBrief if needed
@@ -79,14 +84,19 @@ def ask_ic(run_id: str, question: str, history: list[dict] | None = None) -> str
         brief = brief_json
     from kulima.ask_ic import answer_ask_ic_question
 
-    return answer_ask_ic_question(brief, question, history)
+    return answer_ask_ic_question(brief, question, history, run_id=None, user_id=user_id)
 
 
-def ask_signals(run_id: str, question: str, history: list[dict] | None = None) -> str:
+def ask_signals(
+    run_id: str,
+    question: str,
+    history: list[dict] | None = None,
+    user_id: str | None = None,
+) -> str:
     # Signals handler mirrors ask_ic but routes to signals logic.
     # Rebuild the Case envelope expected by the SIGNALS analyst from the
     # stored InvestmentBrief without changing the signal methodology.
-    brief_json = get_brief_for_run(run_id)
+    brief_json = get_brief_for_run(run_id, user_id=user_id)
     if brief_json is None:
         raise RuntimeError("Run not complete or not found")
 
@@ -97,4 +107,4 @@ def ask_signals(run_id: str, question: str, history: list[dict] | None = None) -
 
     case = from_investment_brief(brief, case_id=run_id)
     signals = _signals_orchestrator.generate(case, sort=True)
-    return answer_ask_signals_question(case, signals, question, history)
+    return answer_ask_signals_question(case, signals, question, history, user_id=user_id)

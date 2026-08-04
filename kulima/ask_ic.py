@@ -21,7 +21,12 @@ def _bullet_list(items: list[str], limit: int = 8) -> str:
     return "\n".join(f"- {_clip(item, 500)}" for item in items[:limit]) or "- None provided"
 
 
-def build_ask_ic_context(brief: InvestmentBrief) -> str:
+def build_ask_ic_context(
+    brief: InvestmentBrief,
+    *,
+    run_id: int | None = None,
+    user_id: str | None = None,
+) -> str:
     """Build a bounded, citable context pack from only generated IC artifacts."""
     sections: list[str] = [
         "[REPORT]",
@@ -169,6 +174,7 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
         brief.startup_name,
         max_documents=3,
         max_chars=MAX_CONTEXT_CHARS // 4,
+        user_id=user_id,
     )
     if doc_section:
         sections.append(doc_section)
@@ -178,14 +184,19 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
 
 
 def answer_ask_ic_question(
-    brief: InvestmentBrief, question: str, history: list[dict[str, str]] | None = None
+    brief: InvestmentBrief,
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    *,
+    run_id: int | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Answer a follow-up question as an IC analyst using only the brief context."""
     history_text = "\n".join(
         f"{msg.get('role', 'user').upper()}: {_clip(msg.get('content', ''), 800)}"
         for msg in (history or [])[-8:]
     )
-    context = build_ask_ic_context(brief)
+    context = build_ask_ic_context(brief, run_id=run_id, user_id=user_id)
     system = textwrap.dedent(
         """
         You are a Senior Investment Committee Associate for Kulima FLEX.

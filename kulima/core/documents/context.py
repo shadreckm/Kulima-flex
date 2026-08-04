@@ -58,6 +58,7 @@ def build_document_context_for_subject(
     *,
     max_documents: int = 3,
     max_chars: int = 1600,
+    user_id: str | None = None,
 ) -> str:
     """Return a compact [DOCUMENTS] section for the given subject.
 
@@ -67,7 +68,11 @@ def build_document_context_for_subject(
     """
 
     repo = DocumentRepository()
-    docs = repo.get_documents_for_subject(founder.strip(), (startup or "").strip())
+    docs = repo.get_documents_for_subject(
+        founder.strip(),
+        (startup or "").strip(),
+        user_id=user_id,
+    )
     if not docs:
         return ""
 

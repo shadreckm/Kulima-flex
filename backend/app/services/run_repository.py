@@ -74,14 +74,26 @@ class RunRepository:
             )
             conn.commit()
 
-    def get_run(self, run_id: str) -> Optional[dict]:
+    def get_run(self, run_id: str, user_id: str | None = None) -> Optional[dict]:
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM api_runs WHERE run_id = ?", (run_id,)).fetchone()
+            query = "SELECT * FROM api_runs WHERE run_id = ?"
+            params: list[object] = [run_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            row = conn.execute(query, tuple(params)).fetchone()
             if not row:
                 return None
             return dict(row)
 
-    def list_runs(self, limit: int = 100) -> list[dict]:
+    def list_runs(self, limit: int = 100, user_id: str | None = None) -> list[dict]:
         with self._connect() as conn:
-            rows = conn.execute("SELECT * FROM api_runs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            query = "SELECT * FROM api_runs"
+            params: list[object] = []
+            if user_id is not None:
+                query += " WHERE user_id = ?"
+                params.append(user_id)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, tuple(params)).fetchall()
             return [dict(r) for r in rows]
