@@ -7,6 +7,8 @@ from typing import Any
 from kulima.models import (
     AgentResult,
     ConfidenceLevel,
+    EvidenceDepth,
+    IntegrityGrade,
     Recommendation,
     ScoreDimension,
 )
@@ -143,17 +145,77 @@ def aggregate_agent_score(result: AgentResult, default: float = 50.0) -> float:
     return clamp(sum(weighted) / total_w if total_w else default)
 
 
-def recommendation_from_score(score: float, risk_score: float, red_flag_count: int) -> Recommendation:
-    if red_flag_count >= 3 or risk_score >= 75:
+def recommendation_from_score(
+    score: float,
+    risk_score: float,
+    red_flag_count: int,
+    trust_score: float | None = None,
+    confidence: float | None = None,
+    integrity_grade: IntegrityGrade | str | None = None,
+    evidence_depth: EvidenceDepth | str | None = None,
+) -> Recommendation:
+    """Calibrate a deal recommendation from available decision signals.
+
+    Backwards compatible with the existing three-argument call sites, while
+    allowing richer tiering when trust, confidence, and evidence-quality inputs
+    are available.
+    """
+
+    def _grade_value(value: IntegrityGrade | str | None) -> str:
+        return getattr(value, "value", str(value) if value is not None else "").upper()
+
+    def _depth_value(value: EvidenceDepth | str | None) -> str:
+        return getattr(value, "value", str(value) if value is not None else "").lower()
+
+    score = clamp(score)
+    trust = clamp(trust_score if trust_score is not None else 50.0)
+    conf = max(0.0, min(1.0, confidence if confidence is not None else 0.55))
+    grade = _grade_value(integrity_grade)
+    depth = _depth_value(evidence_depth)
+
+    # Hard block only truly severe cases. The earlier >=3 red-flag rule was
+    # collapsing nearly the entire historical corpus into Pass.
+    if risk_score >= 75 or red_flag_count >= 12:
         return Recommendation.PASS
-    if score >= 78 and risk_score < 45:
-        return Recommendation.INVEST
-    if score >= 68 and risk_score < 55:
+    if score < 15 or trust < 18:
+        return Recommendation.PASS
+    if red_flag_count >= 10 and risk_score >= 65:
+        return Recommendation.PASS
+
+    low_depth = depth in {EvidenceDepth.THIN.value, EvidenceDepth.LIMITED.value}
+    weak_grade = grade in {IntegrityGrade.D.value, IntegrityGrade.F.value}
+
+    if (
+        score >= 35
+        and risk_score < 60
+        and trust >= 60
+        and conf >= 0.85
+        and grade == IntegrityGrade.A.value
+        and depth in {EvidenceDepth.RICH.value, EvidenceDepth.COMPREHENSIVE.value}
+    ):
         return Recommendation.CO_INVEST
-    if score >= 55:
+
+    if (
+        score >= 25
+        and risk_score < 65
+        and trust >= 45
+        and conf >= 0.55
+        and not weak_grade
+        and not low_depth
+    ):
+        return Recommendation.INVEST
+
+    if (
+        score >= 18
+        and risk_score < 70
+        and trust >= 20
+        and conf >= 0.35
+    ):
         return Recommendation.OBSERVE
-    if score >= 45:
-        return Recommendation.FOLLOW_ON_WATCH
+
+    if score >= 15 and risk_score < 70:
+        return Recommendation.OBSERVE
+
     return Recommendation.PASS
 
 

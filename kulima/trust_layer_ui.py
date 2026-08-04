@@ -410,6 +410,13 @@ def render_reliability_card(report: EvidenceIntegrityReport | None) -> None:
                 icon="🌍",
             )
 
+        # Simple corpus composition note (documents vs web sources)
+        if report.source_count:
+            st.caption(
+                f"Document Sources Used: {report.document_source_count} · "
+                f"Web Sources Used: {report.web_source_count}"
+            )
+
         # Plain-English summary
         if report.integrity_summary:
             st.markdown("---")
@@ -494,6 +501,7 @@ def render_reliability_report(report: EvidenceIntegrityReport | None) -> None:
     n_ign = len(report.ignored_conflicts)
     st.caption(
         f"{report.source_count} source(s) reviewed · "
+        f"{report.document_source_count} document · {report.web_source_count} web · "
         f"{report.claim_count} fact(s) extracted · "
         f"{len(report.contradictions)} material conflict(s) · "
         f"{n_ign} suppressed (FX artefact / temporal drift)"

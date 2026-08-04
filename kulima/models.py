@@ -73,6 +73,11 @@ class TrustEdge(BaseModel):
     target: str
     relation: str
     strength: float = Field(ge=0, le=1, default=0.5)
+    # Origin of this relationship in the evidence corpus: e.g. "web", "document",
+    # or "llm_inferred". Defaults to "web" for backwards compatibility.
+    source_type: str = "web"
+    # Confidence in this edge as a trust signal (0–1). Existing edges default to 0.5.
+    confidence: float = Field(ge=0, le=1, default=0.5)
 
 
 class TrustGraph(BaseModel):
@@ -315,6 +320,8 @@ class EvidenceIntegrityReport(BaseModel):
     claim_count: int = 0               # Total claims extracted
     source_count: int = 0              # Total sources analysed
     high_authority_count: int = 0      # Sources classified as high_authority_web
+    document_source_count: int = 0     # Sources originating from uploaded documents
+    web_source_count: int = 0          # Non-document sources (web / social / blog)
 
     # ── Findings ─────────────────────────────────────────────────────────────
     contradictions: list[Contradiction] = Field(default_factory=list)

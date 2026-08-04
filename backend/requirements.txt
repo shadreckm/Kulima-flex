@@ -1,0 +1,26 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# Auth / JWT
+PyJWT
+
+# Env loading
+python-dotenv
+
+# LLM client
+openai
+
+# Tavily OSINT client
+tavily-python
+
+# Data / viz dependencies used by kulima core (Streamlit app, portfolio, exports)
+streamlit
+plotly
+reportlab
+networkx
+
+# Testing (if you run tests inside the container)
+pytest

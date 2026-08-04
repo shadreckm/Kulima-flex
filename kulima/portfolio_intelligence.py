@@ -5,6 +5,7 @@ portfolio-level insights without any new AI calls or external APIs.
 
 Public API — pure functions (no Streamlit, fully testable):
   aggregate_portfolio()         — KPI dict from a list of run rows
+  build_pilot_analytics_metrics() — Pilot analytics KPI dict from stored runs
   top_deals()                   — ranked slice of rows
   ic_pipeline_filter()          — rows ready for IC presentation
   quadrant_label()              — risk-matrix quadrant for a single row
@@ -17,12 +18,14 @@ Public API — pure functions (no Streamlit, fully testable):
 
 Public API — Streamlit renderers:
   render_portfolio_dashboard()  — full Portfolio Intelligence dashboard
+  render_analytics_workspace()  — pilot analytics workspace
 
 No agents, orchestrator, scoring, Trust Layer, or database schema modified.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import plotly.graph_objects as go
@@ -115,11 +118,11 @@ def aggregate_portfolio(rows: list[dict]) -> dict[str, Any]:
         tm = row.get("thesis_match")
         if isinstance(tm, dict):
             thesis_matches.append(_safe_float(tm.get("overall_match")))
-        elif hasattr(tm, "overall_match"):
+        elif tm is not None and hasattr(tm, "overall_match"):
             thesis_matches.append(_safe_float(tm.overall_match))
         else:
             t_res = evaluate_thesis_match(row)
-            thesis_matches.append(t_res.overall_match)
+            thesis_matches.append(_safe_float(getattr(t_res, "overall_match", 0.0)))
 
     ic_ready = ic_pipeline_filter(rows)
 
@@ -137,6 +140,115 @@ def aggregate_portfolio(rows: list[dict]) -> dict[str, Any]:
         "ic_ready_count": len(ic_ready),
         "has_reliability_data": len(reliabilities) > 0,
     }
+
+
+def build_pilot_analytics_metrics(rows: list[dict]) -> dict[str, Any]:
+    """Compute pilot analytics metrics from stored run rows.
+
+    The workspace reads persisted runs only; it does not derive any new model
+    output or mutate the intelligence pipeline.
+    """
+    if not rows:
+        return {
+            "total_runs": 0,
+            "pass_count": 0,
+            "observe_count": 0,
+            "invest_count": 0,
+            "co_invest_count": 0,
+            "average_score": 0.0,
+            "average_confidence": 0.0,
+            "average_trust": 0.0,
+            "average_risk": 0.0,
+            "average_contradictions": 0.0,
+            "average_unsupported_claims": 0.0,
+            "evidence_coverage": 0.0,
+            "signal_coverage": 0.0,
+        }
+
+    rec_counts: dict[str, int] = {}
+    scores: list[float] = []
+    confidences: list[float] = []
+    trusts: list[float] = []
+    risks: list[float] = []
+    contradictions: list[float] = []
+    unsupported_claims: list[float] = []
+    evidence_coverage: list[float] = []
+    signal_coverage: list[float] = []
+    core_signal_sections = ("founder", "startup", "diligence", "risk", "memo")
+
+    for row in rows:
+        payload: dict[str, Any] = {}
+        payload_json = row.get("payload_json")
+        if isinstance(payload_json, str) and payload_json.strip():
+            try:
+                payload = json.loads(payload_json)
+            except json.JSONDecodeError:
+                payload = {}
+        elif isinstance(row.get("payload"), dict):
+            payload = row["payload"]
+
+        recommendation = _safe_str(row.get("recommendation") or payload.get("recommendation"), "—")
+        rec_counts[recommendation] = rec_counts.get(recommendation, 0) + 1
+
+        score = row.get("overall_score")
+        if score is None:
+            score = payload.get("overall_score")
+        scores.append(_safe_float(score))
+
+        confidence = row.get("confidence")
+        if confidence is None:
+            confidence = payload.get("confidence")
+        confidences.append(_safe_float(confidence))
+
+        trust = row.get("trust_score")
+        if trust is None:
+            trust = payload.get("trust_score")
+        trusts.append(_safe_float(trust))
+
+        risk = row.get("risk_score")
+        if risk is None:
+            risk = payload.get("risk_score")
+        risks.append(_safe_float(risk))
+
+        ei = row.get("evidence_integrity")
+        if not isinstance(ei, dict):
+            ei = payload.get("evidence_integrity") or {}
+
+        contradictions.append(float(len(ei.get("contradictions") or [])))
+        unsupported_claims.append(float(len(ei.get("unsupported_claims") or [])))
+
+        claim_count = _safe_float(ei.get("claim_count"), 0.0)
+        source_count = _safe_float(ei.get("source_count"), 0.0)
+        if claim_count > 0:
+            evidence_coverage.append(min(source_count / claim_count, 1.0) * 100.0)
+        else:
+            evidence_coverage.append(0.0)
+
+        agent_results = row.get("agent_results")
+        if not isinstance(agent_results, dict):
+            agent_results = payload.get("agent_results") or {}
+        if isinstance(agent_results, dict):
+            completed = sum(1 for section in core_signal_sections if agent_results.get(section))
+            signal_coverage.append((completed / len(core_signal_sections)) * 100.0)
+        else:
+            signal_coverage.append(0.0)
+
+    return {
+        "total_runs": len(rows),
+        "pass_count": rec_counts.get("Pass", 0),
+        "observe_count": rec_counts.get("Observe", 0),
+        "invest_count": rec_counts.get("Invest", 0),
+        "co_invest_count": rec_counts.get("Co-Invest", 0),
+        "average_score": sum(scores) / len(scores),
+        "average_confidence": sum(confidences) / len(confidences),
+        "average_trust": sum(trusts) / len(trusts),
+        "average_risk": sum(risks) / len(risks),
+        "average_contradictions": sum(contradictions) / len(contradictions),
+        "average_unsupported_claims": sum(unsupported_claims) / len(unsupported_claims),
+        "evidence_coverage": sum(evidence_coverage) / len(evidence_coverage),
+        "signal_coverage": sum(signal_coverage) / len(signal_coverage),
+    }
+
 
 
 def top_deals(
@@ -158,9 +270,10 @@ def top_deals(
             tm = row.get("thesis_match")
             if isinstance(tm, dict):
                 return _safe_float(tm.get("overall_match"))
-            if hasattr(tm, "overall_match"):
+            if tm is not None and hasattr(tm, "overall_match"):
                 return _safe_float(tm.overall_match)
-            return evaluate_thesis_match(row).overall_match
+            t_res = evaluate_thesis_match(row)
+            return _safe_float(getattr(t_res, "overall_match", 0.0))
         if sort_by == "reliability":
             rel = row.get("integrity_score")
             if rel is not None:
@@ -358,10 +471,11 @@ def thesis_distribution_chart(rows: list[dict]) -> go.Figure:
         tm = r.get("thesis_match")
         if isinstance(tm, dict):
             st_val = str(tm.get("status", "PASS")).upper()
-        elif hasattr(tm, "status"):
+        elif tm is not None and hasattr(tm, "status"):
             st_val = tm.status.value if hasattr(tm.status, "value") else str(tm.status).upper()
         else:
-            st_val = evaluate_thesis_match(r).status.value
+            t_res = evaluate_thesis_match(r)
+            st_val = getattr(getattr(t_res, "status", None), "value", str(getattr(t_res, "status", "PASS")).upper())
 
         status_counts[st_val] = status_counts.get(st_val, 0) + 1
 
@@ -562,6 +676,75 @@ def risk_matrix_figure(rows: list[dict]) -> go.Figure:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
+def _load_recent_full_rows(repo: Any, limit: int = 100) -> list[dict[str, Any]]:
+    """Load full stored rows, including payload_json, for analytics views."""
+    rows: list[dict[str, Any]] = []
+    for row in repo.recent_runs(limit=limit):
+        run_id = row.get("id")
+        if run_id is None:
+            continue
+        full_row = repo.get_run(int(run_id))
+        if full_row is not None:
+            rows.append(full_row)
+    return rows
+
+
+def render_analytics_workspace(repo: Any, key_prefix: str = "analytics") -> None:
+    """Render the pilot analytics workspace from stored database rows only."""
+    st.markdown("## 📈 Analytics Workspace")
+    st.caption(
+        "Read-only pilot analytics derived from stored runs in `founders.db`. No mock data, no new model calls."
+    )
+
+    full_rows = _load_recent_full_rows(repo, limit=100)
+    if not full_rows:
+        st.info(
+            "No stored runs found in `founders.db`. Run intelligence on deals to populate Analytics Workspace."
+        )
+        return
+
+    metrics = build_pilot_analytics_metrics(full_rows)
+    st.caption(
+        "Evidence coverage = source_count ÷ claim_count, capped at 100%. Signal coverage = completeness of the five stored agent result sections."
+    )
+
+    cards = [
+        ("Total Runs", metrics["total_runs"]),
+        ("Pass Count", metrics["pass_count"]),
+        ("Observe Count", metrics["observe_count"]),
+        ("Invest Count", metrics["invest_count"]),
+        ("Co-Invest Count", metrics["co_invest_count"]),
+        ("Average Score", f"{metrics['average_score']:.1f}"),
+        ("Average Confidence", f"{metrics['average_confidence']:.2f}"),
+        ("Average Trust", f"{metrics['average_trust']:.1f}"),
+        ("Average Risk", f"{metrics['average_risk']:.1f}"),
+        ("Average Contradictions", f"{metrics['average_contradictions']:.2f}"),
+        ("Average Unsupported Claims", f"{metrics['average_unsupported_claims']:.2f}"),
+        ("Evidence Coverage", f"{metrics['evidence_coverage']:.1f}%"),
+        ("Signal Coverage", f"{metrics['signal_coverage']:.1f}%"),
+    ]
+
+    for start in range(0, len(cards), 4):
+        cols = st.columns(min(4, len(cards) - start))
+        for col, (label, value) in zip(cols, cards[start : start + 4]):
+            col.metric(label, value)
+
+    st.divider()
+
+    st.markdown("### 📋 Live Pilot Snapshot")
+    st.dataframe(
+        [
+            {
+                "Metric": label,
+                "Value": value,
+            }
+            for label, value in cards
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+
 def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None:
     """Render full Portfolio Intelligence Layer dashboard."""
     st.markdown("## 📂 Portfolio Intelligence")
@@ -703,12 +886,12 @@ def render_portfolio_dashboard(repo: Any, key_prefix: str = "portfolio") -> None
         tm = r.get("thesis_match")
         if isinstance(tm, dict):
             tm_val = f"{_safe_float(tm.get('overall_match')):.0f}% ({tm.get('status', 'PASS')})"
-        elif hasattr(tm, "overall_match"):
+        elif tm is not None and hasattr(tm, "overall_match"):
             st_str = tm.status.value if hasattr(tm.status, "value") else str(tm.status)
             tm_val = f"{tm.overall_match:.0f}% ({st_str})"
         else:
             t_res = evaluate_thesis_match(r)
-            tm_val = f"{t_res.overall_match:.0f}% ({t_res.status.value})"
+            tm_val = f"{_safe_float(getattr(t_res, 'overall_match', 0.0)):.0f}% ({getattr(getattr(t_res, 'status', None), 'value', 'PASS')})"
 
         table_data.append(
             {

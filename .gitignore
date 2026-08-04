@@ -1,24 +1,86 @@
-## Runtime environment
+#################################################
+# Runtime Environment
+#################################################
+
 venv/
 .env
+.env.local
+
 __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
 
-## Database (contains sensitive deal data — never commit)
+#################################################
+# Databases (contains sensitive deal data)
+#################################################
+
 founders.db
 *.db
+*.sqlite
+*.sqlite3
 
-## OS artifacts
+#################################################
+# Frontend Build Artifacts
+#################################################
+
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+#################################################
+# Node Modules (fallback)
+#################################################
+
+node_modules/
+.next/
+
+#################################################
+# Logs and Local Runtime Output
+#################################################
+
+*.log
+*.out
+*.err
+
+backend_start.out
+backend_start.err
+
+#################################################
+# Test Output Files
+#################################################
+
+all_pytest_runs.txt
+all_tests_output.txt
+pytest_out.txt
+pytest_out_*.txt
+pytest_run1.txt
+run_all_tests_log.txt
+suite_results.txt
+test_results.txt
+test_output.txt
+test1_output.txt
+test1_full.txt
+ver_output.txt
+
+#################################################
+# OS Artifacts
+#################################################
+
 .DS_Store
 Thumbs.db
 
-## IDE settings
+#################################################
+# IDE Settings
+#################################################
+
 .vscode/
 .idea/
 
-## Internal planning and design documents (not for public repo)
+#################################################
+# Internal Planning / Design Documents
+#################################################
+
 repository_audit.md
 ARCHITECTURE_REVIEW.md
 deal-comparison-plan.md
@@ -30,15 +92,32 @@ trust-layer-coding-plan.md
 trust-layer-implementation-blueprint.md
 trust-layer-product-design.md
 
-## Test output files and logs (captured in CI — not needed in tree)
-all_pytest_runs.txt
-all_tests_output.txt
-pytest_out.txt
-pytest_run1.txt
-run_all_tests_log.txt
-suite_results.txt
-test_results.txt
-test_output.txt
-test1_output.txt
-test1_full.txt
-ver_output.txt
+#################################################
+# Deployment Secrets
+#################################################
+
+.env.production
+.env.development
+.env.test
+
+#################################################
+# Temporary Scripts and Local Utilities
+#################################################
+
+patch_signals_swap.py
+
+#################################################
+# Cache and Coverage
+#################################################
+
+.coverage
+coverage.xml
+htmlcov/
+
+#################################################
+# Misc
+#################################################
+
+*.tmp
+*.bak
+*.swp

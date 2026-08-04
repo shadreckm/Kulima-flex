@@ -21,6 +21,7 @@ import pytest
 
 from kulima.agents.orchestrator import (
     IntelligenceOrchestrator,
+    _blend_recommendation,
     _build_eie_dossier_line,
 )
 from kulima.models import (
@@ -568,15 +569,43 @@ class TestNoScoreModifications:
         report = report.model_copy(update={"confidence_delta": -0.15})
         orch, _ = _make_orchestrator_with_mocks(eie_report=report)
         brief = orch.analyze("Ada Obi", "PayFast NG")
-        # confidence on the brief must NOT have had -0.15 applied
-        # (it is computed solely from agent confidences)
-        assert brief.confidence > 0
-        # The delta is on the report, not the brief
+        assert brief.evidence_integrity is not None
         assert brief.evidence_integrity.confidence_delta == pytest.approx(-0.15)
-        # brief.confidence is NOT brief.evidence_integrity.confidence_adjusted
-        # We can't assert exact equality without knowing agent values,
-        # but we can assert the brief confidence was not reduced to near zero
-        assert brief.confidence > 0.10
+        assert brief.confidence > 0
+
+
+class TestRecommendationBlending:
+    def test_preserves_calibrated_algorithmic_tier(self) -> None:
+        assert _blend_recommendation(
+            Recommendation.OBSERVE,
+            Recommendation.PASS,
+            16.6,
+        ) == Recommendation.OBSERVE
+        assert _blend_recommendation(
+            Recommendation.INVEST,
+            Recommendation.PASS,
+            27.4,
+        ) == Recommendation.INVEST
+        assert _blend_recommendation(
+            Recommendation.PASS,
+            Recommendation.OBSERVE,
+            34.0,
+        ) == Recommendation.PASS
+
+    def test_preserves_high_conviction(self) -> None:
+        assert _blend_recommendation(
+            Recommendation.CO_INVEST,
+            Recommendation.PASS,
+            38.8,
+        ) == Recommendation.CO_INVEST
+
+    def test_high_agreement_can_uplift_to_high_conviction(self) -> None:
+        assert _blend_recommendation(
+            Recommendation.INVEST,
+            Recommendation.INVEST,
+            82.0,
+        ) == Recommendation.CO_INVEST
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS founders (
     founder_score INTEGER,
     trust_score INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS run_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    user_name TEXT NOT NULL,
+    rating INTEGER NOT NULL,
+    comment TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -85,6 +94,11 @@ class IntelligenceRepository:
                 "ALTER TABLE intelligence_runs ADD COLUMN integrity_grade TEXT DEFAULT NULL"
             )
             _log.debug("_migrate_schema: added column integrity_grade")
+        if "archived_at" not in existing:
+            conn.execute(
+                "ALTER TABLE intelligence_runs ADD COLUMN archived_at TEXT DEFAULT NULL"
+            )
+            _log.debug("_migrate_schema: added column archived_at")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -149,21 +163,28 @@ class IntelligenceRepository:
                 ),
             )
             conn.commit()
+            if cur.lastrowid is None:
+                raise RuntimeError("insert did not return a row id")
             return int(cur.lastrowid)
 
-    def recent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+    def recent_runs(
+        self,
+        limit: int = 20,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
+            query = """
                 SELECT id, created_at, founder_name, startup_name, sector, geography, stage,
                        overall_score, founder_score, trust_score, recommendation, confidence,
-                       integrity_score, integrity_grade
+                       integrity_score, integrity_grade, archived_at
                 FROM intelligence_runs
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            """
+            params: tuple[Any, ...] = (limit,)
+            if include_archived:
+                query += " ORDER BY id DESC LIMIT ?"
+            else:
+                query += " WHERE archived_at IS NULL ORDER BY id DESC LIMIT ?"
+            rows = conn.execute(query, params).fetchall()
             return [dict(r) for r in rows]
 
     def get_run(self, run_id: int) -> dict[str, Any] | None:
@@ -199,3 +220,71 @@ class IntelligenceRepository:
                 exc_info=True,
             )
             return None
+
+    def archive_run(self, run_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE intelligence_runs SET archived_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), run_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def reopen_run(self, run_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE intelligence_runs SET archived_at = NULL WHERE id = ?",
+                (run_id,),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def delete_run(self, run_id: int) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT founder_name, startup_name FROM intelligence_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            conn.execute("DELETE FROM intelligence_runs WHERE id = ?", (run_id,))
+            conn.execute(
+                """
+                DELETE FROM founders
+                WHERE id = (
+                    SELECT id FROM founders
+                    WHERE founder_name = ? AND startup_name = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                )
+                """,
+                (row["founder_name"], row["startup_name"]),
+            )
+            conn.commit()
+            return True
+
+    def save_feedback(
+        self,
+        run_id: int,
+        user_name: str,
+        rating: int,
+        comment: str,
+    ) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO run_feedback (run_id, user_name, rating, comment, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    user_name.strip() or "Pilot User",
+                    int(rating),
+                    comment.strip(),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+            if cur.lastrowid is None:
+                raise RuntimeError("feedback insert did not return a row id")
+            return int(cur.lastrowid)

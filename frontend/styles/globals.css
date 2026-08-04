@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  @apply bg-gray-50 text-slate-900;
+}
+
+/* Chat shell visuals */
+.kulima-chat-shell {
+  @apply bg-white rounded-lg shadow-md;
+}
+
+.kulima-composer {
+  @apply p-3 bg-white border-t border-gray-200;
+}
+
+.kulima-message-user {
+  @apply bg-blue-600 text-white rounded-md p-3 max-w-[80%] self-end;
+}
+
+.kulima-message-assistant {
+  @apply bg-gray-100 text-slate-900 rounded-md p-3 max-w-[78%] self-start;
+}
+
+/* Smooth message transition */
+.animate-message {
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+/* Typing dots */
+@keyframes typing-dot {
+  0% { transform: translateY(0); opacity: 0.3 }
+  50% { transform: translateY(-3px); opacity: 1 }
+  100% { transform: translateY(0); opacity: 0.3 }
+}
+.kulima-typing-dot { animation: typing-dot 1s infinite }
+
+/* Scroll area tweaks */
+.scroll-area {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Message entrance */
+.message-item > div { opacity: 1 }
+
+/* Cursor styling */
+.kulima-stream-cursor { display: inline-block; margin-left: 4px; color: #4b5563; font-weight: 700 }
+
+/* New messages button */
+.new-msg-btn { transition: transform 160ms ease, opacity 160ms ease }
+.new-msg-btn:hover { transform: translateY(-2px) }

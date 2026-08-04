@@ -1119,6 +1119,8 @@ class EvidenceIntegrityEngine:
         high_auth_count = sum(
             1 for s in sources if s.source_type == "high_authority_web"
         )
+        document_source_count = sum(1 for s in sources if s.source_type == "document")
+        web_source_count = source_count - document_source_count
         sparse_mode = IntegrityScoreCalculator._is_sparse(sources)
 
         # ── 1. Claim extraction ───────────────────────────────────────────
@@ -1185,6 +1187,8 @@ class EvidenceIntegrityEngine:
             claim_count=len(claims_fresh),
             source_count=source_count,
             high_authority_count=high_auth_count,
+            document_source_count=document_source_count,
+            web_source_count=web_source_count,
             contradictions=contradictions,
             ignored_conflicts=ignored,
             unsupported_claims=unsupported,
@@ -1296,6 +1300,8 @@ class EvidenceIntegrityEngine:
     ) -> EvidenceIntegrityReport:
         """Return a minimal safe report used when the engine fails."""
         sparse_mode = IntegrityScoreCalculator._is_sparse(sources)
+        doc_count = sum(1 for s in sources if s.source_type == "document")
+        web_count = len(sources) - doc_count
         return EvidenceIntegrityReport(
             integrity_score=100.0,
             integrity_grade=IntegrityGrade.A,
@@ -1306,6 +1312,7 @@ class EvidenceIntegrityEngine:
             high_authority_count=sum(
                 1 for s in sources if s.source_type == "high_authority_web"
             ),
+            document_source_count=doc_count,
+            web_source_count=web_count,
             extraction_notes=note,
-            generated_at=datetime.now(timezone.utc),
         )

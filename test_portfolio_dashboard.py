@@ -15,6 +15,7 @@ import pytest
 
 from kulima.portfolio_intelligence import (
     aggregate_portfolio,
+    build_pilot_analytics_metrics,
     ic_pipeline_filter,
     quadrant_label,
     recommendation_chart,
@@ -180,6 +181,44 @@ def test_quadrant_label():
     assert quadrant_label(50.0, 80.0) == "Evidence Solid, Deal Weak"
     assert quadrant_label(40.0, 30.0) == "Primary Data Needed"
     assert quadrant_label(85.0, None) == "No Reliability Data"
+
+
+def test_build_pilot_analytics_metrics():
+    rows = [
+        {
+            "recommendation": "Pass",
+            "overall_score": 40.0,
+            "confidence": 0.50,
+            "trust_score": 45.0,
+            "risk_score": 70.0,
+            "payload_json": "{\"evidence_integrity\": {\"claim_count\": 5, \"source_count\": 5, \"contradictions\": [1], \"unsupported_claims\": [1, 2]}, \"agent_results\": {\"founder\": 1, \"startup\": 1, \"diligence\": 1, \"risk\": 1, \"memo\": 1}}",
+        },
+        {
+            "recommendation": "Invest",
+            "overall_score": 80.0,
+            "confidence": 0.90,
+            "trust_score": 75.0,
+            "risk_score": 25.0,
+            "payload_json": "{\"evidence_integrity\": {\"claim_count\": 0, \"source_count\": 4, \"contradictions\": [], \"unsupported_claims\": []}, \"agent_results\": {\"founder\": 1, \"startup\": 1, \"diligence\": 1, \"risk\": 1, \"memo\": 1}}",
+        },
+    ]
+
+    metrics = build_pilot_analytics_metrics(rows)
+
+    assert metrics["total_runs"] == 2
+    assert metrics["pass_count"] == 1
+    assert metrics["observe_count"] == 0
+    assert metrics["invest_count"] == 1
+    assert metrics["co_invest_count"] == 0
+    assert pytest.approx(metrics["average_score"], 0.01) == 60.0
+    assert pytest.approx(metrics["average_confidence"], 0.01) == 0.70
+    assert pytest.approx(metrics["average_trust"], 0.01) == 60.0
+    assert pytest.approx(metrics["average_risk"], 0.01) == 47.5
+    assert pytest.approx(metrics["average_contradictions"], 0.01) == 0.5
+    assert pytest.approx(metrics["average_unsupported_claims"], 0.01) == 1.0
+    assert pytest.approx(metrics["evidence_coverage"], 0.01) == 50.0
+    assert pytest.approx(metrics["signal_coverage"], 0.01) == 100.0
+
 
 
 def test_charts_generation(mock_deal_rows):

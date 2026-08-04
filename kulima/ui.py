@@ -1059,6 +1059,362 @@ def inject_styles() -> None:
         @media (prefers-color-scheme: dark) {
             .reliability-card { background: rgba(13,43,33,0.88) !important; border-color: rgba(215,227,220,0.18) !important; }
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           CHAT SHELL V2 — ChatGPT / Copilot / Claude architecture
+           Applies to Ask IC and Ask SIGNALS.
+
+           Layout contract:
+             1. Chat header     (persona + badge)
+             2. Suggestions     (collapsed expander)
+             3. Message history (scrolls independently)
+             4. Attachment pill list (above composer)
+             5. Composer bar    (st.chat_input — stays at bottom)
+           ══════════════════════════════════════════════════════════════════ */
+
+        /* ── Chat shell wrapper ──────────────────────────────────────────── */
+        .kulima-chat-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 62vh;
+            max-height: calc(100vh - 12rem);
+            overflow: hidden;
+            padding: 0.85rem 1rem 0.8rem;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.82);
+            box-shadow: 0 14px 32px rgba(11,61,46,0.08);
+        }
+        .kulima-chat-history {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding-right: 0.15rem;
+            margin-bottom: 0.5rem;
+        }
+        .kulima-composer-wrapper {
+            flex: 0 0 auto;
+            position: sticky;
+            bottom: 0;
+            background: rgba(244,247,244,0.92);
+            padding-top: 0.35rem;
+            padding-bottom: 0.15rem;
+            z-index: 2;
+        }
+
+        /* ── Chat header — persona + context badge ───────────────────────── */
+        .kulima-chat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.5rem 0 0.45rem;
+            border-bottom: 1px solid rgba(11,61,46,0.10);
+            margin-bottom: 0.6rem;
+            flex-shrink: 0;
+        }
+        .kulima-chat-persona {
+            font-family: 'Fraunces', Georgia, serif;
+            font-weight: 700;
+            font-size: 1.02rem;
+            color: #0B3D2E;
+            letter-spacing: -0.01em;
+        }
+        .kulima-chat-badge {
+            font-size: 0.71rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            background: rgba(11,61,46,0.07);
+            color: #0B3D2E;
+            border: 1px solid rgba(11,61,46,0.13);
+            border-radius: 999px;
+            padding: 0.14rem 0.52rem;
+            white-space: nowrap;
+        }
+        /* Push clear button to far right */
+        .kulima-chat-header-spacer { flex: 1; }
+
+        /* ── Message bubbles ─────────────────────────────────────────────── */
+        [data-testid="stChatMessage"] {
+            border-radius: 12px !important;
+            margin-bottom: 0.25rem !important;
+            overflow-wrap: break-word !important;
+            word-break: break-word !important;
+        }
+        /* Assistant — left-aligned card */
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+            background: rgba(255,255,255,0.78) !important;
+            border: 1px solid rgba(11,61,46,0.08) !important;
+            padding: 0.55rem 0.85rem !important;
+        }
+        /* User — right-tinted, minimal */
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+            background: rgba(11,61,46,0.04) !important;
+            border: 1px solid rgba(11,61,46,0.07) !important;
+            padding: 0.45rem 0.85rem !important;
+        }
+        /* Prose inside messages */
+        [data-testid="stChatMessage"] p {
+            margin: 0 0 0.4rem !important;
+            line-height: 1.6 !important;
+        }
+        [data-testid="stChatMessage"] p:last-child { margin-bottom: 0 !important; }
+
+        /* ── Attached file pills — shown above composer ──────────────────── */
+        .kulima-attach-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            padding: 0.35rem 0 0.1rem;
+        }
+        .kulima-attach-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.28rem;
+            background: rgba(11,61,46,0.07);
+            border: 1px solid rgba(11,61,46,0.16);
+            border-radius: 8px;
+            padding: 0.22rem 0.6rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #0B3D2E;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Attachment icon pseudo-element */
+        .kulima-attach-pill::before {
+            content: "📎";
+            font-size: 0.72rem;
+            flex-shrink: 0;
+        }
+
+        /* ── Composer area — sits directly above st.chat_input ──────────── */
+        .kulima-composer-meta {
+            border-top: 1px solid rgba(11,61,46,0.08);
+            padding-top: 0.4rem;
+            margin-top: 0.5rem;
+        }
+        /* Uploader chrome — hide label, shrink footprint */
+        .kulima-composer-meta [data-testid="stFileUploaderDropzone"] {
+            padding: 0.45rem 0.7rem !important;
+            border-radius: 10px !important;
+            border: 1.5px dashed rgba(11,61,46,0.22) !important;
+            background: rgba(255,255,255,0.6) !important;
+            min-height: 0 !important;
+        }
+        .kulima-composer-meta [data-testid="stFileUploaderDropzone"] span {
+            font-size: 0.78rem !important;
+            color: #5B6F64 !important;
+        }
+        /* Hide "Browse files" button label — replaced by our own helper text */
+        .kulima-composer-meta [data-testid="stFileUploaderDropzoneInstructions"] {
+            display: none !important;
+        }
+        /* Compact the uploader section label row */
+        .kulima-composer-meta [data-testid="stWidgetLabel"] {
+            font-size: 0.78rem !important;
+            color: #5B6F64 !important;
+            margin-bottom: 0.2rem !important;
+        }
+
+        /* ── st.chat_input — the sole message entry point ───────────────── */
+        [data-testid="stChatInput"] {
+            background: transparent !important;
+        }
+        [data-testid="stChatInput"] > div {
+            border-radius: 14px !important;
+            border: 1.5px solid rgba(11,61,46,0.22) !important;
+            background: #FFFFFF !important;
+            box-shadow: 0 2px 8px rgba(11,61,46,0.06) !important;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+        }
+        [data-testid="stChatInput"] > div:focus-within {
+            border-color: #0B6E4F !important;
+            box-shadow: 0 2px 14px rgba(11,110,79,0.13) !important;
+        }
+        [data-testid="stChatInput"] textarea {
+            font-family: 'Source Sans 3', sans-serif !important;
+            font-size: 0.96rem !important;
+            line-height: 1.55 !important;
+            color: #111111 !important;
+            -webkit-text-fill-color: #111111 !important;
+            background: transparent !important;
+        }
+        [data-testid="stChatInput"] textarea::placeholder {
+            color: #4A5D53 !important;
+            opacity: 0.80 !important;
+        }
+        [data-testid="stChatInput"] button {
+            display: none !important;
+        }
+        [data-testid="stChatInput"] > div {
+            padding-right: 0 !important;
+        }
+
+        /* ── Suggestions expander — stays collapsed, low profile ─────────── */
+        .kulima-suggestions-expander details,
+        .kulima-suggestions-expander [data-testid="stExpander"] {
+            border: 1px solid rgba(11,61,46,0.09) !important;
+            border-radius: 10px !important;
+            background: rgba(255,255,255,0.48) !important;
+            margin-bottom: 0.5rem !important;
+        }
+        .kulima-suggestions-expander summary,
+        .kulima-suggestions-expander [data-testid="stExpanderToggleIcon"] {
+            font-size: 0.80rem !important;
+            color: #5B6F64 !important;
+        }
+        /* Suggestion buttons inside expander — plain text links */
+        .kulima-suggestions-expander button {
+            background: transparent !important;
+            border: none !important;
+            color: #0B3D2E !important;
+            font-size: 0.84rem !important;
+            font-weight: 500 !important;
+            text-align: left !important;
+            padding: 0.3rem 0.5rem !important;
+            border-radius: 6px !important;
+            transition: background 0.12s ease !important;
+        }
+        .kulima-suggestions-expander button:hover {
+            background: rgba(11,61,46,0.07) !important;
+        }
+
+        /* ── Clear button — minimal, top-right of header ─────────────────── */
+        .kulima-chat-clear button {
+            background: transparent !important;
+            color: #8A9E94 !important;
+            border: 1px solid rgba(11,61,46,0.12) !important;
+            border-radius: 7px !important;
+            font-size: 0.74rem !important;
+            padding: 0.18rem 0.55rem !important;
+            font-weight: 600 !important;
+            min-height: 0 !important;
+            line-height: 1.4 !important;
+        }
+        .kulima-chat-clear button:hover {
+            border-color: #9B2226 !important;
+            color: #9B2226 !important;
+            background: rgba(155,34,38,0.04) !important;
+        }
+
+        /* ── Dark mode ───────────────────────────────────────────────────── */
+        @media (prefers-color-scheme: dark) {
+            .kulima-chat-persona { color: #D7E3DC !important; }
+            .kulima-chat-badge {
+                background: rgba(215,227,220,0.10) !important;
+                color: #D7E3DC !important;
+                border-color: rgba(215,227,220,0.18) !important;
+            }
+            [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+                background: rgba(13,43,33,0.82) !important;
+                border-color: rgba(215,227,220,0.10) !important;
+            }
+            [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+                background: rgba(255,255,255,0.04) !important;
+                border-color: rgba(255,255,255,0.07) !important;
+            }
+            [data-testid="stChatInput"] > div {
+                background: #0F2A1E !important;
+                border-color: rgba(215,227,220,0.18) !important;
+            }
+            [data-testid="stChatInput"] textarea {
+                color: #EDF6F0 !important;
+                -webkit-text-fill-color: #EDF6F0 !important;
+            }
+            .kulima-attach-pill {
+                background: rgba(215,227,220,0.10) !important;
+                border-color: rgba(215,227,220,0.20) !important;
+                color: #D7E3DC !important;
+            }
+            .kulima-composer-meta [data-testid="stFileUploaderDropzone"] {
+                background: rgba(13,43,33,0.60) !important;
+                border-color: rgba(215,227,220,0.20) !important;
+            }
+        }
+
+        /* ── Responsive context panel, chat shell, and forms ─────────────── */
+        .kulima-context-panel {
+            min-height: 62vh;
+            max-height: calc(100vh - 12rem);
+            overflow-y: auto;
+            padding: 1rem 1rem 1.1rem;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.82);
+            box-shadow: 0 14px 32px rgba(11,61,46,0.08);
+            color: #0B3D2E;
+        }
+        .kulima-context-panel h4,
+        .kulima-context-panel h5 {
+            margin-top: 0;
+            margin-bottom: 0.75rem;
+            color: #0B3D2E;
+        }
+        .kulima-context-panel p,
+        .kulima-context-panel span,
+        .kulima-context-panel li {
+            color: #254136;
+        }
+        .kulima-context-panel a {
+            color: #0B6E4F;
+        }
+        .kulima-context-panel > div {
+            margin-bottom: 0.85rem;
+        }
+        .kulima-context-panel img {
+            max-width: 100%;
+            border-radius: 12px;
+        }
+
+        /* ── Tablet and smaller: stack dense horizontal blocks ───────────── */
+        @media (max-width: 1023px) {
+            .kulima-chat-shell,
+            .kulima-context-panel {
+                max-height: none;
+                min-height: unset;
+                width: 100%;
+            }
+            .kulima-context-panel {
+                margin-top: 0.75rem;
+            }
+            [data-testid="stSidebar"] {
+                min-width: 0 !important;
+                width: 100% !important;
+            }
+            [data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap !important;
+            }
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                min-width: 100% !important;
+                width: 100% !important;
+                flex: 1 1 100% !important;
+            }
+            .stTabs [data-baseweb="tab-list"] {
+                overflow-x: auto;
+            }
+        }
+
+        /* ── Mobile ──────────────────────────────────────────────────────── */
+        @media (max-width: 767px) {
+            .kulima-chat-shell,
+            .kulima-context-panel {
+                border-radius: 14px;
+                padding: 0.8rem 0.8rem 0.9rem;
+                max-height: none;
+                min-height: unset;
+            }
+            .kulima-chat-persona  { font-size: 0.9rem; }
+            .kulima-chat-badge    { font-size: 0.65rem; }
+            [data-testid="stChatMessage"] { padding: 0.4rem 0.6rem !important; }
+            [data-testid="stChatInput"] textarea { font-size: 0.88rem !important; }
+            .kulima-attach-pill   { font-size: 0.72rem; max-width: 160px; }
+            [data-testid="stButton"] > button {
+                width: 100% !important;
+            }
+            [data-testid="stSidebar"] {
+                min-width: 0 !important;
+                width: 100% !important;
+            }
+        }
         """), unsafe_allow_html=True)
 
 
@@ -1068,6 +1424,7 @@ def render_hero() -> None:
             <p class="kulima-brand">Kulima FLEX</p>
             <p class="kulima-sub">AI Investment Intelligence Operating System for Africa</p>
             <div class="hero-pills">
+                <span class="hero-pill">Kulima OS Pilot v1</span>
                 <span class="hero-pill">Multi-Agent Diligence</span>
                 <span class="hero-pill">Twin Syndicate IC</span>
                 <span class="hero-pill">Continental Futures</span>
@@ -1083,14 +1440,14 @@ def render_empty_state() -> None:
         <div class="empty-state">
             <h3>Executive IC Workspace</h3>
             <p>Enter a founder and startup in the sidebar, then run full intelligence.
-            Kulima FLEX will research, score, convene the Twin Syndicate, simulate African
+            Kulima OS will research, score, convene the Twin Syndicate, simulate African
             market futures, and produce an IC-ready memo pack.</p>
             <ol>
-              <li>OSINT research across founder &amp; startup signals</li>
-              <li>Five specialized agents underwrite the deal</li>
-              <li>Twin Syndicate votes Invest / Observe / Pass</li>
-              <li>Continental Futures maps Bull / Base / Bear</li>
-              <li>Export memo + full committee report</li>
+              <li>Review the live decision snapshot after each run.</li>
+              <li>Use History to reopen saved analyses or archive stale ones.</li>
+              <li>Open Evidence, Reports, Signals, and Analytics from the workspace menu.</li>
+              <li>Export the memo pack with one click for the pilot review group.</li>
+              <li>Leave pilot feedback so the team can calibrate the next release.</li>
             </ol>
         </div>
         """), unsafe_allow_html=True)
@@ -2242,7 +2599,9 @@ def render_history_panel(rows: list[dict]) -> int | None:
     pressed, or empty history).
     """
     if not rows:
-        st.caption("No intelligence runs stored yet — run your first deal above.")
+        st.info(
+            "No saved analyses yet. Run a deal to build pilot history, then use the workspace menu to reopen, archive, or compare runs."
+        )
         return None
 
     # ── Build display table ──────────────────────────────────────────────────
@@ -2263,6 +2622,8 @@ def render_history_panel(rows: list[dict]) -> int | None:
             "Score": f"{float(r.get('overall_score') or 0):.0f}",
             "Confidence": f"{float(r.get('confidence') or 0):.0%}",
         }
+        status = "Archived" if r.get("archived_at") else "Active"
+        row_dict["Status"] = status
         if _has_integrity:
             grade = r.get("integrity_grade") or "—"
             score = r.get("integrity_score")
@@ -2282,10 +2643,11 @@ def render_history_panel(rows: list[dict]) -> int | None:
         "Founder": st.column_config.TextColumn("Founder"),
         "Startup": st.column_config.TextColumn("Startup"),
         "Rec": st.column_config.TextColumn("Recommendation"),
+        "Status": st.column_config.TextColumn("Status", width="small"),
         "Score": st.column_config.TextColumn("Score", width="small"),
         "Confidence": st.column_config.TextColumn("Confidence", width="small"),
     }
-    disabled_cols = ["ID", "Date", "Founder", "Startup", "Rec", "Score", "Confidence"]
+    disabled_cols = ["ID", "Date", "Founder", "Startup", "Rec", "Status", "Score", "Confidence"]
 
     if _has_integrity:
         base_col_config["Reliability"] = st.column_config.TextColumn(
@@ -2324,3 +2686,179 @@ def render_history_panel(rows: list[dict]) -> int | None:
         return None
 
     return int(selected.iloc[0]["ID"])
+
+
+def render_evidence_workspace(brief: InvestmentBrief, key_prefix: str = "workspace_evidence") -> None:
+    """Render the Evidence workspace from the actual run outputs.
+
+    This surface only reads existing intelligence artefacts; it does not
+    modify scoring, regenerate the investment brief, or change methodology.
+    """
+
+    from kulima.core.cases.adapters import from_investment_brief
+    from kulima.core.documents.context import build_document_context_for_subject
+    from kulima.core.documents.repository import DocumentRepository
+    from kulima.signals.models import SignalLevel
+    from kulima.signals.orchestrator import SignalsOrchestrator
+    from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
+
+    case = from_investment_brief(
+        brief,
+        case_id=f"evidence::{brief.founder_name}::{brief.startup_name}",
+        created_by=key_prefix,
+    )
+    signals = SignalsOrchestrator().generate(case)
+    signal_counts = count_signals_by_level(signals)
+    docs_repo = DocumentRepository()
+    docs = docs_repo.get_documents_for_subject(brief.founder_name, brief.startup_name)
+    doc_context = build_document_context_for_subject(
+        brief.founder_name,
+        brief.startup_name,
+        max_documents=3,
+        max_chars=2400,
+    )
+
+    st.markdown("## Evidence Workspace")
+    st.caption("All content on this page comes from the current run’s stored outputs.")
+
+    cols = st.columns(4)
+    cols[0].metric("Overall Score", f"{brief.overall_score:.0f}/100")
+    cols[1].metric("Confidence", f"{brief.confidence_level.value} ({brief.confidence:.2f})")
+    cols[2].metric("Sources", len(brief.sources))
+    cols[3].metric("Signals", len(signals))
+
+    if brief.evidence_integrity is not None:
+        ei = brief.evidence_integrity
+        depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        st.markdown(
+            textwrap.dedent(
+                f"""
+                <div class="dashboard-shell" style="margin-top:0.75rem;">
+                    <div class="dashboard-kicker">Reliability Indicators</div>
+                    <p><b>Grade:</b> {html.escape(ei.integrity_grade.value)} · <b>Score:</b> {ei.integrity_score:.0f}/100 ·
+                    <b>Depth:</b> {html.escape(depth_label)} · <b>Consistency:</b> {html.escape(ei.consistency_status.value.replace('_', ' '))}</p>
+                    <p><b>Sources reviewed:</b> {ei.source_count} · <b>Claims extracted:</b> {ei.claim_count} ·
+                    <b>High-authority sources:</b> {ei.high_authority_count} · <b>Document sources:</b> {ei.document_source_count} ·
+                    <b>Web sources:</b> {ei.web_source_count}</p>
+                    <p>{html.escape(ei.integrity_summary or 'No integrity summary available.')}</p>
+                </div>
+                """
+            ),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("Evidence Integrity Engine was not available for this run.")
+
+    with st.expander("Sources used", expanded=True):
+        if brief.sources:
+            for idx, src in enumerate(brief.sources, 1):
+                st.markdown(f"**[S{idx}] {html.escape(src.title)}**", unsafe_allow_html=True)
+                st.caption(
+                    f"{src.source_type} · confidence {src.confidence_score:.2f} · relevance {src.relevance:.2f}"
+                )
+                if src.url:
+                    st.code(src.url)
+                if src.snippet:
+                    st.write(src.snippet)
+                st.divider()
+        else:
+            st.caption("No source attribution was stored on this run.")
+
+    with st.expander("Research results", expanded=True):
+        agent_results = brief.agent_results or {}
+        order = ["founder", "startup", "diligence", "risk", "memo"]
+        found_any = False
+        for key in order:
+            result = agent_results.get(key)
+            if result is None:
+                continue
+            found_any = True
+            heading = key.replace("_", " ").title()
+            st.markdown(f"#### {heading}")
+            st.caption(f"Confidence {result.confidence:.2f}")
+            if result.summary:
+                st.write(result.summary)
+            if getattr(result, "scores", None):
+                score_lines = [
+                    f"• {score.name}: {score.score:.0f}/100 — {score.rationale}"
+                    for score in result.scores[:5]
+                ]
+                st.markdown("\n".join(score_lines))
+            if getattr(result, "findings", None):
+                with st.expander(f"{heading} findings", expanded=False):
+                    for item in result.findings[:8]:
+                        st.markdown(f"- {item}")
+            if getattr(result, "red_flags", None):
+                with st.expander(f"{heading} red flags", expanded=False):
+                    for flag in result.red_flags[:6]:
+                        st.markdown(
+                            f"- [{flag.severity.upper()}] {flag.title}: {flag.detail}"
+                        )
+            st.divider()
+        if not found_any:
+            st.caption("No agent results were stored on this run.")
+
+    with st.expander("Documents used", expanded=True):
+        if docs:
+            for idx, doc in enumerate(docs, 1):
+                st.markdown(f"**[D{idx}] {html.escape(doc.filename)}**", unsafe_allow_html=True)
+                st.caption(f"{doc.doc_type.value} · {doc.source_type}")
+                chunks = docs_repo.get_chunks_for_document(doc.id)
+                if chunks:
+                    st.write(" ".join(ch.text.strip() for ch in chunks[:2] if ch.text.strip()))
+                st.divider()
+        else:
+            st.caption("No documents are associated with this run.")
+        if doc_context:
+            with st.expander("Document context pack", expanded=False):
+                st.code(doc_context)
+
+    with st.expander("Signals generated", expanded=True):
+        st.markdown(
+            " &nbsp; ".join(
+                f'<span class="hero-pill">{label} {signal_counts.get(level, 0)}</span>'
+                for level, label in [
+                    (SignalLevel.CRITICAL, "CRITICAL"),
+                    (SignalLevel.HIGH, "HIGH"),
+                    (SignalLevel.MEDIUM, "MEDIUM"),
+                    (SignalLevel.LOW, "LOW"),
+                ]
+                if signal_counts.get(level, 0) > 0
+            ),
+            unsafe_allow_html=True,
+        )
+        if not signals:
+            st.caption("No signals were generated for this analysis.")
+        else:
+            for idx, sig in enumerate(highest_priority_signals(signals), 1):
+                st.markdown(
+                    textwrap.dedent(
+                        f"""
+                        <div style="border-left:3px solid #0B6E4F;padding:0.6rem 0.8rem;margin:0.45rem 0;background:rgba(0,0,0,0.02);border-radius:0 8px 8px 0;">
+                            <div><b>[SG{idx}] {html.escape(sig.level.value.upper())} · {html.escape(sig.category.value.title())}</b></div>
+                            <div><b>{html.escape(sig.title)}</b></div>
+                            <div>{html.escape(sig.description)}</div>
+                            <div style="font-size:0.85rem;color:#5B6F64;">Refs: {html.escape(', '.join(sig.evidence_refs) if sig.evidence_refs else '—')} · Confidence {sig.confidence:.2f}{f' · {html.escape(sig.time_horizon)}' if sig.time_horizon else ''}</div>
+                            <div style="font-size:0.85rem;color:#0B3D2E;font-weight:600;">→ {html.escape(sig.recommended_action or '—')}</div>
+                        </div>
+                        """
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+    with st.expander("Confidence and reliability", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Confidence", f"{brief.confidence_level.value} ({brief.confidence:.2f})")
+        c2.metric("Reliability Grade", brief.evidence_integrity.integrity_grade.value if brief.evidence_integrity else "—")
+        c3.metric("Reliability Score", f"{brief.evidence_integrity.integrity_score:.0f}/100" if brief.evidence_integrity else "—")
+        st.caption("Signals and evidence are shown from the stored run only; nothing is recomputed here beyond deterministic SIGNALS rendering.")
+
+
+def render_reports_workspace(brief: InvestmentBrief, key_prefix: str = "workspace_reports") -> None:
+    """Render the report generation workspace using actual run outputs."""
+
+    from kulima.export import render_reports_buttons
+
+    st.markdown("## Reports Workspace")
+    st.caption("Generate the four report PDFs from the current run’s stored outputs.")
+    render_reports_buttons(brief, key_prefix=key_prefix)

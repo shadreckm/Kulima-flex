@@ -2,26 +2,55 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import io
 import re
-from datetime import datetime, timezone
+from typing import Any
 
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    ListFlowable,
-    ListItem,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 
+def _load_reportlab_symbols() -> tuple[Any, ...]:
+    try:
+        from reportlab.lib import colors as colors_
+        from reportlab.lib.enums import TA_CENTER as TA_CENTER_, TA_JUSTIFY as TA_JUSTIFY_
+        from reportlab.lib.pagesizes import A4 as A4_
+        from reportlab.lib.styles import (
+            ParagraphStyle as ParagraphStyle_,
+            getSampleStyleSheet as getSampleStyleSheet_,
+        )
+        from reportlab.lib.units import inch as inch_
+        from reportlab.platypus import (
+            Paragraph as Paragraph_,
+            SimpleDocTemplate as SimpleDocTemplate_,
+            Spacer as Spacer_,
+            Table as Table_,
+            TableStyle as TableStyle_,
+        )
+        return (
+            colors_,
+            TA_CENTER_,
+            TA_JUSTIFY_,
+            A4_,
+            ParagraphStyle_,
+            getSampleStyleSheet_,
+            inch_,
+            Paragraph_,
+            SimpleDocTemplate_,
+            Spacer_,
+            Table_,
+            TableStyle_,
+        )
+    except ImportError:
+        return (None,) * 12
+
+
+colors, TA_CENTER, TA_JUSTIFY, A4, ParagraphStyle, getSampleStyleSheet, inch, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle = _load_reportlab_symbols()
+
+from kulima.core.cases.adapters import from_investment_brief
+from kulima.core.documents.context import build_document_context_for_subject
 from kulima.models import EvidenceIntegrityReport, InvestmentBrief
+from kulima.signals.models import Signal
+from kulima.signals.orchestrator import SignalsOrchestrator
+from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
 
 
 # ── Trust Layer helpers ───────────────────────────────────────────────────────
@@ -70,6 +99,12 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
         "memo_pdf": f"Kulima_IC_Memo_{base}.pdf",
         "report_txt": f"Kulima_Full_IC_Report_{base}.txt",
         "report_pdf": f"Kulima_Full_IC_Report_{base}.pdf",
+        "signals_txt": f"Kulima_Signals_Report_{base}.txt",
+        "signals_pdf": f"Kulima_Signals_Report_{base}.pdf",
+        "dd_txt": f"Kulima_Due_Diligence_Summary_{base}.txt",
+        "dd_pdf": f"Kulima_Due_Diligence_Summary_{base}.pdf",
+        "onepager_txt": f"Kulima_Executive_One_Pager_{base}.txt",
+        "onepager_pdf": f"Kulima_Executive_One_Pager_{base}.pdf",
     }
 
 
@@ -453,6 +488,26 @@ def _esc(text: str) -> str:
 
 
 def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
+    if any(
+        symbol is None
+        for symbol in (
+            colors,
+            TA_CENTER,
+            TA_JUSTIFY,
+            A4,
+            ParagraphStyle,
+            getSampleStyleSheet,
+            inch,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+    ):
+        text = build_full_ic_report_text(brief) if full_report else build_memo_text(brief)
+        return text.encode("utf-8")
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -465,7 +520,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
         author="Kulima FLEX",
     )
     styles = _pdf_styles()
-    story = []
+    story: list = []
 
     title = (
         "Kulima FLEX — Full Investment Committee Report"
@@ -589,13 +644,10 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
             story.append(
                 Paragraph("<b>Verification checklist:</b>", styles["KulimaBody"])
             )
-            checklist_items = [
-                ListItem(Paragraph(_esc(item), styles["KulimaVerification"]))
-                for item in ei.verification_checklist
-            ]
-            story.append(
-                ListFlowable(checklist_items, bulletType="1", start=1, leftIndent=12)
-            )
+            for idx, item in enumerate(ei.verification_checklist, 1):
+                story.append(
+                    Paragraph(f"{idx}. {_esc(item)}", styles["KulimaVerification"])
+                )
         story.append(Spacer(1, 8))
 
     sections = [
@@ -637,11 +689,8 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
 
     story.append(Paragraph("7. Next Steps", styles["KulimaH2"]))
     if brief.next_steps:
-        items = [
-            ListItem(Paragraph(_esc(step), styles["KulimaBullet"]))
-            for step in brief.next_steps
-        ]
-        story.append(ListFlowable(items, bulletType="1", start=1, leftIndent=12))
+        for idx, step in enumerate(brief.next_steps, 1):
+            story.append(Paragraph(f"{idx}. {_esc(step)}", styles["KulimaBullet"]))
     else:
         story.append(Paragraph("—", styles["KulimaBody"]))
 
@@ -766,6 +815,383 @@ def build_memo_pdf(brief: InvestmentBrief) -> bytes:
 
 def build_full_ic_report_pdf(brief: InvestmentBrief) -> bytes:
     return _build_pdf(brief, full_report=True)
+
+
+def _brief_case_and_signals(brief: InvestmentBrief) -> tuple[object, list[Signal]]:
+    case = from_investment_brief(
+        brief,
+        case_id=f"reports::{brief.founder_name}::{brief.startup_name}",
+        created_by="report_exports",
+    )
+    signals = SignalsOrchestrator().generate(case)
+    return case, signals
+
+
+def _brief_document_lines(brief: InvestmentBrief, max_documents: int = 3) -> list[str]:
+    doc_section = build_document_context_for_subject(
+        brief.founder_name,
+        brief.startup_name,
+        max_documents=max_documents,
+        max_chars=2400,
+    )
+    if not doc_section:
+        return ["No documents attached to this run."]
+    return [line for line in doc_section.splitlines() if line.strip()]
+
+
+def build_signals_report_text(brief: InvestmentBrief) -> str:
+    _, signals = _brief_case_and_signals(brief)
+    counts = count_signals_by_level(signals)
+    parts = [
+        "KULIMA FLEX — SIGNALS REPORT",
+        "=" * 40,
+        f"Deal: {brief.founder_name} / {brief.startup_name}",
+        f"Recommendation: {brief.recommendation.value} | Overall Score: {brief.overall_score:.0f}/100",
+        f"Confidence: {brief.confidence_level.value} ({brief.confidence:.2f})",
+    ]
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        parts.append(
+            f"Reliability: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) | "
+            f"Depth: {depth_label} | Consistency: {ei.consistency_status.value}"
+        )
+    from kulima.signals.models import SignalLevel
+    parts.extend([
+        "",
+        "SIGNALS OVERVIEW",
+        "-" * 40,
+        f"Total signals: {len(signals)}",
+        f"Critical: {counts.get(SignalLevel.CRITICAL, 0)}",
+        f"High: {counts.get(SignalLevel.HIGH, 0)}",
+        f"Medium: {counts.get(SignalLevel.MEDIUM, 0)}",
+        f"Low: {counts.get(SignalLevel.LOW, 0)}",
+        "",
+    ])
+    for idx, sig in enumerate(highest_priority_signals(signals), 1):
+        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "—"
+        parts.extend(
+            [
+                f"[SG{idx}] {sig.level.value.upper()} · {sig.category.value.title()} · {sig.title}",
+                f"Direction: {sig.direction}",
+                f"Description: {sig.description}",
+                f"Evidence refs: {refs}",
+                f"Action: {sig.recommended_action or '—'}",
+                f"Confidence: {sig.confidence:.2f}",
+                f"Time horizon: {sig.time_horizon or '—'}",
+                "",
+            ]
+        )
+    return "\n".join(parts).strip()
+
+
+def build_signals_report_pdf(brief: InvestmentBrief) -> bytes:
+    _, signals = _brief_case_and_signals(brief)
+    counts = count_signals_by_level(signals)
+    section_lines: list[tuple[str, list[str]]] = []
+    overview = [
+        f"Total signals: {len(signals)}",
+        f"Critical: {counts.get(__import__('kulima.signals.models').signals.models.SignalLevel.CRITICAL, 0)}",
+        f"High: {counts.get(__import__('kulima.signals.models').signals.models.SignalLevel.HIGH, 0)}",
+        f"Medium: {counts.get(__import__('kulima.signals.models').signals.models.SignalLevel.MEDIUM, 0)}",
+        f"Low: {counts.get(__import__('kulima.signals.models').signals.models.SignalLevel.LOW, 0)}",
+    ]
+    section_lines.append(("Signals Overview", overview))
+    for idx, sig in enumerate(highest_priority_signals(signals), 1):
+        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "—"
+        section_lines.append(
+            (
+                f"[SG{idx}] {sig.title}",
+                [
+                    f"Level: {sig.level.value.upper()}",
+                    f"Category: {sig.category.value.title()}",
+                    f"Direction: {sig.direction}",
+                    f"Description: {sig.description}",
+                    f"Evidence refs: {refs}",
+                    f"Recommended action: {sig.recommended_action or '—'}",
+                    f"Confidence: {sig.confidence:.2f}",
+                    f"Time horizon: {sig.time_horizon or '—'}",
+                ],
+            )
+        )
+    return _build_simple_pdf(
+        title="Kulima FLEX — Signals Report",
+        subtitle=[
+            f"{brief.founder_name} / {brief.startup_name}",
+            f"Recommendation: {brief.recommendation.value} | Overall {brief.overall_score:.0f}/100",
+        ],
+        sections=section_lines,
+    )
+
+
+def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
+    lines = [
+        "KULIMA FLEX — DUE DILIGENCE SUMMARY",
+        "=" * 40,
+        f"Deal: {brief.founder_name} / {brief.startup_name}",
+        f"Recommendation: {brief.recommendation.value} | Overall Score: {brief.overall_score:.0f}/100",
+        f"Confidence: {brief.confidence_level.value} ({brief.confidence:.2f})",
+        "",
+        "RESEARCH RESULTS",
+        "-" * 40,
+        f"Executive summary: {brief.executive_summary or '—'}",
+        f"Founder assessment: {brief.founder_assessment or '—'}",
+        f"Startup assessment: {brief.startup_assessment or '—'}",
+        f"Market assessment: {brief.market_assessment or '—'}",
+        f"Risk assessment: {brief.risk_assessment or '—'}",
+        "",
+        "DOCUMENTS USED",
+        "-" * 40,
+        *_brief_document_lines(brief),
+        "",
+        "SOURCES USED",
+        "-" * 40,
+    ]
+    if brief.sources:
+        for i, src in enumerate(brief.sources, 1):
+            lines.extend(
+                [
+                    f"[S{i}] {src.title}",
+                    f"URL: {src.url}",
+                    f"Type: {src.source_type} | Relevance: {src.relevance:.2f} | Confidence: {src.confidence_score:.2f}",
+                    f"Snippet: {src.snippet or '—'}",
+                    "",
+                ]
+            )
+    else:
+        lines.append("No sources attached.")
+        lines.append("")
+
+    lines.extend([
+        "RELIABILITY INDICATORS",
+        "-" * 40,
+    ])
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        lines.extend(
+            [
+                f"Grade: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100)",
+                f"Depth: {depth_label}",
+                f"Consistency: {ei.consistency_status.value.replace('_', ' ')}",
+                f"Sources reviewed: {ei.source_count}",
+                f"Claims extracted: {ei.claim_count}",
+                f"High-authority sources: {ei.high_authority_count}",
+            ]
+        )
+    else:
+        lines.append("Evidence Integrity Engine not run for this analysis.")
+
+    lines.extend([
+        "",
+        "NEXT STEPS",
+        "-" * 40,
+    ])
+    if brief.next_steps:
+        for i, step in enumerate(brief.next_steps, 1):
+            lines.append(f"{i}. {step}")
+    else:
+        lines.append("No next steps recorded.")
+    return "\n".join(lines).strip()
+
+
+def build_due_diligence_summary_pdf(brief: InvestmentBrief) -> bytes:
+    section_lines: list[tuple[str, list[str]]] = [
+        (
+            "Research Results",
+            [
+                f"Executive summary: {brief.executive_summary or '—'}",
+                f"Founder assessment: {brief.founder_assessment or '—'}",
+                f"Startup assessment: {brief.startup_assessment or '—'}",
+                f"Market assessment: {brief.market_assessment or '—'}",
+                f"Risk assessment: {brief.risk_assessment or '—'}",
+            ],
+        ),
+        ("Documents Used", _brief_document_lines(brief)),
+    ]
+    if brief.sources:
+        source_lines = []
+        for i, src in enumerate(brief.sources, 1):
+            source_lines.extend(
+                [
+                    f"[{i}] {src.title}",
+                    f"URL: {src.url}",
+                    f"Type: {src.source_type} | Relevance: {src.relevance:.2f} | Confidence: {src.confidence_score:.2f}",
+                    f"Snippet: {src.snippet or '—'}",
+                    "",
+                ]
+            )
+    else:
+        source_lines = ["No sources attached."]
+    section_lines.append(("Sources Used", source_lines))
+    reliability_lines = []
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        reliability_lines.extend(
+            [
+                f"Grade: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100)",
+                f"Depth: {depth_label}",
+                f"Consistency: {ei.consistency_status.value.replace('_', ' ')}",
+                f"Sources reviewed: {ei.source_count}",
+                f"Claims extracted: {ei.claim_count}",
+                f"High-authority sources: {ei.high_authority_count}",
+            ]
+        )
+    else:
+        reliability_lines.append("Evidence Integrity Engine not run for this analysis.")
+    section_lines.append(("Reliability Indicators", reliability_lines))
+    section_lines.append(("Next Steps", list(brief.next_steps) or ["No next steps recorded."]))
+    return _build_simple_pdf(
+        title="Kulima FLEX — Due Diligence Summary",
+        subtitle=[
+            f"{brief.founder_name} / {brief.startup_name}",
+            f"Recommendation: {brief.recommendation.value} | Overall {brief.overall_score:.0f}/100",
+        ],
+        sections=section_lines,
+    )
+
+
+def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
+    top_reasons = [
+        brief.executive_summary or "—",
+        brief.investment_recommendation or brief.recommendation.value,
+    ]
+    if brief.red_flags:
+        risks = [f"[{rf.severity.upper()}] {rf.title}: {rf.detail}" for rf in brief.red_flags[:3]]
+    else:
+        risks = ["No critical red flags surfaced from open-source intelligence."]
+    lines = [
+        "KULIMA FLEX — EXECUTIVE ONE PAGER",
+        "=" * 40,
+        f"Deal: {brief.founder_name} / {brief.startup_name}",
+        f"Recommendation: {brief.recommendation.value} | Overall Score: {brief.overall_score:.0f}/100",
+        f"Confidence: {brief.confidence_level.value} ({brief.confidence:.2f})",
+    ]
+    if brief.evidence_integrity:
+        ei = brief.evidence_integrity
+        depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        lines.append(
+            f"Reliability: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) | "
+            f"Depth: {depth_label} | Consistency: {ei.consistency_status.value}"
+        )
+    lines.extend([
+        "",
+        "TOP REASONS",
+        "-" * 40,
+        *top_reasons,
+        "",
+        "TOP RISKS",
+        "-" * 40,
+        *risks,
+        "",
+        "NEXT ACTION",
+        "-" * 40,
+        brief.next_steps[0] if brief.next_steps else "Continue verification before IC.",
+    ])
+    return "\n".join(lines).strip()
+
+
+def build_executive_one_pager_pdf(brief: InvestmentBrief) -> bytes:
+    section_lines: list[tuple[str, list[str]]] = [
+        (
+            "Top Reasons",
+            [brief.executive_summary or "—", brief.investment_recommendation or brief.recommendation.value],
+        ),
+        (
+            "Top Risks",
+            [
+                f"[{rf.severity.upper()}] {rf.title}: {rf.detail}"
+                for rf in (brief.red_flags[:3] if brief.red_flags else [])
+            ] or ["No critical red flags surfaced from open-source intelligence."],
+        ),
+        ("Next Action", [brief.next_steps[0] if brief.next_steps else "Continue verification before IC."])
+    ]
+    return _build_simple_pdf(
+        title="Kulima FLEX — Executive One Pager",
+        subtitle=[
+            f"{brief.founder_name} / {brief.startup_name}",
+            f"Recommendation: {brief.recommendation.value} | Overall {brief.overall_score:.0f}/100",
+        ],
+        sections=section_lines,
+    )
+
+
+def _build_simple_pdf(
+    *,
+    title: str,
+    subtitle: list[str],
+    sections: list[tuple[str, list[str]]],
+) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=0.75 * inch, rightMargin=0.75 * inch, topMargin=0.7 * inch, bottomMargin=0.7 * inch, title=title, author="Kulima FLEX")
+    styles = _pdf_styles()
+    story: list = [Paragraph(title, styles["KulimaTitle"])]
+    if subtitle:
+        story.append(Paragraph(" &nbsp;·&nbsp; ".join(_esc(s) for s in subtitle), styles["KulimaMeta"]))
+    for heading, items in sections:
+        story.append(Paragraph(heading, styles["KulimaH2"]))
+        if not items:
+            story.append(Paragraph("—", styles["KulimaBody"]))
+        else:
+            for item in items:
+                story.append(Paragraph(f"• {_esc(item)}", styles["KulimaBullet"]))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Confidential — Generated by Kulima FLEX AI Investment Intelligence OS for Africa", styles["KulimaMeta"]))
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def render_reports_buttons(brief: InvestmentBrief, key_prefix: str = "reports") -> None:
+    import streamlit as st
+
+    st.markdown("### 📚 Report Pack")
+    st.caption("All report PDFs are generated from the current run’s actual outputs.")
+    names = export_filenames(brief)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Investment Brief")
+        st.caption("Concise investment memo built from the current brief.")
+        st.download_button(
+            "Download Investment Brief PDF",
+            data=build_memo_pdf(brief),
+            file_name=names["memo_pdf"],
+            mime="application/pdf",
+            width="stretch",
+            key=f"{key_prefix}_investment_brief_pdf",
+        )
+        st.markdown("#### Signals Report")
+        st.caption("Deterministic signal pack derived from the current case.")
+        st.download_button(
+            "Download Signals Report PDF",
+            data=build_signals_report_pdf(brief),
+            file_name=names["signals_pdf"],
+            mime="application/pdf",
+            width="stretch",
+            key=f"{key_prefix}_signals_pdf",
+        )
+    with col2:
+        st.markdown("#### Due Diligence Summary")
+        st.caption("Research summary, documents used, sources, and reliability.")
+        st.download_button(
+            "Download Due Diligence Summary PDF",
+            data=build_due_diligence_summary_pdf(brief),
+            file_name=names["dd_pdf"],
+            mime="application/pdf",
+            width="stretch",
+            key=f"{key_prefix}_dd_pdf",
+        )
+        st.markdown("#### Executive One Pager")
+        st.caption("Highly compressed decision snapshot for leadership.")
+        st.download_button(
+            "Download Executive One Pager PDF",
+            data=build_executive_one_pager_pdf(brief),
+            file_name=names["onepager_pdf"],
+            mime="application/pdf",
+            width="stretch",
+            key=f"{key_prefix}_onepager_pdf",
+        )
 
 
 def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> None:

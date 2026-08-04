@@ -5,6 +5,7 @@ from __future__ import annotations
 import textwrap
 from kulima.llm import LLMClient
 from kulima.models import InvestmentBrief
+from kulima.core.documents.context import build_document_context_for_subject
 
 MAX_CONTEXT_CHARS = 18000
 
@@ -159,6 +160,19 @@ def build_ask_ic_context(brief: InvestmentBrief) -> str:
                 f"Relevance: {src.relevance:.2f}; confidence: {src.confidence_score:.2f}; type: {src.source_type}"
             )
 
+    # Append document evidence section when documents are available for this
+    # founder/startup. This uses a separate [DOCUMENTS] header and [D#]
+    # labels so the IC Analyst can distinguish document-backed claims from
+    # web sources ([S#]).
+    doc_section = build_document_context_for_subject(
+        brief.founder_name,
+        brief.startup_name,
+        max_documents=3,
+        max_chars=MAX_CONTEXT_CHARS // 4,
+    )
+    if doc_section:
+        sections.append(doc_section)
+
     context = "\n\n".join(sections)
     return context[:MAX_CONTEXT_CHARS]
 
@@ -210,7 +224,9 @@ def answer_ask_ic_question(
         - If the context does not support an answer, say what is missing and what
           evidence would be needed.
         - Include citations when helpful using the context labels, e.g. [REPORT],
-          [R1], [V2], [F1], [S3]. For source-backed claims, prefer [S#].
+          [R1], [V2], [F1], [S3] for web sources, and [D1], [D2] for document
+          evidence when referring to uploaded documents in the [DOCUMENTS]
+          section. For source-backed claims, prefer [S#] and [D#].
         - Style the response as if it comes from a senior investment associate
           briefing a Partner.
 

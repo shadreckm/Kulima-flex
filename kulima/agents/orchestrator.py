@@ -13,9 +13,10 @@ from kulima.agents.startup_agent import StartupIntelligenceAgent
 from kulima.breakthrough.futures import ContinentalFuturesEngine
 from kulima.breakthrough.syndicate import InvestorTwinSyndicate
 from kulima.config import FUTURES_MODEL, SYNDICATE_MODEL
+from kulima.core.documents.repository import DocumentRepository
 from kulima.evidence_integrity import EvidenceIntegrityEngine
 from kulima.llm import LLMClient
-from kulima.models import EvidenceIntegrityReport, InvestmentBrief, Recommendation
+from kulima.models import EvidenceIntegrityReport, InvestmentBrief, Recommendation, SourceAttribution
 from kulima.research import ResearchEngine
 from kulima.scoring import (
     aggregate_agent_score,
@@ -94,6 +95,36 @@ class IntelligenceOrchestrator:
                 _eie_exc,
             )
             integrity_report = None
+
+        # Enrich evidence corpus with any document-backed sources associated
+        # with this founder/startup (Phase B: Evidence Integration).  This does
+        # not change scoring or recommendation algorithms; it only allows the
+        # Evidence Integrity Engine to consider documents alongside web OSINT
+        # when present.
+        try:
+            doc_repo = DocumentRepository()
+            doc_sources: list[SourceAttribution] = []
+            for d in doc_repo.get_documents_for_subject(founder, startup):
+                # Reconstruct a SourceAttribution using the filename as title
+                # and a synthetic URL; snippet will be filled from the first
+                # available chunk when retrieved later by EIE if needed.
+                doc_sources.append(
+                    SourceAttribution(
+                        title=d.filename,
+                        url=f"document://{d.id}",
+                        snippet="",
+                        relevance=1.0,
+                        source_type="document",
+                        confidence_score=0.8,
+                    )
+                )
+            if doc_sources:
+                all_sources = ResearchEngine._dedupe(all_sources + doc_sources)
+        except Exception:
+            # Fail closed: if document integration fails, continue with web
+            # sources only so orchestrator behaviour and scoring remain
+            # consistent for non-document runs.
+            pass
 
         progress(0.30, "Parallel agents — Founder ∥ Startup intelligence…")
         from concurrent.futures import ThreadPoolExecutor
@@ -398,26 +429,21 @@ def _blend_recommendation(
     syndicate: Recommendation,
     overall: float,
 ) -> Recommendation:
-    # Normalize extended labels into the syndicate three-way ballot
+    # Preserve the calibrated scoring tier as the live recommendation.
+    # The syndicate output remains available for memo/context layers, but it
+    # should not flatten the calibrated tiers back into Pass-heavy averages.
     def _norm(rec: Recommendation) -> Recommendation:
         if rec in (Recommendation.INVEST, Recommendation.CO_INVEST):
-            return Recommendation.INVEST
+            return rec
         if rec == Recommendation.PASS:
             return Recommendation.PASS
         return Recommendation.OBSERVE
 
     algorithmic = _norm(algorithmic)
     syndicate = _norm(syndicate)
-    order = [
-        Recommendation.PASS,
-        Recommendation.OBSERVE,
-        Recommendation.INVEST,
-    ]
-    ai = order.index(algorithmic)
-    si = order.index(syndicate)
-    blended = order[round((ai + si) / 2)]
-    if overall >= 80 and syndicate == Recommendation.INVEST:
-        return syndicate
-    if overall < 45:
-        return Recommendation.PASS
-    return blended
+
+    if algorithmic == Recommendation.CO_INVEST:
+        return Recommendation.CO_INVEST
+    if overall >= 80 and algorithmic == Recommendation.INVEST and syndicate == Recommendation.INVEST:
+        return Recommendation.CO_INVEST
+    return algorithmic

@@ -10,6 +10,7 @@ from kulima.llm import LLMClient
 from kulima.models import SourceAttribution, TrustEdge, TrustGraph, TrustNode
 from kulima.research import ResearchEngine
 from kulima.scoring import clamp
+from kulima.core.documents.context import build_document_context_for_subject
 
 
 class TrustGraphEngine:
@@ -97,6 +98,66 @@ class TrustGraphEngine:
             import logging
             logging.warning(
                 f"TrustGraphEngine LLM enrichment failed — graph will use base nodes only. "
+                f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+
+        # ── Document-based enrichment (Phase 3D) ────────────────────────────
+        # Use the existing LLM client to infer additional trust-graph
+        # entities and links from uploaded documents, without changing
+        # scoring algorithms. Document-derived edges are tagged with
+        # source_type="document" and a fixed medium confidence.
+        try:
+            doc_ctx = build_document_context_for_subject(
+                founder,
+                startup,
+                max_documents=3,
+                max_chars=1200,
+            )
+            if doc_ctx.strip():
+                doc_enriched = self.llm.complete_json(
+                    system=(
+                        "You are an OSINT trust-graph analyst for African venture deals. "
+                        "Using ONLY the following uploaded documents, infer additional "
+                        "entities (investors, partners, auditors, incubators, agencies, "
+                        "universities, foundations) and their relationships to the "
+                        "founder/startup. Return JSON: {entities:[{id,label,type,weight}], "
+                        "links:[{source,target,relation,strength}]}. "
+                        "Types: investor|institution|media|company|university|government|"
+                        "foundation. Max 4 entities, max 6 links."
+                    ),
+                    user=(
+                        f"Founder: {founder}\nStartup: {startup}\n\n"
+                        f"Documents:\n{doc_ctx}"
+                    ),
+                )
+                for ent in doc_enriched.get("entities", [])[:4]:
+                    eid = str(ent.get("id") or ent.get("label", "entity")).lower().replace(" ", "_")
+                    if any(n.id == eid for n in nodes):
+                        continue
+                    nodes.append(
+                        TrustNode(
+                            id=eid,
+                            label=str(ent.get("label", eid)),
+                            node_type=str(ent.get("type", "institution")),
+                            weight=float(ent.get("weight", 0.7)),
+                        )
+                    )
+                for link in doc_enriched.get("links", [])[:6]:
+                    edges.append(
+                        TrustEdge(
+                            source=str(link.get("source", "founder")),
+                            target=str(link.get("target", "startup")),
+                            relation=str(link.get("relation", "associated")),
+                            strength=float(link.get("strength", 0.5)),
+                            source_type="document",
+                            confidence=0.6,
+                        )
+                    )
+        except Exception as exc:
+            import logging
+            logging.warning(
+                f"TrustGraphEngine document enrichment failed — continuing with existing graph. "
                 f"{type(exc).__name__}: {exc}",
                 exc_info=True,
             )

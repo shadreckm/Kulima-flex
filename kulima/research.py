@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from urllib.parse import urlparse
 
 from tavily import TavilyClient
@@ -37,7 +38,11 @@ class ResearchEngine:
         self.max_results = settings.max_research_results
         self.africa_focus = settings.africa_focus
 
-    def search(self, query: str, depth: str = "advanced") -> list[SourceAttribution]:
+    def search(
+        self,
+        query: str,
+        depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "advanced",
+    ) -> list[SourceAttribution]:
         africa_boost = (
             " Africa startup founder venture funding market"
             if self.africa_focus
@@ -105,7 +110,9 @@ class ResearchEngine:
         return self._dedupe(self._multi(queries, depth="basic"))
 
     def _multi(
-        self, queries: list[str], depth: str = "advanced"
+        self,
+        queries: list[str],
+        depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "advanced",
     ) -> list[SourceAttribution]:
         """Run Tavily queries in parallel to cut OSINT wall-clock time."""
         from concurrent.futures import ThreadPoolExecutor, as_completed

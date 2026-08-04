@@ -149,6 +149,14 @@ def test_initialize_adds_columns_to_existing_db_without_them() -> None:
             founder_score INTEGER,
             trust_score INTEGER
         );
+        CREATE TABLE IF NOT EXISTS run_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            user_name TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL
+        );
     """)
     # Insert a pre-migration row directly
     conn.execute(
@@ -342,6 +350,16 @@ def test_load_brief_on_pre_migration_row_returns_brief_with_none() -> None:
             founder_score INTEGER, trust_score INTEGER
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS run_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            user_name TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
     conn.execute(
         """INSERT INTO intelligence_runs
            (created_at, founder_name, startup_name, overall_score,
@@ -400,3 +418,35 @@ def test_load_brief_on_post_migration_row_returns_full_report() -> None:
     assert ei.consistency_status == ConsistencyStatus.CONFLICTS
     assert ei.sparse_mode is False
     assert ei.source_count == 6
+
+
+# ── Test 9 — archive/reopen/delete and feedback capture ───────────────────────
+
+def test_archive_reopen_delete_and_feedback() -> None:
+    repo, path = _tmp_repo()
+    brief = _minimal_brief(founder="Pilot Founder", startup="Pilot Startup")
+    run_id = repo.save_brief(brief)
+
+    assert repo.archive_run(run_id) is True
+    archived = repo.get_run(run_id)
+    assert archived is not None and archived["archived_at"] is not None
+
+    active_rows = repo.recent_runs(limit=10)
+    assert all(r["id"] != run_id for r in active_rows)
+
+    reopened = repo.reopen_run(run_id)
+    assert reopened is True
+    reopened_row = repo.get_run(run_id)
+    assert reopened_row is not None and reopened_row["archived_at"] is None
+
+    feedback_id = repo.save_feedback(run_id, "A. Pilot", 5, "Strong pilot-ready output.")
+    assert feedback_id > 0
+    conn = sqlite3.connect(str(path))
+    try:
+        row = conn.execute("SELECT run_id, user_name, rating, comment FROM run_feedback WHERE id = ?", (feedback_id,)).fetchone()
+    finally:
+        conn.close()
+    assert row == (run_id, "A. Pilot", 5, "Strong pilot-ready output.")
+
+    assert repo.delete_run(run_id) is True
+    assert repo.get_run(run_id) is None
