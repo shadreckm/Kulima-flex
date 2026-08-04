@@ -1,8 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, Response
 
 from kulima.core.cases.adapters import from_investment_brief
+from kulima.db import IntelligenceRepository
+from kulima.export import (
+    build_due_diligence_summary_pdf,
+    build_due_diligence_summary_text,
+    build_executive_one_pager_pdf,
+    build_executive_one_pager_text,
+    build_full_ic_report_pdf,
+    build_full_ic_report_text,
+    build_memo_pdf,
+    build_memo_text,
+    build_signals_report_pdf,
+    build_signals_report_text,
+)
 from kulima.models import InvestmentBrief
+from kulima.portfolio_intelligence import build_pilot_analytics_metrics
 from kulima.signals.models import Signal, SignalLevel
 from kulima.signals.orchestrator import SignalsOrchestrator
 from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
@@ -18,10 +32,182 @@ from ..schemas.dtos import (
     SignalsSummary,
 )
 from ..services.orchestrator_adapter import get_brief_for_run, get_run_status, start_intelligence_run
+from ..services.run_repository import RunRepository
 
 router = APIRouter()
 
 _signals_orchestrator = SignalsOrchestrator()
+_brief_repo = IntelligenceRepository()
+_live_run_repo = RunRepository()
+
+
+def _load_brief_model(run_id: int) -> InvestmentBrief:
+    brief_json = get_brief_for_run(str(run_id))
+    if brief_json is None:
+        raise HTTPException(status_code=404, detail="brief not found")
+    return InvestmentBrief.model_validate(brief_json) if isinstance(brief_json, dict) else brief_json
+
+
+def _report_payload(brief: InvestmentBrief, report_kind: str, fmt: str) -> tuple[bytes, str, str]:
+    report_kind = report_kind.lower().strip()
+    fmt = fmt.lower().strip()
+
+    if report_kind == "memo":
+        if fmt == "pdf":
+            return build_memo_pdf(brief), "application/pdf", "pdf"
+        return build_memo_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+    if report_kind == "report":
+        if fmt == "pdf":
+            return build_full_ic_report_pdf(brief), "application/pdf", "pdf"
+        return build_full_ic_report_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+    if report_kind == "signals":
+        if fmt == "pdf":
+            return build_signals_report_pdf(brief), "application/pdf", "pdf"
+        return build_signals_report_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+    if report_kind == "due-diligence":
+        if fmt == "pdf":
+            return build_due_diligence_summary_pdf(brief), "application/pdf", "pdf"
+        return build_due_diligence_summary_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+    if report_kind == "one-pager":
+        if fmt == "pdf":
+            return build_executive_one_pager_pdf(brief), "application/pdf", "pdf"
+        return build_executive_one_pager_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+    raise HTTPException(status_code=404, detail="report not found")
+
+
+@router.get("/runs/live")
+async def list_live_runs(
+    limit: int = Query(default=50, ge=1, le=200),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    check_rate_limit(user.user_id, "intelligence:runs_live")
+    rows = _live_run_repo.list_runs(limit=limit)
+    return {
+        "runs": [
+            {
+                "runId": row.get("run_id"),
+                "status": row.get("status"),
+                "createdAt": row.get("created_at"),
+                "completedAt": row.get("completed_at"),
+                "dbId": row.get("db_id"),
+                "error": row.get("error_message"),
+                "userId": row.get("user_id"),
+            }
+            for row in rows
+            if not row.get("user_id") or row.get("user_id") == user.user_id
+        ]
+    }
+
+
+@router.get("/runs")
+async def list_run_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    include_archived: bool = Query(default=True),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    check_rate_limit(user.user_id, "intelligence:runs_history")
+    rows = _brief_repo.recent_runs(limit=limit, include_archived=include_archived)
+    return {
+        "runs": [
+            {
+                "runId": row.get("id"),
+                "createdAt": row.get("created_at"),
+                "founderName": row.get("founder_name"),
+                "startupName": row.get("startup_name"),
+                "sector": row.get("sector"),
+                "geography": row.get("geography"),
+                "stage": row.get("stage"),
+                "overallScore": row.get("overall_score"),
+                "founderScore": row.get("founder_score"),
+                "trustScore": row.get("trust_score"),
+                "recommendation": row.get("recommendation"),
+                "confidence": row.get("confidence"),
+                "integrityScore": row.get("integrity_score"),
+                "integrityGrade": row.get("integrity_grade"),
+                "archivedAt": row.get("archived_at"),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/runs/analytics")
+async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)):
+    check_rate_limit(user.user_id, "intelligence:runs_analytics")
+    rows = _brief_repo.recent_runs(limit=100, include_archived=True)
+    return build_pilot_analytics_metrics(rows)
+
+
+@router.post("/{run_id}/archive")
+async def archive_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+    check_rate_limit(user.user_id, "intelligence:archive")
+    if not _brief_repo.archive_run(run_id):
+        raise HTTPException(status_code=404, detail="run not found")
+    return {"ok": True, "runId": run_id, "archived": True}
+
+
+@router.post("/{run_id}/reopen")
+async def reopen_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+    check_rate_limit(user.user_id, "intelligence:reopen")
+    if not _brief_repo.reopen_run(run_id):
+        raise HTTPException(status_code=404, detail="run not found")
+    return {"ok": True, "runId": run_id, "archived": False}
+
+
+@router.delete("/{run_id}")
+async def delete_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+    check_rate_limit(user.user_id, "intelligence:delete")
+    if not _brief_repo.delete_run(run_id):
+        raise HTTPException(status_code=404, detail="run not found")
+    return {"ok": True, "runId": run_id, "deleted": True}
+
+
+@router.get("/{run_id}/brief/full")
+async def get_full_brief(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+    check_rate_limit(user.user_id, "intelligence:full_brief")
+    brief = _load_brief_model(run_id)
+    return brief.model_dump(mode="json")
+
+
+@router.get("/{run_id}/reports/{report_kind}")
+async def download_report(
+    run_id: int,
+    report_kind: str,
+    format: str = Query(default="pdf"),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    check_rate_limit(user.user_id, f"intelligence:report:{report_kind}")
+    brief = _load_brief_model(run_id)
+    body, media_type, ext = _report_payload(brief, report_kind, format)
+    filename_map = {
+        "memo": f"Kulima_IC_Memo_{run_id}.{ext}",
+        "report": f"Kulima_Full_IC_Report_{run_id}.{ext}",
+        "signals": f"Kulima_Signals_Report_{run_id}.{ext}",
+        "due-diligence": f"Kulima_Due_Diligence_Summary_{run_id}.{ext}",
+        "one-pager": f"Kulima_Executive_One_Pager_{run_id}.{ext}",
+    }
+    headers = {"Content-Disposition": f'attachment; filename="{filename_map[report_kind.lower().strip()]}"'}
+    return Response(content=body, media_type=media_type, headers=headers)
+
+
+@router.post("/{run_id}/feedback")
+async def save_run_feedback(
+    run_id: int,
+    payload: dict = Body(...),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    check_rate_limit(user.user_id, "intelligence:feedback")
+    user_name = str(payload.get("userName") or payload.get("user_name") or user.user_id or "Pilot User")
+    comment = str(payload.get("comment") or "")
+    try:
+        rating = int(payload.get("rating") or 0)
+    except Exception:
+        rating = 0
+    if rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
+    if not _brief_repo.save_feedback(run_id, user_name, rating, comment):
+        raise HTTPException(status_code=500, detail="feedback could not be saved")
+    return {"ok": True, "runId": run_id, "rating": rating}
 
 
 @router.post("/", response_model=IntelligenceCreateResponse)

@@ -83,7 +83,7 @@ export default function SignalsPage() {
 
   return (
     <div className="min-h-screen p-6 grid grid-cols-[240px_1fr_360px] gap-6">
-      <NavigationSidebar type="signals" runId={runId} status={status} />
+      <NavigationSidebar workspace="Signals" runId={runId} status={status} />
       <main className="flex flex-col">
         {!runId ? (
           <div className="p-4 bg-white rounded shadow">

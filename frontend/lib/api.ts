@@ -284,3 +284,114 @@ export async function uploadDocument(file: File, runId?: string | null): Promise
   if (!res.ok) throw new Error(`uploadDocument failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ id: string; name: string; url: string }>(res, 'uploadDocument')
 }
+
+export type LiveRunRecord = {
+  runId: string
+  status: string
+  createdAt?: string | null
+  completedAt?: string | null
+  dbId?: number | null
+  error?: string | null
+  userId?: string | null
+}
+
+export type StoredRunRecord = {
+  runId: number
+  createdAt: string
+  founderName: string
+  startupName: string
+  sector?: string | null
+  geography?: string | null
+  stage?: string | null
+  overallScore?: number | null
+  founderScore?: number | null
+  trustScore?: number | null
+  recommendation?: string | null
+  confidence?: number | null
+  integrityScore?: number | null
+  integrityGrade?: string | null
+  archivedAt?: string | null
+}
+
+export type PilotAnalyticsMetrics = Record<string, number | string | boolean>
+
+export type FullBrief = Record<string, any>
+
+export type RunFeedbackPayload = {
+  userName?: string
+  rating: number
+  comment?: string
+}
+
+export async function listLiveRuns(limit = 50): Promise<{ runs: LiveRunRecord[] }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/runs/live?limit=${encodeURIComponent(String(limit))}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`listLiveRuns failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ runs: LiveRunRecord[] }>(res, 'listLiveRuns')
+}
+
+export async function listStoredRuns(limit = 50, includeArchived = true): Promise<{ runs: StoredRunRecord[] }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/runs?limit=${encodeURIComponent(String(limit))}&include_archived=${includeArchived ? 'true' : 'false'}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`listStoredRuns failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ runs: StoredRunRecord[] }>(res, 'listStoredRuns')
+}
+
+export async function getPilotAnalytics(): Promise<PilotAnalyticsMetrics> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/runs/analytics`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getPilotAnalytics failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<PilotAnalyticsMetrics>(res, 'getPilotAnalytics')
+}
+
+export async function getFullBrief(runId: number | string): Promise<FullBrief> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/brief/full`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getFullBrief failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<FullBrief>(res, 'getFullBrief')
+}
+
+export async function archiveRun(runId: number | string): Promise<{ ok: boolean; runId: number | string; archived: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/archive`, {
+    method: 'POST',
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`archiveRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ ok: boolean; runId: number | string; archived: boolean }>(res, 'archiveRun')
+}
+
+export async function reopenRun(runId: number | string): Promise<{ ok: boolean; runId: number | string; archived: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/reopen`, {
+    method: 'POST',
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`reopenRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ ok: boolean; runId: number | string; archived: boolean }>(res, 'reopenRun')
+}
+
+export async function deleteRun(runId: number | string): Promise<{ ok: boolean; runId: number | string; deleted: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}`, {
+    method: 'DELETE',
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`deleteRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ ok: boolean; runId: number | string; deleted: boolean }>(res, 'deleteRun')
+}
+
+export async function submitRunFeedback(runId: number | string, payload: RunFeedbackPayload): Promise<{ ok: boolean; runId: number | string; rating: number }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/feedback`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(`submitRunFeedback failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ ok: boolean; runId: number | string; rating: number }>(res, 'submitRunFeedback')
+}
+
+export function reportDownloadHref(runId: number | string, reportKind: 'memo' | 'report' | 'signals' | 'due-diligence' | 'one-pager', format: 'pdf' | 'txt' = 'pdf') {
+  return `/api/v1/intelligence/${encodeURIComponent(String(runId))}/reports/${reportKind}?format=${format}`
+}

@@ -59,11 +59,10 @@ async function proxy(request: NextRequest) {
   responseHeaders.delete('connection')
 
   const contentType = responseHeaders.get('content-type') || ''
-  const isJson = contentType.includes('application/json')
   const isEventStream = contentType.includes('text/event-stream')
   const isEmptyBody = upstreamResponse.status === 204 || upstreamResponse.body === null
 
-  if (isJson || isEventStream || isEmptyBody) {
+  if (isEventStream || isEmptyBody) {
     return new NextResponse(upstreamResponse.body, {
       status: upstreamResponse.status,
       headers: responseHeaders,
@@ -71,6 +70,15 @@ async function proxy(request: NextRequest) {
   }
 
   const bodyText = await upstreamResponse.text()
+
+  if (contentType.includes('application/json')) {
+    responseHeaders.delete('content-length')
+    return new NextResponse(bodyText, {
+      status: upstreamResponse.status,
+      headers: responseHeaders,
+    })
+  }
+
   const payload = {
     error: upstreamResponse.status >= 400,
     status: upstreamResponse.status,

@@ -83,7 +83,7 @@ export default function FlexPage() {
 
   return (
     <div className="min-h-screen p-6 grid grid-cols-[240px_1fr_360px] gap-6">
-      <NavigationSidebar type="flex" runId={runId} status={status} />
+      <NavigationSidebar workspace="Flex" runId={runId} status={status} />
       <main className="flex flex-col">
         {!runId ? (
           <div className="p-4 bg-white rounded shadow">
