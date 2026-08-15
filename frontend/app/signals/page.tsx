@@ -1,15 +1,17 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useSession, signIn } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
 import * as api from '../../lib/api'
 import { saveRecentRun, updateRecentRunStatus } from '../../lib/run-history'
 
-export default function SignalsPage() {
+function SignalsPageInner() {
   const { status: authStatus } = useSession()
+  const searchParams = useSearchParams()
 
   const [founder, setFounder] = useState('')
   const [startup, setStartup] = useState('')
@@ -17,6 +19,16 @@ export default function SignalsPage() {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
+
+  // Sync active run from URL query param on first load
+  useEffect(() => {
+    const paramRun = searchParams.get('run')
+    if (paramRun && !runId) {
+      setRunId(paramRun)
+      api.getRunStatus(paramRun).then((s) => setStatus(s.status)).catch(() => setStatus('completed'))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let interval: any
@@ -108,5 +120,13 @@ export default function SignalsPage() {
       </main>
       <ContextPanel type="signals" runId={runId} status={status} />
     </div>
+  )
+}
+
+export default function SignalsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
+      <SignalsPageInner />
+    </Suspense>
   )
 }

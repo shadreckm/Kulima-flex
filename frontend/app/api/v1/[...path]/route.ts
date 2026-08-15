@@ -59,10 +59,16 @@ async function proxy(request: NextRequest) {
   responseHeaders.delete('connection')
 
   const contentType = responseHeaders.get('content-type') || ''
+  const contentDisposition = responseHeaders.get('content-disposition') || ''
   const isEventStream = contentType.includes('text/event-stream')
+  const isFileDownload =
+    contentType.includes('application/pdf') ||
+    contentType.includes('text/plain') ||
+    contentType.includes('application/octet-stream') ||
+    contentDisposition.toLowerCase().includes('attachment')
   const isEmptyBody = upstreamResponse.status === 204 || upstreamResponse.body === null
 
-  if (isEventStream || isEmptyBody) {
+  if (isEventStream || isFileDownload || isEmptyBody) {
     return new NextResponse(upstreamResponse.body, {
       status: upstreamResponse.status,
       headers: responseHeaders,

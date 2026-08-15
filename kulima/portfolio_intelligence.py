@@ -219,19 +219,35 @@ def build_pilot_analytics_metrics(rows: list[dict]) -> dict[str, Any]:
 
         claim_count = _safe_float(ei.get("claim_count"), 0.0)
         source_count = _safe_float(ei.get("source_count"), 0.0)
-        if claim_count > 0:
-            evidence_coverage.append(min(source_count / claim_count, 1.0) * 100.0)
+        sources_list = payload.get("sources") or row.get("sources") or []
+        effective_claims = claim_count if claim_count > 0 else float(len(sources_list))
+        if effective_claims > 0:
+            evidence_coverage.append(min(source_count / effective_claims, 1.0) * 100.0)
+        elif source_count > 0 and (ei.get("integrity_score") is not None or row.get("integrity_score") is not None):
+            # Fallback: EIE ran and produced a score but claim_count not stored — assume full coverage
+            evidence_coverage.append(100.0)
         else:
             evidence_coverage.append(0.0)
 
         agent_results = row.get("agent_results")
         if not isinstance(agent_results, dict):
             agent_results = payload.get("agent_results") or {}
-        if isinstance(agent_results, dict):
+        if isinstance(agent_results, dict) and agent_results:
             completed = sum(1 for section in core_signal_sections if agent_results.get(section))
             signal_coverage.append((completed / len(core_signal_sections)) * 100.0)
         else:
-            signal_coverage.append(0.0)
+            completed_narratives = 0
+            if payload.get("founder_assessment") or row.get("founder_assessment"):
+                completed_narratives += 1
+            if payload.get("startup_assessment") or row.get("startup_assessment"):
+                completed_narratives += 1
+            if payload.get("risk_assessment") or row.get("risk_assessment"):
+                completed_narratives += 1
+            if payload.get("executive_summary") or row.get("executive_summary"):
+                completed_narratives += 1
+            if payload.get("next_steps") or row.get("next_steps"):
+                completed_narratives += 1
+            signal_coverage.append((completed_narratives / len(core_signal_sections)) * 100.0 if completed_narratives > 0 else 0.0)
 
     return {
         "total_runs": len(rows),

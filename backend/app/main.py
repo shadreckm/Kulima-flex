@@ -38,11 +38,12 @@ app.include_router(ask_ic.router, prefix="/api/v1/ask", tags=["ask_ic"])
 app.include_router(ask_signals.router, prefix="/api/v1/ask", tags=["ask_signals"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 
-# Serve uploaded files from backend/uploads via /uploads
-uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+# Serve uploaded files from backend/uploads via /uploads.
+# Must match document_adapter.UPLOAD_DIR (backend/uploads), not repo-root uploads/.
+uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
 uploads_dir = os.path.abspath(uploads_dir)
-if os.path.isdir(uploads_dir):
-    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 
 @app.get("/api/v1/health")

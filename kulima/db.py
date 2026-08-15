@@ -14,6 +14,11 @@ from kulima.models import InvestmentBrief
 
 _log = logging.getLogger(__name__)
 
+# Tracks DB paths currently being auto-seeded to prevent re-entrant calls.
+# seed_ostx_demo_dataset() creates a new IntelligenceRepository which would
+# otherwise trigger _auto_seed_demo_data() again causing infinite recursion.
+_seeding_in_progress: set[str] = set()
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS intelligence_runs (
@@ -72,6 +77,38 @@ class IntelligenceRepository:
         with self._connect() as conn:
             self._migrate_schema(conn)
             conn.commit()
+        # Auto-seed OSTX demo dataset if the database is empty (fresh install).
+        self._auto_seed_demo_data()
+
+    def _auto_seed_demo_data(self) -> None:
+        """Seed the 3 OSTX Validation Cases on first startup if DB is empty.
+
+        Skips seeding if:
+        - This DB path is already being seeded (recursion guard).
+        - The DB path is not the default production path (i.e. test databases).
+        """
+        # Only auto-seed the default production database, not test temp files.
+        default_path = get_settings().db_path
+        if str(self.db_path) != str(default_path):
+            return
+
+        # Recursion guard — seed_ostx_demo_dataset creates a new repo for the same path.
+        if self.db_path in _seeding_in_progress:
+            return
+        try:
+            existing = self.recent_runs(limit=5)
+            if len(existing) == 0:
+                _seeding_in_progress.add(self.db_path)
+                try:
+                    # Lazy import to avoid circular dependency at module load time.
+                    from scripts.seed_demo_data import seed_ostx_demo_dataset  # noqa: PLC0415
+                    seed_ostx_demo_dataset(db_path=self.db_path)
+                    _log.info("Auto-seeded OSTX demo dataset into empty database.")
+                finally:
+                    _seeding_in_progress.discard(self.db_path)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Auto-seed skipped: %s", exc)
+            _seeding_in_progress.discard(self.db_path)
 
     def _migrate_schema(self, conn: sqlite3.Connection) -> None:
         """Add Trust Layer flat columns to intelligence_runs if absent.
@@ -179,6 +216,7 @@ class IntelligenceRepository:
         limit: int = 20,
         include_archived: bool = False,
         user_id: str | None = None,
+        include_shared: bool = False,
     ) -> list[dict[str, Any]]:
         with self._connect() as conn:
             query = """
@@ -192,7 +230,12 @@ class IntelligenceRepository:
             if not include_archived:
                 conditions.append("archived_at IS NULL")
             if user_id is not None:
-                conditions.append("user_id = ?")
+                # Shared OSTX / pilot demo rows are stored with user_id NULL so every
+                # authenticated pilot can explore them without OpenAI credits.
+                if include_shared:
+                    conditions.append("(user_id = ? OR user_id IS NULL)")
+                else:
+                    conditions.append("user_id = ?")
                 params.append(user_id)
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)

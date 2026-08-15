@@ -21,6 +21,8 @@ streamlit
 plotly
 reportlab
 networkx
+pandas
+tenacity
 
 # Testing (if you run tests inside the container)
 pytest

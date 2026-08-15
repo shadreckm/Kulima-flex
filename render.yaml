@@ -1,0 +1,33 @@
+# Render Blueprint for Kulima OS API
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After connecting the GitHub repo, apply this blueprint or mirror these
+# settings in the Render dashboard.
+
+services:
+  - type: web
+    name: kulima-os-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/v1/health
+    disk:
+      name: kulima-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: KULIMA_DB_PATH
+        value: /data/kulima.db
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: PYTHONPATH
+        value: /app

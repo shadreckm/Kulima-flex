@@ -116,7 +116,12 @@ async def list_run_history(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     check_rate_limit(user.user_id, "intelligence:runs_history")
-    rows = _brief_repo.recent_runs(limit=limit, include_archived=include_archived, user_id=user.user_id)
+    rows = _brief_repo.recent_runs(
+        limit=limit,
+        include_archived=include_archived,
+        user_id=user.user_id,
+        include_shared=True,
+    )
     return {
         "runs": [
             {
@@ -144,8 +149,26 @@ async def list_run_history(
 @router.get("/runs/analytics")
 async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:runs_analytics")
-    rows = _brief_repo.recent_runs(limit=100, include_archived=True, user_id=user.user_id)
-    return build_pilot_analytics_metrics(rows)
+    summary_rows = _brief_repo.recent_runs(
+        limit=100,
+        include_archived=True,
+        user_id=user.user_id,
+        include_shared=True,
+    )
+    full_rows = []
+    for r in summary_rows:
+        run_id = r.get("id")
+        if run_id is not None:
+            full_row = _brief_repo.get_run(int(run_id), user_id=user.user_id)
+            if full_row is None:
+                # Shared demo rows (user_id NULL) remain visible to pilots.
+                legacy = _brief_repo.get_run(int(run_id))
+                if legacy is not None and legacy.get("user_id") is None:
+                    full_row = legacy
+            full_rows.append(full_row if full_row is not None else r)
+        else:
+            full_rows.append(r)
+    return build_pilot_analytics_metrics(full_rows)
 
 
 @router.post("/{run_id}/archive")

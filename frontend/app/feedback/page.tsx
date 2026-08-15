@@ -1,12 +1,14 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useSession, signIn } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, submitRunFeedback, type StoredRunRecord } from '../../lib/api'
 
-export default function FeedbackPage() {
+function FeedbackPageInner() {
   const { status: authStatus } = useSession()
+  const searchParams = useSearchParams()
   const [runs, setRuns] = useState<StoredRunRecord[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [userName, setUserName] = useState('')
@@ -22,12 +24,19 @@ export default function FeedbackPage() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
       setRuns(res.runs)
-      setSelectedRunId(String(res.runs[0]?.runId || ''))
+      // Prefer ?run= query param; otherwise default to first run
+      const paramRun = searchParams.get('run')
+      if (paramRun) {
+        setSelectedRunId(String(paramRun))
+      } else {
+        setSelectedRunId(String(res.runs[0]?.runId || ''))
+      }
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))
     }
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus])
 
   if (authStatus === 'loading') {
@@ -117,5 +126,13 @@ export default function FeedbackPage() {
         </button>
       </form>
     </PilotWorkspaceShell>
+  )
+}
+
+export default function FeedbackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
+      <FeedbackPageInner />
+    </Suspense>
   )
 }
