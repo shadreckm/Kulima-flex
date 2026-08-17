@@ -2,16 +2,17 @@
 
 import React, { useEffect, useState, Suspense } from 'react'
 import { useSession, signIn } from 'next-auth/react'
-import { useSearchParams } from 'next/navigation'
 import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
+import CurrentRunBanner from '../../components/CurrentRunBanner/CurrentRunBanner'
 import * as api from '../../lib/api'
 import { saveRecentRun, updateRecentRunStatus } from '../../lib/run-history'
+import { useCurrentRun } from '../../hooks/useCurrentRun'
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
-  const searchParams = useSearchParams()
+  const { currentRun, ready, setCurrentRun, clearRun, hasCurrentRun } = useCurrentRun()
 
   const [founder, setFounder] = useState('')
   const [startup, setStartup] = useState('')
@@ -19,26 +20,36 @@ function FlexPageInner() {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
-
-  // Sync active run from URL query param on first load
-  useEffect(() => {
-    const paramRun = searchParams.get('run')
-    if (paramRun && !runId) {
-      setRunId(paramRun)
-      // Fetch status for the pre-loaded run
-      api.getRunStatus(paramRun).then((s) => setStatus(s.status)).catch(() => setStatus('completed'))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
-    let interval: any
+    if (!ready || !currentRun?.runId) return
+    setRunId(currentRun.runId)
+    setStatus(currentRun.status || 'completed')
+    api.getRunStatus(currentRun.runId)
+      .then((s) => {
+        setStatus(s.status)
+        setCurrentRun({ ...currentRun, status: s.status, storedRunId: currentRun.storedRunId || (s.dbId ? String(s.dbId) : currentRun.storedRunId) }, { syncUrl: false })
+      })
+      .catch(() => setStatus(currentRun.status || 'completed'))
+  }, [ready, currentRun?.runId])
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined
     if (runId && polling) {
       interval = setInterval(async () => {
         try {
           const s = await api.getRunStatus(runId)
           setStatus(s.status)
           updateRecentRunStatus(runId, s.status)
+          if (currentRun) {
+            setCurrentRun({
+              ...currentRun,
+              runId,
+              status: s.status,
+              storedRunId: s.dbId ? String(s.dbId) : currentRun.storedRunId,
+            }, { syncUrl: false })
+          }
           if (s.status === 'completed' || s.status === 'failed') {
             setPolling(false)
             clearInterval(interval)
@@ -52,9 +63,9 @@ function FlexPageInner() {
       }, 3000)
     }
     return () => clearInterval(interval)
-  }, [runId, polling])
+  }, [runId, polling, currentRun, setCurrentRun])
 
-  if (authStatus === 'loading') {
+  if (authStatus === 'loading' || !ready) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Checking session…</div>
   }
 
@@ -62,10 +73,7 @@ function FlexPageInner() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="text-lg font-semibold">Sign in to use Kulima OS</div>
-        <button
-          onClick={() => signIn()}
-          className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-        >
+        <button onClick={() => signIn()} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
           Sign in
         </button>
       </div>
@@ -73,13 +81,21 @@ function FlexPageInner() {
   }
 
   async function handleCreateRun(e?: React.FormEvent) {
-    e && e.preventDefault()
+    e?.preventDefault()
     setError(null)
     try {
       const res = await api.createRun(founder, startup)
       setRunId(res.runId)
       setStatus(res.status)
       setPolling(true)
+      setShowCreateForm(false)
+      const nextRun = {
+        runId: res.runId,
+        startupName: startup || 'Unnamed venture',
+        founderName: founder || 'Unknown founder',
+        status: res.status,
+      }
+      setCurrentRun(nextRun)
       saveRecentRun({
         runId: res.runId,
         founder: founder || 'Unknown founder',
@@ -94,13 +110,39 @@ function FlexPageInner() {
     }
   }
 
+  const activeRun = currentRun && runId ? currentRun : null
+
   return (
     <div className="min-h-screen p-6 grid grid-cols-[240px_1fr_360px] gap-6">
-      <NavigationSidebar workspace="Flex" runId={runId} status={status} />
-      <main className="flex flex-col">
-        {!runId ? (
-          <div className="p-4 bg-white rounded shadow">
+      <NavigationSidebar
+        workspace="Flex"
+        runId={runId}
+        status={status}
+        startupName={activeRun?.startupName}
+        recommendation={activeRun?.recommendation}
+        trustScore={activeRun?.trustScore}
+      />
+      <main className="flex flex-col gap-4">
+        {hasCurrentRun && activeRun && !showCreateForm ? (
+          <>
+            <CurrentRunBanner
+              run={activeRun}
+              onClear={() => {
+                clearRun()
+                setRunId(null)
+                setStatus(null)
+                setShowCreateForm(true)
+              }}
+            />
+            {status === 'failed' ? <div className="text-red-600 text-sm">Run failed — see backend logs</div> : null}
+            <ChatShell personaName="IC Analyst" runId={runId} />
+          </>
+        ) : (
+          <div className="p-4 bg-white rounded shadow border border-gray-100">
             <h3 className="text-lg font-semibold mb-2">Start Investment Analysis</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Or select an OSTX validation case from the Dashboard to skip manual entry.
+            </p>
             <form onSubmit={handleCreateRun} className="flex flex-col gap-3">
               <input value={founder} onChange={(e) => setFounder(e.target.value)} placeholder="Founder name" className="p-2 border rounded" />
               <input value={startup} onChange={(e) => setStartup(e.target.value)} placeholder="Startup name (optional)" className="p-2 border rounded" />
@@ -108,14 +150,8 @@ function FlexPageInner() {
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Create Run</button>
                 <button type="button" onClick={() => { setFounder(''); setStartup('') }} className="px-4 py-2 border rounded">Clear</button>
               </div>
-              {error && <div className="text-red-600">{error}</div>}
+              {error ? <div className="text-red-600 text-sm">{error}</div> : null}
             </form>
-          </div>
-        ) : (
-          <div>
-            <div id="run-status" className="mb-2">Run: <strong>{runId}</strong> — status: <em>{status}</em></div>
-            {status === 'failed' && <div className="text-red-600">Run failed — see backend logs</div>}
-            <ChatShell personaName="IC Analyst" runId={runId} />
           </div>
         )}
       </main>

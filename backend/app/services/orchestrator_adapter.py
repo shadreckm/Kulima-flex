@@ -166,7 +166,13 @@ def ask_ic(
         brief = brief_json
     from kulima.ask_ic import answer_ask_ic_question
 
-    return answer_ask_ic_question(brief, question, history, run_id=None, user_id=user_id)
+    try:
+        return answer_ask_ic_question(brief, question, history, run_id=None, user_id=user_id)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Ask IC live failed (%s) — returning demo mode response.", exc)
+        from .demo_chat import demo_ask_ic_answer
+
+        return demo_ask_ic_answer(brief, question)
 
 
 def ask_signals(
@@ -189,4 +195,10 @@ def ask_signals(
 
     case = from_investment_brief(brief, case_id=run_id)
     signals = _signals_orchestrator.generate(case, sort=True)
-    return answer_ask_signals_question(case, signals, question, history, user_id=user_id)
+    try:
+        return answer_ask_signals_question(case, signals, question, history, user_id=user_id)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Ask Signals live failed (%s) — returning demo mode response.", exc)
+        from .demo_chat import demo_ask_signals_answer
+
+        return demo_ask_signals_answer(case, signals, question)

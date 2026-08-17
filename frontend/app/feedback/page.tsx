@@ -6,6 +6,8 @@ import { useSearchParams } from 'next/navigation'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, submitRunFeedback, type StoredRunRecord } from '../../lib/api'
 
+import { loadCurrentRun } from '../../lib/current-run'
+
 function FeedbackPageInner() {
   const { status: authStatus } = useSession()
   const searchParams = useSearchParams()
@@ -24,20 +26,16 @@ function FeedbackPageInner() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
       setRuns(res.runs)
-      // Prefer ?run= query param; otherwise default to first run
       const paramRun = searchParams.get('run')
-      if (paramRun) {
-        setSelectedRunId(String(paramRun))
-      } else {
-        setSelectedRunId(String(res.runs[0]?.runId || ''))
-      }
+      const stored = loadCurrentRun()
+      const nextSelected = paramRun || stored?.runId || String(res.runs[0]?.runId || '')
+      setSelectedRunId(nextSelected)
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))
     }
     return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authStatus])
+  }, [authStatus, searchParams])
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Checking session…</div>

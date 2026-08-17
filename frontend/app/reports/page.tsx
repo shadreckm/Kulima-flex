@@ -6,6 +6,8 @@ import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
 
+import { loadCurrentRun } from '../../lib/current-run'
+
 export default function ReportsPage() {
   const { status: authStatus } = useSession()
   const searchParams = useSearchParams()
@@ -19,7 +21,9 @@ export default function ReportsPage() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
       setRuns(res.runs)
-      setSelectedRunId(searchParams.get('run') || String(res.runs[0]?.runId || ''))
+      const fromQuery = searchParams.get('run')
+      const stored = loadCurrentRun()
+      setSelectedRunId(fromQuery || stored?.runId || String(res.runs[0]?.runId || ''))
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))

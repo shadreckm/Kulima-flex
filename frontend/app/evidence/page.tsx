@@ -6,6 +6,8 @@ import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getFullBrief, listStoredRuns, type StoredRunRecord } from '../../lib/api'
 
+import { loadCurrentRun } from '../../lib/current-run'
+
 type FullBrief = Record<string, any>
 
 export default function EvidencePage() {
@@ -24,7 +26,8 @@ export default function EvidencePage() {
       if (cancelled) return
       setRuns(res.runs)
       const fromQuery = searchParams.get('run')
-      const nextSelected = fromQuery || String(res.runs[0]?.runId || '')
+      const stored = loadCurrentRun()
+      const nextSelected = fromQuery || stored?.runId || String(res.runs[0]?.runId || '')
       setSelectedRunId(nextSelected)
     }
     if (authStatus === 'authenticated') {

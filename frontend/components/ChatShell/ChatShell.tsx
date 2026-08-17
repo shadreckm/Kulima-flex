@@ -10,6 +10,7 @@ interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: 
 const MOCK_REPLY = `Recommendation: PASS. The founding team demonstrates strong domain expertise and early traction. Key factors: product-market fit, efficient unit economics, and a defensible niche. Top risks include runway constraints and competitive pressure. Suggested next steps: validate retention cohorts and secure bridge funding.`
 
 import * as api from '../../lib/api'
+import { buildDemoModeResponse } from '../../lib/demo-chat'
 
 export default function ChatShell({ personaName, initialMessages, recommendationCard, runId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null }) {
   const storageKey = `kulima_messages_${personaName.replace(/\s+/g, '_')}`
@@ -52,7 +53,6 @@ export default function ChatShell({ personaName, initialMessages, recommendation
       } else {
         setAutoScroll(false)
       }
-      // debounce reset not necessary here
     }
 
     const el = containerRef.current
@@ -64,14 +64,12 @@ export default function ChatShell({ personaName, initialMessages, recommendation
   useEffect(() => {
     // handle auto-scroll when messages change
     if (autoScroll && containerRef.current) {
-      // smooth scroll to bottom
       try {
         containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' })
       } catch (e) {
         containerRef.current.scrollTop = containerRef.current.scrollHeight
       }
     } else {
-      // if not auto-scrolling, indicate new messages available
       if (messages.length > 0) setHasNewMessages(true)
     }
   }, [messages])
@@ -83,45 +81,33 @@ export default function ChatShell({ personaName, initialMessages, recommendation
   // Mock SSE streaming with variable chunks, pauses, and burst typing
   function simulateSSEStreaming(responseText: string) {
     setIsStreaming(true)
-    // show typing indicator briefly before streaming
     setTyping(true)
-    const preTypingDelay = 300 + Math.random() * 700 // 300-1000ms
+    const preTypingDelay = 300 + Math.random() * 500
     setTimeout(() => {
       setTyping(false)
 
-      // create assistant placeholder
       const assistantId = `a_${Date.now()}`
       setStreamingMessageId(assistantId)
       appendMessage({ id: assistantId, role: 'assistant', content: '' })
 
-      // split by words but keep punctuation
       const words = responseText.match(/\S+|\s+/g) || [responseText]
 
       let i = 0
       function scheduleNextChunk() {
         if (i >= words.length) {
-          // done
           setIsStreaming(false)
           setStreamingMessageId(null)
           return
         }
-        // chunk size: 1-6 words, but sometimes 0 to simulate pauses
         const chunkSize = Math.random() < 0.05 ? 0 : Math.max(1, Math.floor(Math.random() * 5) + 1)
         let chunk = ''
         for (let c = 0; c < chunkSize && i < words.length; c++, i++) chunk += words[i]
 
-        // append chunk
         if (chunk.length > 0) {
           setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + chunk } : m))
         }
 
-        // variable delay
-        let delay = 20 + Math.random() * 180 // 20-200ms
-        // occasional longer pause
-        if (Math.random() < 0.08) delay += 200 + Math.random() * 800 // add 200-1000ms
-        // simulate burst: smaller delays sometimes for several chunks
-        if (Math.random() < 0.15) delay = 10 + Math.random() * 80
-
+        let delay = 20 + Math.random() * 100
         setTimeout(scheduleNextChunk, delay)
       }
 
@@ -134,79 +120,91 @@ export default function ChatShell({ personaName, initialMessages, recommendation
     const userId = `u_${Date.now()}`
     appendMessage({ id: userId, role: 'user', content: text })
 
-      // If runId is provided, try streaming from backend, else fallback to non-streaming
-      if (runId) {
-        setIsStreaming(true)
-        setTyping(true)
-        let stream: any = null
-        let assistantId = `a_${Date.now()}`
-        try {
-          if (personaName.toLowerCase().includes('ic')) {
-            stream = api.askICStream(runId, text, [])
-          } else if (personaName.toLowerCase().includes('signal')) {
-            stream = api.askSignalsStream(runId, text, [])
-          } else {
-            stream = api.askICStream(runId, text, [])
-          }
-        } catch (e) {
-          stream = null
+    if (runId) {
+      setIsStreaming(true)
+      setTyping(true)
+      let stream: any = null
+      let assistantId = `a_${Date.now()}`
+      let receivedText = ''
+      try {
+        if (personaName.toLowerCase().includes('ic')) {
+          stream = api.askICStream(runId, text, [])
+        } else if (personaName.toLowerCase().includes('signal')) {
+          stream = api.askSignalsStream(runId, text, [])
+        } else {
+          stream = api.askICStream(runId, text, [])
         }
+      } catch (e) {
+        stream = null
+      }
 
-        if (stream && typeof stream.addEventListener === 'function') {
-          // create assistant placeholder
-          appendMessage({ id: assistantId, role: 'assistant', content: '' })
-          const onDelta = (ev: any) => {
-            try {
-              const payload = JSON.parse(ev.data)
-              const chunk = payload.text || ''
-              setMessages((cur) => {
-                const last = cur[cur.length - 1]
-                if (last && last.role === 'assistant') {
-                  const updated = [...cur]
-                  updated[updated.length - 1] = { ...last, content: last.content + chunk }
-                  return updated
-                }
-                return [...cur, { id: assistantId, role: 'assistant', content: chunk }]
-              })
-            } catch (err) {
-              console.error('delta parse', err)
-            }
+      if (stream && typeof stream.addEventListener === 'function') {
+        appendMessage({ id: assistantId, role: 'assistant', content: '' })
+        const onDelta = (ev: any) => {
+          try {
+            const payload = JSON.parse(ev.data)
+            const chunk = payload.text || ''
+            receivedText += chunk
+            setMessages((cur) => {
+              const last = cur[cur.length - 1]
+              if (last && last.role === 'assistant') {
+                const updated = [...cur]
+                updated[updated.length - 1] = { ...last, content: last.content + chunk }
+                return updated
+              }
+              return [...cur, { id: assistantId, role: 'assistant', content: chunk }]
+            })
+          } catch (err) {
+            console.error('delta parse', err)
           }
-          const onComplete = () => {
-            setIsStreaming(false)
-            setTyping(false)
-            try { stream.close() } catch (e) {}
-          }
-          const onError = (err: any) => {
-            console.error('stream error', err)
-            try { stream.close() } catch (e) {}
-            setIsStreaming(false)
-            setTyping(false)
-          }
-          stream.addEventListener('delta', onDelta)
-          stream.addEventListener('complete', onComplete)
-          stream.addEventListener('error', onError)
-          return
         }
-
-        // fallback: non-streaming ask endpoint
-        try {
-          const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, []) : await api.askIC(runId, text, [])
-          simulateSSEStreaming(res.answer)
-        } catch (err) {
-          console.error('Ask failed', err)
-          appendMessage({ id: `e_${Date.now()}`, role: 'assistant', content: 'Error: failed to get answer from backend.' })
-        } finally {
+        const onComplete = () => {
           setIsStreaming(false)
           setTyping(false)
+          try { stream.close() } catch (e) {}
         }
+        const onError = (err: any) => {
+          console.error('stream error', err)
+          try { stream.close() } catch (e) {}
+          if (!receivedText) {
+            setMessages((cur) => cur.filter(m => m.id !== assistantId))
+            const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+            simulateSSEStreaming(fallbackResponse)
+          } else {
+            setIsStreaming(false)
+            setTyping(false)
+          }
+        }
+        stream.addEventListener('delta', onDelta)
+        stream.addEventListener('complete', onComplete)
+        stream.addEventListener('error', onError)
         return
       }
 
-      // No runId: mock mode
-      const simulatedResponse = MOCK_REPLY
-      simulateSSEStreaming(simulatedResponse)
+      // Fallback: non-streaming API or offline demo mode
+      try {
+        const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, []) : await api.askIC(runId, text, [])
+        if (res?.answer) {
+          simulateSSEStreaming(res.answer)
+        } else {
+          const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+          simulateSSEStreaming(fallbackResponse)
+        }
+      } catch (err) {
+        console.error('Ask failed', err)
+        const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+        simulateSSEStreaming(fallbackResponse)
+      } finally {
+        setIsStreaming(false)
+        setTyping(false)
+      }
+      return
     }
+
+    // No runId: generate demo mode response
+    const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+    simulateSSEStreaming(fallbackResponse)
+  }
 
   function scrollToLatest() {
     if (!containerRef.current) return
