@@ -41,18 +41,25 @@ _brief_repo = IntelligenceRepository()
 _live_run_repo = RunRepository()
 
 
-def _load_brief_model(run_id: int, user_id: str | None = None) -> InvestmentBrief:
-    stored_row = _brief_repo.get_run(run_id, user_id=user_id)
-    if stored_row is None and user_id is not None:
-        legacy_row = _brief_repo.get_run(run_id)
-        if legacy_row is not None and legacy_row.get("user_id") is None:
-            stored_row = legacy_row
-    if stored_row is not None:
-        brief = _brief_repo.load_brief(run_id)
-        if brief is not None:
-            return brief
+def _is_demo_run(run_id: str | int) -> bool:
+    s = str(run_id).lower()
+    return s.startswith("ostx-") or s.startswith("pilot-") or not s.isdigit()
 
-    brief_json = get_brief_for_run(str(run_id), user_id=user_id)
+def _load_brief_model(run_id: str | int, user_id: str | None = None) -> InvestmentBrief:
+    run_str = str(run_id)
+    if run_str.isdigit():
+        db_id = int(run_str)
+        stored_row = _brief_repo.get_run(db_id, user_id=user_id)
+        if stored_row is None and user_id is not None:
+            legacy_row = _brief_repo.get_run(db_id)
+            if legacy_row is not None and legacy_row.get("user_id") is None:
+                stored_row = legacy_row
+        if stored_row is not None:
+            brief = _brief_repo.load_brief(db_id)
+            if brief is not None:
+                return brief
+
+    brief_json = get_brief_for_run(run_str, user_id=user_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
     return InvestmentBrief.model_validate(brief_json) if isinstance(brief_json, dict) else brief_json
@@ -140,6 +147,7 @@ async def list_run_history(
                 "integrityScore": row.get("integrity_score"),
                 "integrityGrade": row.get("integrity_grade"),
                 "archivedAt": row.get("archived_at"),
+                "userId": row.get("user_id"),
             }
             for row in rows
         ]
@@ -161,7 +169,6 @@ async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)
         if run_id is not None:
             full_row = _brief_repo.get_run(int(run_id), user_id=user.user_id)
             if full_row is None:
-                # Shared demo rows (user_id NULL) remain visible to pilots.
                 legacy = _brief_repo.get_run(int(run_id))
                 if legacy is not None and legacy.get("user_id") is None:
                     full_row = legacy
@@ -172,31 +179,37 @@ async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)
 
 
 @router.post("/{run_id}/archive")
-async def archive_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+async def archive_run(run_id: str, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:archive")
-    if not _brief_repo.archive_run(run_id, user_id=user.user_id):
+    if _is_demo_run(run_id):
+        raise HTTPException(status_code=400, detail="Demo cases are read-only and cannot be archived")
+    if not run_id.isdigit() or not _brief_repo.archive_run(int(run_id), user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "archived": True}
 
 
 @router.post("/{run_id}/reopen")
-async def reopen_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+async def reopen_run(run_id: str, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:reopen")
-    if not _brief_repo.reopen_run(run_id, user_id=user.user_id):
+    if _is_demo_run(run_id):
+        raise HTTPException(status_code=400, detail="Demo cases are read-only and cannot be modified")
+    if not run_id.isdigit() or not _brief_repo.reopen_run(int(run_id), user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "archived": False}
 
 
 @router.delete("/{run_id}")
-async def delete_run(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+async def delete_run(run_id: str, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:delete")
-    if not _brief_repo.delete_run(run_id, user_id=user.user_id):
+    if _is_demo_run(run_id):
+        raise HTTPException(status_code=400, detail="Demo cases are read-only and cannot be deleted")
+    if not run_id.isdigit() or not _brief_repo.delete_run(int(run_id), user_id=user.user_id):
         raise HTTPException(status_code=404, detail="run not found")
     return {"ok": True, "runId": run_id, "deleted": True}
 
 
 @router.get("/{run_id}/brief/full")
-async def get_full_brief(run_id: int, user: AuthenticatedUser = Depends(get_current_user)):
+async def get_full_brief(run_id: str, user: AuthenticatedUser = Depends(get_current_user)):
     check_rate_limit(user.user_id, "intelligence:full_brief")
     brief = _load_brief_model(run_id, user.user_id)
     return brief.model_dump(mode="json")
@@ -204,7 +217,7 @@ async def get_full_brief(run_id: int, user: AuthenticatedUser = Depends(get_curr
 
 @router.get("/{run_id}/reports/{report_kind}")
 async def download_report(
-    run_id: int,
+    run_id: str,
     report_kind: str,
     format: str = Query(default="pdf"),
     user: AuthenticatedUser = Depends(get_current_user),
@@ -225,7 +238,7 @@ async def download_report(
 
 @router.post("/{run_id}/feedback")
 async def save_run_feedback(
-    run_id: int,
+    run_id: str,
     payload: dict = Body(...),
     user: AuthenticatedUser = Depends(get_current_user),
 ):
@@ -238,8 +251,9 @@ async def save_run_feedback(
         rating = 0
     if rating < 1 or rating > 5:
         raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
+    db_id = int(run_id) if run_id.isdigit() else 36
     try:
-        feedback_id = _brief_repo.save_feedback(run_id, user_name, rating, comment, user_id=user.user_id)
+        feedback_id = _brief_repo.save_feedback(db_id, user_name, rating, comment, user_id=user.user_id)
     except ValueError:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
     if not feedback_id:

@@ -5,6 +5,15 @@ import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { archiveRun, deleteRun, listLiveRuns, listStoredRuns, reopenRun, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
 
+function isDemoRun(run: StoredRunRecord): boolean {
+  if (run.userId === null || run.userId === undefined) return true
+  const idStr = String(run.runId).toLowerCase()
+  if (idStr.startsWith('ostx-') || idStr.startsWith('pilot-')) return true
+  const demoNames = ['agrinova malawi', 'greenlink foods', 'solarharvest cooperative', 'nilepay logistics', 'farmstack kenya', 'healthbridge lagos']
+  if (demoNames.includes(String(run.startupName || '').toLowerCase())) return true
+  return false
+}
+
 export default function RunsPage() {
   const { status: authStatus } = useSession()
   const [liveRuns, setLiveRuns] = useState<LiveRunRecord[]>([])
@@ -105,22 +114,30 @@ export default function RunsPage() {
                 <div className="text-xs text-gray-500 mt-1">Run #{run.runId} · Created {run.createdAt}</div>
                 <div className="text-xs text-gray-500 mt-1">Score {run.overallScore ?? '—'} · Trust {run.trustScore ?? '—'} · Reliability {run.integrityGrade ?? '—'}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === run.runId}
-                    onClick={() => withBusy(() => archiveRun(run.runId), run.runId)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Archive
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === run.runId}
-                    onClick={() => withBusy(() => deleteRun(run.runId), run.runId)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
+                  {isDemoRun(run) ? (
+                    <span className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 font-semibold text-xs border border-emerald-200">
+                      Demo Case (Read Only)
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busyId === run.runId}
+                        onClick={() => withBusy(() => archiveRun(run.runId), run.runId)}
+                        className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Archive
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === run.runId}
+                        onClick={() => withBusy(() => deleteRun(run.runId), run.runId)}
+                        className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -144,22 +161,30 @@ export default function RunsPage() {
                 <div className="text-xs text-gray-500 mt-1">Run #{run.runId} · Archived {run.archivedAt || '—'}</div>
                 <div className="text-xs text-gray-500 mt-1">Score {run.overallScore ?? '—'} · Trust {run.trustScore ?? '—'} · Reliability {run.integrityGrade ?? '—'}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === run.runId}
-                    onClick={() => withBusy(() => reopenRun(run.runId), run.runId)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Reopen
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === run.runId}
-                    onClick={() => withBusy(() => deleteRun(run.runId), run.runId)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
+                  {isDemoRun(run) ? (
+                    <span className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 font-semibold text-xs border border-emerald-200">
+                      Demo Case (Read Only)
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busyId === run.runId}
+                        onClick={() => withBusy(() => reopenRun(run.runId), run.runId)}
+                        className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Reopen
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === run.runId}
+                        onClick={() => withBusy(() => deleteRun(run.runId), run.runId)}
+                        className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

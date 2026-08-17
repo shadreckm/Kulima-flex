@@ -296,7 +296,7 @@ export type LiveRunRecord = {
 }
 
 export type StoredRunRecord = {
-  runId: number
+  runId: number | string
   createdAt: string
   founderName: string
   startupName: string
@@ -311,6 +311,7 @@ export type StoredRunRecord = {
   integrityScore?: number | null
   integrityGrade?: string | null
   archivedAt?: string | null
+  userId?: string | null
 }
 
 export type PilotAnalyticsMetrics = Record<string, number | string | boolean>

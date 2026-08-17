@@ -97,7 +97,7 @@ function SignalsPageInner() {
   const activeRun = currentRun && runId ? currentRun : null
 
   return (
-    <div className="min-h-screen p-6 grid grid-cols-[240px_1fr_360px] gap-6">
+    <div className="min-h-screen p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
       <NavigationSidebar
         workspace="Signals"
         runId={runId}
