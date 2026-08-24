@@ -396,3 +396,51 @@ export async function submitRunFeedback(runId: number | string, payload: RunFeed
 export function reportDownloadHref(runId: number | string, reportKind: 'memo' | 'report' | 'signals' | 'due-diligence' | 'one-pager', format: 'pdf' | 'txt' = 'pdf') {
   return `/api/v1/intelligence/${encodeURIComponent(String(runId))}/reports/${reportKind}?format=${format}`
 }
+
+// ── Outcome Tracking & Decision Learning ─────────────────────────────────────
+
+export type OutcomeUpdatePayload = {
+  outcome_status: string
+  outcome_date?: string | null
+  outcome_notes?: string
+  what_happened?: string
+  what_was_predicted?: string
+  what_was_missed?: string
+  what_worked?: string
+  what_failed?: string
+}
+
+export async function getDecisionHistory(limit = 50): Promise<{ decisions: Record<string, any>[]; total: number }> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/history?limit=${limit}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getDecisionHistory failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ decisions: Record<string, any>[]; total: number }>(res, 'getDecisionHistory')
+}
+
+export async function getOutcome(runId: number | string): Promise<Record<string, any>> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/${encodeURIComponent(String(runId))}/outcome`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getOutcome failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<Record<string, any>>(res, 'getOutcome')
+}
+
+export async function saveOutcome(runId: number | string, payload: OutcomeUpdatePayload): Promise<{ outcome_id: number; run_id: number; status: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/${encodeURIComponent(String(runId))}/outcome`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(`saveOutcome failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ outcome_id: number; run_id: number; status: string }>(res, 'saveOutcome')
+}
+
+export async function getOutcomeIntelligence(): Promise<Record<string, any>> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/intelligence`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getOutcomeIntelligence failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<Record<string, any>>(res, 'getOutcomeIntelligence')
+}
+

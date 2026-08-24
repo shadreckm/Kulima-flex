@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 import os
 
-from .routers import intelligence, ask_ic, ask_signals, documents
+from .routers import intelligence, ask_ic, ask_signals, documents, outcomes
 
 app = FastAPI(title="Kulima OS API", version="0.1.0")
 
@@ -37,6 +37,7 @@ app.include_router(intelligence.router, prefix="/api/v1/intelligence", tags=["in
 app.include_router(ask_ic.router, prefix="/api/v1/ask", tags=["ask_ic"])
 app.include_router(ask_signals.router, prefix="/api/v1/ask", tags=["ask_signals"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
+app.include_router(outcomes.router, prefix="/api/v1/outcomes", tags=["outcomes"])
 
 # Serve uploaded files from backend/uploads via /uploads.
 # Must match document_adapter.UPLOAD_DIR (backend/uploads), not repo-root uploads/.

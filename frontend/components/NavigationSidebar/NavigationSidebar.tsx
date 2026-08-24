@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { label: 'Signals', href: '/signals' },
   { label: 'Evidence', href: '/evidence' },
   { label: 'Decision', href: '/decision' },
+  { label: 'Outcomes', href: '/outcomes' },
   { label: 'Reports', href: '/reports' },
   { label: 'Analytics', href: '/analytics' },
   { label: 'Feedback', href: '/feedback' },

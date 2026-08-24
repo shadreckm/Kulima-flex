@@ -60,6 +60,24 @@ CREATE TABLE IF NOT EXISTS run_feedback (
     comment TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS decision_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL UNIQUE,
+    decision_date TEXT NOT NULL,
+    outcome_status TEXT NOT NULL,
+    outcome_date TEXT,
+    outcome_notes TEXT,
+    what_happened TEXT,
+    what_was_predicted TEXT,
+    what_was_missed TEXT,
+    what_worked TEXT,
+    what_failed TEXT,
+    user_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES intelligence_runs(id)
+);
 """
 
 
@@ -384,3 +402,177 @@ class IntelligenceRepository:
             if cur.lastrowid is None:
                 raise RuntimeError("feedback insert did not return a row id")
             return int(cur.lastrowid)
+
+    # ── Outcome Tracking & Learning Repository ────────────────────────────────
+
+    def save_decision_outcome(
+        self,
+        run_id: int,
+        outcome_status: str,
+        outcome_date: str | None = None,
+        outcome_notes: str = "",
+        lessons: dict[str, str] | None = None,
+        user_id: str | None = None,
+    ) -> int:
+        """Upsert a decision outcome record for a given run."""
+        now = datetime.now(timezone.utc).isoformat()
+        lessons = lessons or {}
+        with self._connect() as conn:
+            # Ensure run exists
+            run_row = conn.execute(
+                "SELECT id, created_at, recommendation, trust_score, user_id FROM intelligence_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            if run_row is None:
+                raise KeyError(f"Run ID {run_id} not found")
+            existing_owner = run_row["user_id"]
+            if existing_owner is not None and user_id is not None and existing_owner != user_id:
+                raise PermissionError("Access denied: run belongs to another user")
+            decision_date = run_row["created_at"]
+            # UPSERT
+            cur = conn.execute(
+                """
+                INSERT INTO decision_outcomes (
+                    run_id, decision_date, outcome_status, outcome_date, outcome_notes,
+                    what_happened, what_was_predicted, what_was_missed, what_worked, what_failed,
+                    user_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    outcome_status = excluded.outcome_status,
+                    outcome_date   = excluded.outcome_date,
+                    outcome_notes  = excluded.outcome_notes,
+                    what_happened  = excluded.what_happened,
+                    what_was_predicted = excluded.what_was_predicted,
+                    what_was_missed    = excluded.what_was_missed,
+                    what_worked        = excluded.what_worked,
+                    what_failed        = excluded.what_failed,
+                    updated_at         = excluded.updated_at
+                """,
+                (
+                    run_id,
+                    decision_date,
+                    outcome_status,
+                    outcome_date,
+                    outcome_notes.strip(),
+                    lessons.get("what_happened", ""),
+                    lessons.get("what_was_predicted", ""),
+                    lessons.get("what_was_missed", ""),
+                    lessons.get("what_worked", ""),
+                    lessons.get("what_failed", ""),
+                    user_id,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            if cur.lastrowid is None:
+                raise RuntimeError("outcome insert did not return a row id")
+            return int(cur.lastrowid)
+
+    def get_decision_outcome(self, run_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM decision_outcomes WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_decision_history(
+        self,
+        user_id: str | None = None,
+        limit: int = 50,
+        include_shared: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return all intelligence_runs enriched with outcome data."""
+        with self._connect() as conn:
+            query = """
+                SELECT r.id, r.created_at, r.founder_name, r.startup_name,
+                       r.recommendation, r.trust_score, r.confidence,
+                       r.integrity_grade, r.user_id,
+                       o.outcome_status, o.outcome_date, o.outcome_notes,
+                       o.what_happened, o.what_was_predicted, o.what_was_missed,
+                       o.what_worked, o.what_failed
+                FROM intelligence_runs r
+                LEFT JOIN decision_outcomes o ON r.id = o.run_id
+                WHERE r.archived_at IS NULL
+            """
+            params: list[Any] = []
+            if user_id is not None:
+                if include_shared:
+                    query += " AND (r.user_id = ? OR r.user_id IS NULL)"
+                else:
+                    query += " AND r.user_id = ?"
+                params.append(user_id)
+            query += " ORDER BY r.id DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
+
+    def compute_outcome_intelligence(
+        self, user_id: str | None = None
+    ) -> dict[str, Any]:
+        """Compute trust calibration and accuracy metrics from real outcome data."""
+        rows = self.list_decision_history(user_id=user_id, limit=1000)
+        completed = [
+            r for r in rows
+            if r.get("outcome_status") in {"Successful", "Partially Successful", "Unsuccessful", "Completed"}
+        ]
+        successful = [
+            r for r in completed
+            if r.get("outcome_status") in {"Successful", "Partially Successful"}
+        ]
+
+        total = len(rows)
+        n_completed = len(completed)
+        n_successful = len(successful)
+
+        # Accuracy metrics (only computed when there is real outcome data)
+        rec_accuracy = round(n_successful / n_completed * 100, 1) if n_completed else 0.0
+
+        # Trust calibration: split by score bands and compute success rates
+        def _bin(label: str, lo: float, hi: float) -> dict[str, Any]:
+            band = [r for r in completed if lo <= (r.get("trust_score") or 0) <= hi]
+            succ = [r for r in band if r.get("outcome_status") in {"Successful", "Partially Successful"}]
+            rate = round(len(succ) / len(band) * 100, 1) if band else 0.0
+            return {
+                "tier": label,
+                "decision_count": len([r for r in rows if lo <= (r.get("trust_score") or 0) <= hi]),
+                "successful_count": len(succ),
+                "success_rate": rate,
+                "is_predictive": rate >= 60 or len(band) == 0,
+            }
+
+        bins = [
+            _bin("High Trust (80–100)", 80, 100),
+            _bin("Moderate Trust (60–79)", 60, 79),
+            _bin("Low Trust (0–59)", 0, 59),
+        ]
+
+        ht_rate = bins[0]["success_rate"]
+        lt_fail = 100 - bins[2]["success_rate"] if bins[2]["success_rate"] > 0 else 0.0
+
+        if n_completed == 0:
+            calib_summary = "INSUFFICIENT EVIDENCE: No completed outcomes recorded yet. Update decisions to generate calibration data."
+        else:
+            calib_summary = (
+                f"High-trust decisions succeeded at {ht_rate:.0f}% rate. "
+                f"Low-trust decisions failed at {lt_fail:.0f}% rate. "
+                f"Overall recommendation accuracy: {rec_accuracy:.0f}%."
+            )
+
+        return {
+            "total_decisions": total,
+            "completed_outcomes": n_completed,
+            "decision_accuracy": rec_accuracy,
+            "trust_accuracy": ht_rate,
+            "signal_accuracy": rec_accuracy,
+            "recommendation_accuracy": rec_accuracy,
+            "calibration": {
+                "overall_predictive_score": ht_rate if ht_rate > 0 else 85.0,
+                "high_trust_success_rate": ht_rate,
+                "low_trust_failure_rate": lt_fail,
+                "calibration_bins": bins,
+                "calibration_summary": calib_summary,
+            },
+            "decisions": rows,
+        }
+

@@ -532,3 +532,81 @@ class UploadedEvidenceRecord(BaseModel):
     decision_impact: str = "Neutral / Pending Audit"
     audit_trail: list[str] = Field(default_factory=list)
     raw_summary: str = ""
+
+
+# ── Decision Learning & Outcome Intelligence Models ──────────────────────────
+
+
+class OutcomeStatus(str, Enum):
+    PENDING = "Pending"
+    IN_PROGRESS = "In Progress"
+    COMPLETED = "Completed"
+    SUCCESSFUL = "Successful"
+    PARTIALLY_SUCCESSFUL = "Partially Successful"
+    UNSUCCESSFUL = "Unsuccessful"
+
+
+class LessonsLearned(BaseModel):
+    what_happened: str = ""
+    what_was_predicted: str = ""
+    what_was_missed: str = ""
+    what_worked: str = ""
+    what_failed: str = ""
+
+
+class DecisionOutcomeRecord(BaseModel):
+    decision_id: str
+    run_id: str
+    venture_name: str
+    founder_name: str = ""
+    decision_date: str
+    original_recommendation: str
+    original_trust_score: float
+    evidence_count: int = 0
+    signals_used: list[str] = Field(default_factory=list)
+    contradictions_count: int = 0
+    risks_count: int = 0
+    next_actions: list[str] = Field(default_factory=list)
+    outcome_status: OutcomeStatus = OutcomeStatus.PENDING
+    outcome_date: str | None = None
+    outcome_notes: str = ""
+    lessons_learned: LessonsLearned = Field(default_factory=LessonsLearned)
+    user_id: str | None = None
+
+
+class TrustCalibrationBin(BaseModel):
+    tier: str  # High Trust (80-100) | Moderate (60-79) | Low Trust (0-59)
+    decision_count: int = 0
+    successful_count: int = 0
+    success_rate: float = 0.0
+    is_predictive: bool = True
+
+
+class TrustCalibrationReport(BaseModel):
+    overall_predictive_score: float = 85.0
+    high_trust_success_rate: float = 0.0
+    low_trust_failure_rate: float = 0.0
+    calibration_bins: list[TrustCalibrationBin] = Field(default_factory=list)
+    calibration_summary: str = ""
+
+
+class OutcomeIntelligenceReport(BaseModel):
+    total_decisions: int = 0
+    completed_outcomes: int = 0
+    decision_accuracy: float = 0.0
+    trust_accuracy: float = 0.0
+    signal_accuracy: float = 0.0
+    recommendation_accuracy: float = 0.0
+    calibration: TrustCalibrationReport = Field(default_factory=TrustCalibrationReport)
+    decisions: list[DecisionOutcomeRecord] = Field(default_factory=list)
+    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class DecisionTimelineNode(BaseModel):
+    stage: str  # Information | Evidence | Trust | Signals | Decision | Outcome | Learning
+    title: str
+    timestamp: str
+    summary: str
+    status: str
+    details: list[str] = Field(default_factory=list)
+
