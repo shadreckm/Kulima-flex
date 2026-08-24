@@ -337,14 +337,13 @@ class IntelligenceRepository:
         user_id: str | None = None,
     ) -> int:
         with self._connect() as conn:
-            query = "SELECT id FROM intelligence_runs WHERE id = ?"
-            params: list[Any] = [run_id]
-            if user_id is not None:
-                query += " AND user_id = ?"
-                params.append(user_id)
-            run_row = conn.execute(query, tuple(params)).fetchone()
+            query = "SELECT id, user_id FROM intelligence_runs WHERE id = ?"
+            run_row = conn.execute(query, (run_id,)).fetchone()
             if run_row is None:
-                raise ValueError("run not found")
+                raise KeyError(f"Run ID {run_id} not found")
+            existing_owner = run_row[1]
+            if existing_owner is not None and user_id is not None and existing_owner != user_id:
+                raise PermissionError("Access denied: run belongs to another user")
             cur = conn.execute(
                 """
                 INSERT INTO run_feedback (run_id, user_name, rating, comment, created_at)
