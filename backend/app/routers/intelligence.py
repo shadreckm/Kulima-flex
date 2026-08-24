@@ -254,11 +254,15 @@ async def save_run_feedback(
     db_id = int(run_id) if run_id.isdigit() else 36
     try:
         feedback_id = _brief_repo.save_feedback(db_id, user_name, rating, comment, user_id=user.user_id)
-    except ValueError:
-        raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail={"error": True, "message": str(e)})
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail={"error": True, "message": str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"error": True, "message": f"Database error: {str(e)}"})
     if not feedback_id:
-        raise HTTPException(status_code=500, detail="feedback could not be saved")
-    return {"ok": True, "runId": run_id, "rating": rating}
+        raise HTTPException(status_code=500, detail={"error": True, "message": "feedback could not be saved"})
+    return {"ok": True, "runId": run_id, "rating": rating, "feedbackId": feedback_id}
 
 
 @router.post("/", response_model=IntelligenceCreateResponse)
