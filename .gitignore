@@ -121,3 +121,9 @@ htmlcov/
 *.tmp
 *.bak
 *.swp
+#################################################
+# Uploaded Evidence Files
+#################################################
+
+backend/uploads/
+backend/uploads/

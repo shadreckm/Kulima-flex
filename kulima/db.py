@@ -328,6 +328,29 @@ class IntelligenceRepository:
             conn.commit()
             return True
 
+    def update_brief(self, run_id: int, brief: InvestmentBrief) -> bool:
+        payload = brief.model_dump(mode="json")
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE intelligence_runs
+                SET payload_json = ?,
+                    overall_score = ?,
+                    trust_score = ?,
+                    confidence = ?
+                WHERE id = ?
+                """,
+                (
+                    json.dumps(payload),
+                    brief.overall_score,
+                    brief.trust_score,
+                    brief.confidence,
+                    run_id,
+                ),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
     def save_feedback(
         self,
         run_id: int,

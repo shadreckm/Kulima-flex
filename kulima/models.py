@@ -442,3 +442,93 @@ class InvestmentBrief(BaseModel):
     evidence_integrity: EvidenceIntegrityReport | None = None
     # VC Thesis Engine — None for all pre-thesis runs; populated by evaluate_thesis_match
     thesis_match: ThesisMatchResult | None = None
+    # MEAL Intelligence Foundation (Phase 1)
+    meal_record: MEALRecord | None = None
+    # Uploaded Evidence Intelligence
+    uploaded_evidence: list[UploadedEvidenceRecord] = Field(default_factory=list)
+
+
+# ── MEAL Intelligence Foundational Data Structures ───────────────────────────
+
+
+class IndicatorStatus(str, Enum):
+    ON_TRACK = "ON_TRACK"
+    AT_RISK = "AT_RISK"
+    OFF_TRACK = "OFF_TRACK"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
+class MEALIndicator(BaseModel):
+    id: str
+    name: str
+    category: str = "Outcome"  # Output | Outcome | Impact | ESG | Governance
+    description: str = ""
+    baseline: float = 0.0
+    target: float = 0.0
+    actual: float | None = None
+    variance: float | None = None
+    unit: str = ""
+    verification_source: str = ""
+    status: IndicatorStatus = IndicatorStatus.INSUFFICIENT_EVIDENCE
+
+
+class MEALOutput(BaseModel):
+    id: str
+    title: str
+    target_date: str = ""
+    achieved_date: str | None = None
+    metric: str = ""
+    target_value: float = 0.0
+    actual_value: float | None = None
+    variance: float | None = None
+    verification_evidence_id: str = ""
+
+
+class MEALOutcome(BaseModel):
+    id: str
+    title: str
+    target_date: str = ""
+    baseline_value: float = 0.0
+    target_value: float = 0.0
+    current_value: float | None = None
+    variance: float | None = None
+    confidence: float = Field(ge=0, le=1, default=0.5)
+
+
+class MEALRecord(BaseModel):
+    venture_id: str
+    reporting_period: str = "Initial Appraisal"
+    indicators: list[MEALIndicator] = Field(default_factory=list)
+    outputs: list[MEALOutput] = Field(default_factory=list)
+    outcomes: list[MEALOutcome] = Field(default_factory=list)
+    audit_trail: list[str] = Field(default_factory=list)
+    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+# ── Transparent Trust Engine & Uploaded Evidence Models ──────────────────────
+
+
+class TrustScoreBreakdown(BaseModel):
+    source_reliability: float = Field(ge=0, le=100, default=50.0)
+    corroboration: float = Field(ge=0, le=100, default=50.0)
+    recency: float = Field(ge=0, le=100, default=50.0)
+    completeness: float = Field(ge=0, le=100, default=50.0)
+    weighted_score: float = Field(ge=0, le=100, default=50.0)
+    final_trust_score: float = Field(ge=0, le=100, default=50.0)
+    rationale: str = ""
+
+
+class UploadedEvidenceRecord(BaseModel):
+    id: str
+    filename: str
+    source: str
+    upload_date: str
+    file_type: str
+    uploader: str
+    trust_breakdown: TrustScoreBreakdown
+    evidence_status: str = "INSUFFICIENT_EVIDENCE"  # VERIFIED | CORROBORATED | UNCORROBORATED | INSUFFICIENT_EVIDENCE
+    evidence_items: list[str] = Field(default_factory=list)
+    signals_generated: list[str] = Field(default_factory=list)
+    decision_impact: str = "Neutral / Pending Audit"
+    audit_trail: list[str] = Field(default_factory=list)
+    raw_summary: str = ""

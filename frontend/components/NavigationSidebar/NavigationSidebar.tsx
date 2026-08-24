@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { label: 'Flex', href: '/flex' },
   { label: 'Signals', href: '/signals' },
   { label: 'Evidence', href: '/evidence' },
+  { label: 'Decision', href: '/decision' },
   { label: 'Reports', href: '/reports' },
   { label: 'Analytics', href: '/analytics' },
   { label: 'Feedback', href: '/feedback' },
@@ -118,10 +119,10 @@ export default function NavigationSidebar({
                   key={item.label}
                   href={href}
                   onClick={onCloseMobile}
-                  className={`px-3 py-2 rounded-lg font-medium transition-colors ${
+                  className={`px-3 py-2 rounded-lg font-semibold transition-colors ${
                     active
-                      ? 'bg-[#174836] text-white font-bold shadow-sm border border-[#1E6047]'
-                      : 'text-emerald-100/70 hover:bg-[#0E2E22] hover:text-white'
+                      ? 'bg-[#174836] text-[#FFFFFF] shadow-sm border border-[#1E6047]'
+                      : 'text-[#E2E8F0] hover:bg-[#0E2E22] hover:text-[#FFFFFF]'
                   }`}
                 >
                   {item.label}

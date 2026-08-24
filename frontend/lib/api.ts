@@ -272,7 +272,7 @@ export function askSignalsStream(runId: string, question: string, history: Array
   }
 }
 
-export async function uploadDocument(file: File, runId?: string | null): Promise<{ id: string; name: string; url: string }> {
+export async function uploadDocument(file: File, runId?: string | null): Promise<{ id: string; name: string; url: string; trustScore?: number; evidenceStatus?: string; signals?: string[] }> {
   const form = new FormData()
   form.append('file', file)
   if (runId) form.append('runId', runId)
@@ -282,7 +282,7 @@ export async function uploadDocument(file: File, runId?: string | null): Promise
     body: form,
   })
   if (!res.ok) throw new Error(`uploadDocument failed: ${res.status} ${await readResponseText(res)}`)
-  return parseJsonResponse<{ id: string; name: string; url: string }>(res, 'uploadDocument')
+  return parseJsonResponse<{ id: string; name: string; url: string; trustScore?: number; evidenceStatus?: string; signals?: string[] }>(res, 'uploadDocument')
 }
 
 export type LiveRunRecord = {
