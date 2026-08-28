@@ -1,11 +1,19 @@
+import type { EntityType } from './entity-types'
+
 export type CurrentRunState = {
   runId: string
   storedRunId?: string
+  /** Entity display name (startup name, NGO name, agency, etc.) */
   startupName?: string
+  /** Founder name, program lead, or primary contact */
   founderName?: string
   recommendation?: string
   trustScore?: number | null
   status?: string
+  /** Entity type — defaults to 'startup' for backward compat */
+  entityType?: EntityType
+  /** Secondary label: program name, cohort, etc. (non-startup entities) */
+  programName?: string
 }
 
 const STORAGE_KEY = 'kulima_current_run'

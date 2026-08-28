@@ -114,13 +114,41 @@ export default function OutcomesPage() {
   }, [decisions])
 
   const timelineStages = useMemo(() => [
-    { stage: 'Information', icon: '📥', description: 'Raw data, pitch documents, OSINT sources collected per venture.' },
-    { stage: 'Evidence', icon: '📋', description: 'Structured document ingestion, chunk extraction, source attribution.' },
-    { stage: 'Trust', icon: '⚖️', description: 'Deterministic 4-factor scoring: Source Reliability, Corroboration, Recency, Completeness.' },
-    { stage: 'Signals', icon: '⚡', description: 'Automated Risk, Opportunity, and Anomaly extraction from evidence corpus.' },
-    { stage: 'Decision', icon: '🎯', description: 'Investment Committee verdict: Invest / Observe / Pass with rationale.' },
-    { stage: 'Outcome', icon: '📊', description: 'Actual real-world result: Successful / Partially Successful / Unsuccessful.' },
-    { stage: 'Learning', icon: '🧠', description: 'Trust calibration, accuracy measurement, lessons extracted for future decisions.' },
+    {
+      stage: 'Information',
+      svgPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+      description: 'Raw data, pitch documents, OSINT sources collected per entity.',
+    },
+    {
+      stage: 'Evidence',
+      svgPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      description: 'Structured document ingestion, chunk extraction, source attribution.',
+    },
+    {
+      stage: 'Trust',
+      svgPath: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+      description: 'Deterministic 4-factor scoring: Source Reliability, Corroboration, Recency, Completeness.',
+    },
+    {
+      stage: 'Signals',
+      svgPath: 'M13 10V3L4 14h7v7l9-11h-7z',
+      description: 'Automated Risk, Opportunity, and Anomaly extraction from evidence corpus.',
+    },
+    {
+      stage: 'Decision',
+      svgPath: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+      description: 'Investment committee verdict: Invest / Observe / Pass with rationale and evidence basis.',
+    },
+    {
+      stage: 'Outcome',
+      svgPath: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
+      description: 'Actual real-world result: Successful / Partially Successful / Unsuccessful.',
+    },
+    {
+      stage: 'Learning',
+      svgPath: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+      description: 'Trust calibration, accuracy measurement, lessons extracted for future decisions.',
+    },
   ], [])
 
   if (authStatus === 'loading') {
@@ -485,12 +513,14 @@ export default function OutcomesPage() {
                   return (
                     <div key={stage.stage} className="relative flex items-start gap-4 pl-0">
                       {/* Node circle */}
-                      <div className={`relative z-10 w-14 h-14 rounded-full border-2 flex items-center justify-center text-lg shrink-0 ${
+                      <div className={`relative z-10 w-14 h-14 rounded-full border-2 flex items-center justify-center shrink-0 ${
                         isLast ? 'bg-[#061C14] border-[#0B5D3B] shadow-lg' :
                         isCompleted ? 'bg-[#0B5D3B] border-[#17855A]' :
                         'bg-white border-[#DDE6F0]'
                       }`}>
-                        {stage.icon}
+                        <svg className={`w-6 h-6 ${isLast ? 'text-emerald-400' : isCompleted ? 'text-white' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d={stage.svgPath} />
+                        </svg>
                       </div>
                       {/* Content */}
                       <div className={`flex-1 p-4 rounded-[10px] border ${

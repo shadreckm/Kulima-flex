@@ -5,6 +5,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { hrefWithRun, loadCurrentRun } from '../../lib/current-run'
 import TrustGauge from '../TrustGauge/TrustGauge'
+import type { EntityType } from '../../lib/entity-types'
+
+const ENTITY_LABELS: Record<EntityType, string> = {
+  startup: 'Startup',
+  ngo: 'NGO',
+  development_program: 'Dev. Program',
+  accelerator: 'Accelerator',
+  government_program: 'Gov. Program',
+}
 
 type SidebarProps = {
   workspace: string
@@ -96,8 +105,8 @@ export default function NavigationSidebar({
   const displayTrust = trustScore ?? currentRun?.trustScore
 
   return (
-    <aside className="bg-[#061C14] text-white p-5 rounded-[12px] border border-[#0E3627] flex flex-col justify-between h-full min-h-[calc(100vh-3rem)] shadow-saas-elevated select-none">
-      <div className="flex flex-col gap-0">
+    <aside className="bg-[#061C14] text-white p-5 rounded-[12px] border border-[#0E3627] flex flex-col h-full overflow-y-auto shadow-saas-elevated select-none">
+      <div className="flex flex-col gap-0 flex-1 min-h-0">
         {/* Brand Header */}
         <div className="mb-5 pb-4 border-b border-[#0E3627]">
           <div className="flex items-center justify-between">
@@ -132,7 +141,14 @@ export default function NavigationSidebar({
 
           {runId || currentRun?.runId ? (
             <div>
-              <div className="text-xs font-bold text-white truncate">{displayStartup || 'Active Venture'}</div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <div className="text-xs font-bold text-white truncate leading-tight">{displayStartup || 'Active Venture'}</div>
+                {currentRun?.entityType && currentRun.entityType !== 'startup' ? (
+                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                    {ENTITY_LABELS[currentRun.entityType] || currentRun.entityType}
+                  </span>
+                ) : null}
+              </div>
               {displayRec ? (
                 <div className="text-[11px] text-emerald-200 mt-1">
                   Decision: <span className="font-bold text-white uppercase">{displayRec}</span>
@@ -178,7 +194,7 @@ export default function NavigationSidebar({
         </nav>
       </div>
 
-      <div className="pt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between">
+      <div className="pt-4 mt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between flex-shrink-0">
         <span>Kulima OS</span>
         <span className="font-mono">v2.0</span>
       </div>

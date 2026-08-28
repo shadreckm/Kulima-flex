@@ -115,8 +115,8 @@ export default function DecisionWorkspacePage() {
   return (
     <PilotWorkspaceShell
       workspace="Decision"
-      title="Decision Dossier & Investment Committee Pack"
-      description="The definitive evidence-backed decision layer synthesizing Information → Evidence → Trust → Signals → Decision."
+      title="Decision Workspace"
+      description="Review, analyze, and approve evaluations. The definitive evidence-backed decision layer: Information → Evidence → Trust → Signals → Decision."
       runId={selectedRunId || null}
       status={selectedRun?.archivedAt ? 'archived' : 'active'}
       startupName={selectedRun?.startupName}
@@ -153,7 +153,7 @@ export default function DecisionWorkspacePage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <span>Export IC Memo (PDF)</span>
+              <span>Export Decision Memo (PDF)</span>
             </a>
           ) : null}
         </div>
@@ -173,9 +173,9 @@ export default function DecisionWorkspacePage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">
-                    Official IC Decision Pack
+                    Decision Dossier
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">Dossier #{selectedRunId}</span>
+                  <span className="text-xs text-slate-500 font-mono">Evaluation #{selectedRunId}</span>
                 </div>
 
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
@@ -190,7 +190,7 @@ export default function DecisionWorkspacePage() {
                 </h1>
 
                 <div className="text-xs text-slate-600 mt-1">
-                  Founder: <strong className="text-slate-900">{brief.founder_name}</strong> · Sector: <strong className="text-slate-900">{brief.sector || 'AgTech'}</strong> · Region: <strong className="text-slate-900">{brief.geography || 'Pan-Africa'}</strong>
+                  Lead: <strong className="text-slate-900">{brief.founder_name}</strong> · Sector: <strong className="text-slate-900">{brief.sector || 'AgTech'}</strong> · Region: <strong className="text-slate-900">{brief.geography || 'Pan-Africa'}</strong>
                 </div>
               </div>
 

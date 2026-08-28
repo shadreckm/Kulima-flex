@@ -107,8 +107,14 @@ export default function SettingsPage() {
           {[
             { label: 'Dashboard', href: '/dashboard' },
             { label: 'Runs', href: '/runs' },
+            { label: 'AI Analyst Workspace', href: '/flex' },
+            { label: 'Signals', href: '/signals' },
+            { label: 'Evidence', href: '/evidence' },
+            { label: 'Decision', href: '/decision' },
+            { label: 'Outcomes', href: '/outcomes' },
             { label: 'Reports', href: '/reports' },
             { label: 'Analytics', href: '/analytics' },
+            { label: 'Feedback', href: '/feedback' },
           ].map(({ label, href }) => (
             <Link
               key={label}
@@ -118,6 +124,40 @@ export default function SettingsPage() {
               {label}
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+        <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-3 pb-2.5 border-b border-[#DDE6F0]">About Platform</h2>
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Decision Intelligence Pipeline</div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+              {['Information', 'Evidence', 'Trust', 'Signals', 'Decision', 'Outcome', 'Learning'].map((stage, idx, arr) => (
+                <React.Fragment key={stage}>
+                  <span className="px-2.5 py-1 rounded-md bg-[#F5F8FC] border border-[#DDE6F0] text-slate-700">{stage}</span>
+                  {idx < arr.length - 1 && <span className="text-slate-300 font-bold">→</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-slate-600">
+            <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="font-bold text-slate-700 mb-0.5">Platform</div>
+              <div>Kulima OS v2.0</div>
+            </div>
+            <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="font-bold text-slate-700 mb-0.5">Engine</div>
+              <div>Core Intelligence Engine</div>
+            </div>
+            <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="font-bold text-slate-700 mb-0.5">Entity Types</div>
+              <div>Startup · NGO · Dev. Program · Accelerator · Gov. Program</div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">
+            Kulima OS is a white-label decision intelligence platform for investment committees, development finance institutions, NGOs, accelerators, and government program evaluators.
+          </p>
         </div>
       </section>
     </PilotWorkspaceShell>

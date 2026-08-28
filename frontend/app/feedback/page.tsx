@@ -196,7 +196,7 @@ function FeedbackPageInner() {
                   <TrustGauge score={selectedRun.trustScore} size="lg" showLabel={true} />
                   <div className="pt-3 border-t border-[#DDE6F0] text-xs text-slate-600 space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Startup:</span>
+                      <span className="text-slate-400">Entity:</span>
                       <span className="font-bold text-slate-900">{selectedRun.startupName}</span>
                     </div>
                     <div className="flex justify-between">

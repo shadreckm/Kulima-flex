@@ -129,13 +129,13 @@ export default function DashboardPage() {
             label: 'Evidence Coverage',
             value: `${metric(metrics, 'evidence_coverage')}%`,
             accent: 'text-slate-900',
-            sub: 'of evaluations verified',
+            sub: 'of evaluations with evidence',
           },
           {
-            label: 'Verification Coverage',
-            value: `${metric(metrics, 'signal_coverage')}%`,
+            label: 'Outcome Success Rate',
+            value: metric(metrics, 'average_score') !== '—' ? `${metric(metrics, 'average_score')}%` : '—',
             accent: 'text-slate-900',
-            sub: 'signal-verified runs',
+            sub: 'successful completed outcomes',
           },
         ].map(({ label, value, accent, sub }) => (
           <div key={label} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col gap-1">

@@ -82,12 +82,18 @@ export default function EvidencePage() {
 
   const selectedRun = useMemo(() => runs.find(run => String(run.runId) === String(selectedRunId)), [runs, selectedRunId])
   const ei = brief?.evidence_integrity || null
-  const sources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
+  /** Tavily / web research sources — Source A */
+  const researchSources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
+  /** Uploaded primary documents — Source B */
   const uploadedEvidence: Array<any> = Array.isArray(brief?.uploaded_evidence) ? brief.uploaded_evidence : []
   const contradictions: Array<any> = Array.isArray(ei?.contradictions) ? ei.contradictions : []
   const unsupported: Array<any> = Array.isArray(ei?.unsupported_claims) ? ei.unsupported_claims : []
   const verificationChecklist: Array<string> = Array.isArray(ei?.verification_checklist) ? ei.verification_checklist : []
   const redFlags: Array<any> = Array.isArray(brief?.red_flags) ? brief.red_flags : []
+  /** Combined source count for corroboration score */
+  const totalSources = researchSources.length + uploadedEvidence.length
+  /** Corroboration: true when both evidence sources are present */
+  const isCorroborated = researchSources.length > 0 && uploadedEvidence.length > 0
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
@@ -121,6 +127,39 @@ export default function EvidencePage() {
           <span className="w-2 h-2 rounded-full bg-[#12B76A]" />
           <span>{uploadSuccess}</span>
         </div>
+      ) : null}
+
+      {/* Evidence Corroboration Status Banner */}
+      {selectedRunId ? (
+        <section className={`p-4 rounded-[12px] border flex items-center gap-3 text-xs font-semibold ${
+          isCorroborated
+            ? 'bg-[#ECFDF3] border-[#A6F4C5] text-[#027A48]'
+            : totalSources > 0
+            ? 'bg-[#FFFAEB] border-[#FEDF89] text-[#B54708]'
+            : 'bg-[#F5F8FC] border-[#DDE6F0] text-slate-500'
+        }`}>
+          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+            isCorroborated ? 'bg-[#12B76A]' : totalSources > 0 ? 'bg-[#F79009]' : 'bg-slate-300'
+          }`} />
+          <div>
+            {isCorroborated ? (
+              <>
+                <span className="font-extrabold uppercase tracking-wider">Corroborated</span>
+                {' '}— Research intelligence ({researchSources.length} source{researchSources.length !== 1 ? 's' : ''}) and uploaded documents ({uploadedEvidence.length} document{uploadedEvidence.length !== 1 ? 's' : ''}) are both present. Evidence integrity is cross-verified.
+              </>
+            ) : totalSources > 0 ? (
+              <>
+                <span className="font-extrabold uppercase tracking-wider">Single-Source</span>
+                {' '}— Only {researchSources.length > 0 ? 'research intelligence' : 'uploaded documents'} present. Upload{researchSources.length > 0 ? ' primary documents' : ' research sources are being fetched via AI run'} to achieve full corroboration.
+              </>
+            ) : (
+              <>
+                <span className="font-extrabold uppercase tracking-wider">No Evidence</span>
+                {' '}— No sources loaded for this evaluation. Run analysis or upload documents to begin.
+              </>
+            )}
+          </div>
+        </section>
       ) : null}
 
       {/* Control Bar: Run Selector & Ingestion Upload Trigger */}
@@ -189,8 +228,9 @@ export default function EvidencePage() {
               <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Supporting Evidence Depth</span>
               <div className="space-y-1 text-slate-700">
                 <div>Grade: <strong className="text-slate-900">{ei?.integrity_grade || 'C'}</strong></div>
-                <div>Sources Reviewed: <strong className="text-slate-900">{sources.length}</strong></div>
-                <div>Verified Claims: <strong className="text-slate-900">{ei?.claim_count ?? (sources.length > 0 ? sources.length * 3 : 0)}</strong></div>
+                <div>Research Sources: <strong className="text-slate-900">{researchSources.length}</strong></div>
+                <div>Uploaded Documents: <strong className="text-slate-900">{uploadedEvidence.length}</strong></div>
+                <div>Verified Claims: <strong className="text-slate-900">{ei?.claim_count ?? (totalSources > 0 ? totalSources * 3 : 0)}</strong></div>
               </div>
             </div>
 
@@ -206,18 +246,75 @@ export default function EvidencePage() {
         </section>
       ) : null}
 
-      {/* Uploaded Documents & Real Evidence Pipeline Section */}
+      {/* ── SOURCE A: Research / Tavily Intelligence ─────────────────────────── */}
       <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#DDE6F0]">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#0B5D3B]" />
-              <h2 className="text-base font-extrabold text-slate-900">Ingested Primary Evidence Dossier</h2>
+              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">Source A</span>
+              <h2 className="text-base font-extrabold text-slate-900">Research Intelligence</h2>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">Primary sources with transparent Trust Engine telemetry and signal extractions.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Web research and OSINT sources gathered during the AI evaluation run. Read-only — generated automatically.</p>
           </div>
-          <span className="text-xs font-bold text-[#0B5D3B] bg-[#EAF3FF] border border-[#D6E8FF] px-2.5 py-1 rounded-lg">
-            {uploadedEvidence.length} Document{uploadedEvidence.length === 1 ? '' : 's'} Ingested
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+            researchSources.length > 0
+              ? 'text-[#027A48] bg-[#ECFDF3] border-[#A6F4C5]'
+              : 'text-slate-500 bg-[#F5F8FC] border-[#DDE6F0]'
+          }`}>
+            {researchSources.length} Source{researchSources.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {researchSources.length === 0 ? (
+          <div className="p-6 text-center bg-[#F5F8FC] rounded-[10px] border border-dashed border-[#DDE6F0]">
+            <div className="text-slate-400 text-sm font-semibold">No research sources loaded yet.</div>
+            <p className="text-xs text-slate-500 mt-1">Run an AI evaluation from the AI Analyst Workspace or Signals workspace to populate research intelligence.</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+            {researchSources.map((source, idx) => (
+              <div key={idx} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 truncate">{source.title || 'Untitled Source'}</div>
+                    <div className="text-[11px] text-slate-500 break-all mt-0.5">{source.url || '—'}</div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF] shrink-0">
+                    {source.source_type || 'web'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500 font-mono">
+                  <span>Relevance: {source.relevance ?? '1.0'}</span>
+                  <span>·</span>
+                  <span>Confidence: {source.confidence_score ?? '0.8'}</span>
+                </div>
+                {source.snippet ? (
+                  <div className="text-[11px] text-slate-700 mt-2 bg-white p-2 rounded border border-[#E2E8F0] whitespace-pre-wrap leading-relaxed">
+                    {source.snippet}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── SOURCE B: Uploaded Primary Documents ─────────────────────────────── */}
+      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#DDE6F0]">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-amber-50 text-amber-700 border border-amber-200">Source B</span>
+              <h2 className="text-base font-extrabold text-slate-900">Uploaded Primary Documents</h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Primary sources ingested directly. Analysed via the Trust Engine. Never overwrites research intelligence.</p>
+          </div>
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+            uploadedEvidence.length > 0
+              ? 'text-amber-700 bg-amber-50 border-amber-200'
+              : 'text-slate-500 bg-[#F5F8FC] border-[#DDE6F0]'
+          }`}>
+            {uploadedEvidence.length} Document{uploadedEvidence.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -380,29 +477,52 @@ export default function EvidencePage() {
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
             <h2 className="text-base font-extrabold text-slate-900 pb-3 mb-3 border-b border-[#DDE6F0]">
-              All Corroborating Sources ({sources.length})
+              All Sources ({totalSources})
+              {isCorroborated ? (
+                <span className="ml-2 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]">Corroborated</span>
+              ) : null}
             </h2>
             <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {sources.length === 0 ? (
+              {totalSources === 0 ? (
                 <div className="text-xs text-slate-500 italic py-4">INSUFFICIENT EVIDENCE: No sources attached.</div>
-              ) : sources.map((source, idx) => (
-                <div key={idx} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3 text-xs">
-                  <div className="font-bold text-slate-900 truncate">{source.title || 'Untitled Source'}</div>
-                  <div className="text-[11px] text-slate-500 break-all mt-0.5">{source.url || '—'}</div>
-                  <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-600 font-mono">
-                    <span>Type: {source.source_type || 'web'}</span>
-                    <span>·</span>
-                    <span>Relevance: {source.relevance ?? '1.0'}</span>
-                    <span>·</span>
-                    <span>Confidence: {source.confidence_score ?? '0.8'}</span>
-                  </div>
-                  {source.snippet ? (
-                    <div className="text-[11px] text-slate-700 mt-2 bg-white p-2 rounded border border-[#E2E8F0] whitespace-pre-wrap font-sans">
-                      {source.snippet}
+              ) : (
+                <>
+                  {researchSources.length > 0 ? (
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#004085] mb-2">
+                      Source A — Research Intelligence ({researchSources.length})
                     </div>
                   ) : null}
-                </div>
-              ))}
+                  {researchSources.map((source, idx) => (
+                    <div key={`r${idx}`} className="border border-[#D6E8FF] bg-[#EAF3FF]/40 rounded-lg p-3 text-xs">
+                      <div className="font-bold text-slate-900 truncate">{source.title || 'Untitled Source'}</div>
+                      <div className="text-[11px] text-slate-500 break-all mt-0.5">{source.url || '—'}</div>
+                      <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-600 font-mono">
+                        <span>Type: {source.source_type || 'web'}</span>
+                        <span>·</span>
+                        <span>Relevance: {source.relevance ?? '1.0'}</span>
+                      </div>
+                      {source.snippet ? (
+                        <div className="text-[11px] text-slate-700 mt-2 bg-white p-2 rounded border border-[#E2E8F0] whitespace-pre-wrap font-sans">
+                          {source.snippet}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {uploadedEvidence.length > 0 ? (
+                    <div className={`text-[10px] font-bold uppercase tracking-wider text-amber-700 ${researchSources.length > 0 ? 'mt-4' : ''} mb-2`}>
+                      Source B — Uploaded Documents ({uploadedEvidence.length})
+                    </div>
+                  ) : null}
+                  {uploadedEvidence.map((doc, idx) => (
+                    <div key={`u${idx}`} className="border border-amber-200 bg-amber-50/40 rounded-lg p-3 text-xs">
+                      <div className="font-bold text-slate-900">{doc.filename || 'Document'}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        Trust: {doc.trust_breakdown?.final_trust_score ?? '—'} · Status: {doc.evidence_status || 'CORROBORATED'}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </div>
 

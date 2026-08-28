@@ -95,11 +95,20 @@ export type SignalsSummary = {
   topOpportunities: SignalItem[];
 }
 
-export async function createRun(founder: string, startup?: string): Promise<{ runId: string; status: string }> {
+export type CreateRunPayload = {
+  founder: string
+  startup?: string
+  /** Entity type for display purposes — passed through to backend when supported */
+  entityType?: string
+  /** Additional entity metadata forwarded to backend */
+  entityMeta?: Record<string, string>
+}
+
+export async function createRun(founder: string, startup?: string, extra?: Omit<CreateRunPayload, 'founder' | 'startup'>): Promise<{ runId: string; status: string }> {
   const res = await fetch(`${API_BASE}/api/v1/intelligence/`, {
     method: 'POST',
     headers: withAuth({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ founder, startup }),
+    body: JSON.stringify({ founder, startup, ...extra }),
   })
   if (!res.ok) throw new Error(`createRun failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ runId: string; status: string }>(res, 'createRun')

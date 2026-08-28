@@ -33,7 +33,7 @@ export default function PilotWorkspaceShell({
   return (
     <div className="min-h-screen bg-[#F5F8FC] flex text-[#101828]">
       {/* Desktop Persistent Sidebar (>= 1024px) */}
-      <div className="hidden lg:block w-64 flex-shrink-0 p-4 sticky top-0 h-screen overflow-y-auto">
+      <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 sticky top-0 h-screen p-4">
         <NavigationSidebar
           workspace={workspace}
           runId={runId}
@@ -51,7 +51,7 @@ export default function PilotWorkspaceShell({
           onClick={() => setMobileDrawerOpen(false)}
         >
           <div
-            className="fixed inset-y-0 left-0 w-72 z-50 p-4 bg-[#061C14] shadow-2xl overflow-y-auto"
+            className="fixed inset-y-0 left-0 w-72 z-50 p-4 bg-[#061C14] shadow-2xl overflow-y-auto flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <NavigationSidebar
