@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { hrefWithRun, loadCurrentRun } from '../../lib/current-run'
 import TrustGauge from '../TrustGauge/TrustGauge'
 import type { EntityType } from '../../lib/entity-types'
+import KulimaLogo from '../KulimaLogo/KulimaLogo'
 
 const ENTITY_LABELS: Record<EntityType, string> = {
   startup: 'Startup',
@@ -110,13 +111,11 @@ export default function NavigationSidebar({
         {/* Brand Header */}
         <div className="mb-5 pb-4 border-b border-[#0E3627]">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#0B5D3B] border border-[#17855A] flex items-center justify-center font-black text-white text-base shadow-sm">
-                K
-              </div>
-              <div>
-                <div className="text-base font-extrabold text-white tracking-tight leading-none">Kulima OS</div>
-                <div className="text-[11px] font-semibold text-emerald-400 mt-0.5">Decision Intelligence</div>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Logo — white pill container preserves cream bg on dark sidebar */}
+              <KulimaLogo variant="sidebar" />
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-emerald-400 leading-tight mt-0.5">Decision Intelligence</div>
               </div>
             </div>
             {onCloseMobile ? (
@@ -195,8 +194,8 @@ export default function NavigationSidebar({
       </div>
 
       <div className="pt-4 mt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between flex-shrink-0">
-        <span>Kulima OS</span>
-        <span className="font-mono">v2.0</span>
+        <span className="font-semibold">Kulima OS</span>
+        <span className="font-mono opacity-60">v2.0</span>
       </div>
     </aside>
   )

@@ -7,6 +7,7 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
 import { loadCurrentRun } from '../../lib/current-run'
 import Link from 'next/link'
+import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
 export default function ReportsPage() {
   const { status: authStatus } = useSession()
@@ -64,7 +65,7 @@ export default function ReportsPage() {
     <PilotWorkspaceShell
       workspace="Reports"
       title="Reports Archive"
-      description="Access historical export archive. Download memos, IC reports, signals, due diligence summaries, and executive one-pagers."
+      description="Access historical export archive. Download memos, decision reports, signals, due diligence summaries, and executive one-pagers."
       runId={selectedRunId || null}
       status={selectedRun?.archivedAt ? 'archived' : 'active'}
     >
@@ -73,6 +74,23 @@ export default function ReportsPage() {
           {error}
         </div>
       ) : null}
+
+      {/* Branded report header */}
+      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <KulimaLogo variant="report" />
+          <div className="w-px h-10 bg-[#DDE6F0] flex-shrink-0" />
+          <div>
+            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Kulima OS</div>
+            <div className="text-sm font-black text-slate-900">Decision Intelligence Reports</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Evidence-backed exports for investment committees, donors, and program evaluators</div>
+          </div>
+        </div>
+        <div className="hidden md:flex items-center gap-2 bg-[#ECFDF3] border border-[#A6F4C5] px-3 py-1.5 rounded-lg">
+          <span className="w-2 h-2 rounded-full bg-[#12B76A]" />
+          <span className="text-[11px] font-bold text-[#027A48] uppercase tracking-wider">Export Ready</span>
+        </div>
+      </section>
 
       {runs.length === 0 ? (
         <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-center">

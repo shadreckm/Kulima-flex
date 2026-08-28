@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import NavigationSidebar from '../NavigationSidebar/NavigationSidebar'
+import KulimaLogo from '../KulimaLogo/KulimaLogo'
 
 type PilotWorkspaceShellProps = {
   workspace: string
@@ -85,10 +86,17 @@ export default function PilotWorkspaceShell({
                 </svg>
               </button>
 
+              {/* Logo — light bg, no container needed */}
+              <div className="hidden sm:block">
+                <KulimaLogo variant="header" />
+              </div>
+
+              <div className="w-px h-8 bg-[#DDE6F0] hidden sm:block flex-shrink-0" />
+
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <span>Kulima OS</span>
-                  <span>/</span>
+                  <span className="hidden md:inline">Kulima OS</span>
+                  <span className="hidden md:inline">/</span>
                   <span className="text-[#0B5D3B]">{workspace}</span>
                 </div>
                 <h1 className="text-base md:text-lg font-extrabold text-[#101828] tracking-tight truncate">

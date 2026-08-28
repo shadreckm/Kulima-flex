@@ -8,6 +8,7 @@ import { getPilotAnalytics, listLiveRuns, listStoredRuns, type LiveRunRecord, ty
 import { useRouter } from 'next/navigation'
 import { OSTX_CASES, saveCurrentRun } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
+import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
 function metric(metrics: PilotAnalyticsMetrics | null, key: string): string {
   if (!metrics) return '—'
@@ -95,7 +96,7 @@ export default function DashboardPage() {
   return (
     <PilotWorkspaceShell
       workspace="Dashboard"
-      title="Kulima OS — Executive Dashboard"
+      title="Executive Dashboard"
       description="Active evaluations, trust distribution, and outcome performance at a glance."
     >
       {error ? (
@@ -103,6 +104,29 @@ export default function DashboardPage() {
           {error}
         </div>
       ) : null}
+
+      {/* Executive Landing Hero — logo + platform identity above the fold */}
+      <section className="p-5 md:p-6 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <KulimaLogo variant="hero" />
+          <div className="w-px h-14 bg-[#DDE6F0] flex-shrink-0 hidden sm:block" />
+          <div>
+            <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">Kulima OS</div>
+            <div className="text-xs font-bold text-[#0B5D3B] mt-0.5">Decision Intelligence Platform</div>
+            <div className="text-[11px] text-slate-400 mt-1 max-w-sm">
+              Evidence-backed evaluation pipeline for funds, NGOs, accelerators, and development finance programs.
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="px-3 py-1.5 rounded-lg bg-[#ECFDF3] border border-[#A6F4C5] text-[11px] font-bold text-[#027A48] uppercase tracking-wider">
+            Pipeline Active
+          </div>
+          <div className="px-3 py-1.5 rounded-lg bg-[#EAF3FF] border border-[#D6E8FF] text-[11px] font-bold text-[#004085] uppercase tracking-wider">
+            v2.0
+          </div>
+        </div>
+      </section>
 
       {/* KPI Hero Row — above the fold */}
       <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
