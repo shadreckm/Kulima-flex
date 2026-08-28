@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
-
 import { loadCurrentRun } from '../../lib/current-run'
+import Link from 'next/link'
 
 export default function ReportsPage() {
   const { status: authStatus } = useSession()
@@ -32,14 +32,18 @@ export default function ReportsPage() {
   }, [authStatus, searchParams])
 
   if (authStatus === 'loading') {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Checking session…</div>
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
+        Checking session…
+      </div>
+    )
   }
 
   if (authStatus === 'unauthenticated') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-semibold">Sign in to use Kulima OS</div>
-        <button onClick={() => signIn()} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+      <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">
           Sign in
         </button>
       </div>
@@ -49,54 +53,82 @@ export default function ReportsPage() {
   const selectedRun = runs.find(run => String(run.runId) === String(selectedRunId))
 
   const downloads = [
-    { label: 'Investment Memo', kind: 'memo' as const },
-    { label: 'Full IC Report', kind: 'report' as const },
-    { label: 'Signals Report', kind: 'signals' as const },
-    { label: 'Due Diligence Summary', kind: 'due-diligence' as const },
-    { label: 'Executive One Pager', kind: 'one-pager' as const },
+    { label: 'Investment Memo', kind: 'memo' as const, description: 'Executive investment recommendation and rationale.' },
+    { label: 'Full IC Report', kind: 'report' as const, description: 'Complete intelligence committee analysis package.' },
+    { label: 'Signals Report', kind: 'signals' as const, description: 'Detected risk and opportunity signals.' },
+    { label: 'Due Diligence Summary', kind: 'due-diligence' as const, description: 'Evidence integrity and verification audit.' },
+    { label: 'Executive One Pager', kind: 'one-pager' as const, description: 'Single-page overview for board or donor review.' },
   ]
 
   return (
     <PilotWorkspaceShell
       workspace="Reports"
-      title="Reports Workspace"
-      description="Download the already-implemented memo, full report, signals report, due diligence summary, and executive one pager for a stored run."
+      title="Reports Archive"
+      description="Access historical export archive. Download memos, IC reports, signals, due diligence summaries, and executive one-pagers."
       runId={selectedRunId || null}
       status={selectedRun?.archivedAt ? 'archived' : 'active'}
     >
-      {error ? <div className="p-4 bg-red-50 text-red-700 rounded border border-red-200">{error}</div> : null}
+      {error ? (
+        <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
+          {error}
+        </div>
+      ) : null}
 
-      <section className="p-4 bg-white rounded shadow border border-gray-100">
-        <label className="block text-sm font-medium text-gray-700">Select run</label>
-        <select className="mt-2 w-full p-2 border rounded" value={selectedRunId} onChange={(e) => setSelectedRunId(e.target.value)}>
-          <option value="">Choose a stored run…</option>
-          {runs.map(run => (
-            <option key={run.runId} value={run.runId}>
-              #{run.runId} · {run.startupName} · {run.founderName}
-            </option>
-          ))}
-        </select>
-      </section>
-
-      {selectedRun ? (
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {downloads.map(report => (
-            <div key={report.kind} className="p-4 bg-white rounded shadow border border-gray-100">
-              <div className="text-lg font-semibold text-gray-900">{report.label}</div>
-              <div className="text-sm text-gray-600 mt-1">PDF and text downloads are generated from the stored brief.</div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <a className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm" href={reportDownloadHref(selectedRun.runId, report.kind, 'pdf')}>
-                  Download PDF
-                </a>
-                <a className="px-3 py-2 rounded border text-sm hover:bg-gray-50" href={reportDownloadHref(selectedRun.runId, report.kind, 'txt')}>
-                  Download TXT
-                </a>
-              </div>
-            </div>
-          ))}
-        </section>
+      {runs.length === 0 ? (
+        <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-center">
+          <div className="text-sm font-bold text-slate-700">No evaluations available.</div>
+          <div className="text-xs text-slate-500 mt-1">Upload documents or create a new evaluation in the Runs workspace.</div>
+          <Link href="/runs" className="mt-4 inline-block px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition">
+            Go to Runs
+          </Link>
+        </div>
       ) : (
-        <div className="p-4 text-sm text-gray-500">Choose a stored run to unlock downloads.</div>
+        <>
+          <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Select Evaluation</label>
+            <select
+              className="w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-medium focus:outline-none focus:border-[#0B5D3B]"
+              value={selectedRunId}
+              onChange={(e) => setSelectedRunId(e.target.value)}
+            >
+              <option value="">Select Evaluation Target…</option>
+              {runs.map(run => (
+                <option key={run.runId} value={run.runId}>
+                  #{run.runId} · {run.startupName} · {run.founderName}
+                </option>
+              ))}
+            </select>
+          </section>
+
+          {selectedRun ? (
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {downloads.map(report => (
+                <div key={report.kind} className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+                  <div className="text-sm font-extrabold text-slate-900">{report.label}</div>
+                  <div className="text-xs text-slate-500 mt-1">{report.description}</div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      className="px-4 py-2 rounded-lg bg-[#0B5D3B] text-white hover:bg-[#08482E] text-xs font-bold transition shadow-sm"
+                      href={reportDownloadHref(selectedRun.runId, report.kind, 'pdf')}
+                    >
+                      Download PDF
+                    </a>
+                    <a
+                      className="px-4 py-2 rounded-lg border border-[#DDE6F0] text-xs font-semibold text-slate-700 hover:bg-[#F5F8FC] transition"
+                      href={reportDownloadHref(selectedRun.runId, report.kind, 'txt')}
+                    >
+                      Download TXT
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </section>
+          ) : (
+            <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-xs text-slate-500">
+              Select an evaluation target above to unlock report downloads.
+            </div>
+          )}
+        </>
       )}
     </PilotWorkspaceShell>
   )

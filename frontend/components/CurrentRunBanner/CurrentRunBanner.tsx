@@ -21,7 +21,7 @@ export default function CurrentRunBanner({ run, onClear, compact = false }: Prop
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">
-              Active Dossier
+              Active Evaluation
             </span>
             <span className="text-xs text-slate-500 font-mono">Run: {String(run.runId).slice(0, 16)}</span>
           </div>

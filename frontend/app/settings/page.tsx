@@ -29,14 +29,21 @@ export default function SettingsPage() {
   }, [authStatus])
 
   if (authStatus === 'loading') {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Checking session…</div>
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
+        Checking session…
+      </div>
+    )
   }
 
   if (authStatus === 'unauthenticated') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-semibold">Sign in to use Kulima OS</div>
-        <button onClick={() => signIn()} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+      <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <button
+          onClick={() => signIn()}
+          className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm"
+        >
           Sign in
         </button>
       </div>
@@ -46,37 +53,71 @@ export default function SettingsPage() {
   return (
     <PilotWorkspaceShell
       workspace="Settings"
-      title="Pilot Settings"
-      description="View the current authenticated session, workspace origin, and pilot configuration references."
+      title="Platform Settings"
+      description="Manage your authenticated session and platform configuration."
     >
-      {error ? <div className="p-4 bg-red-50 text-red-700 rounded border border-red-200">{error}</div> : null}
+      {error ? (
+        <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
+          {error}
+        </div>
+      ) : null}
 
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="p-4 bg-white rounded shadow border border-gray-100 space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900">Session</h2>
-          <div className="text-sm text-gray-700">User: <span className="font-semibold">{session?.user?.name || session?.user?.email || 'Signed-in user'}</span></div>
-          <div className="text-sm text-gray-700">Origin: <span className="font-semibold break-all">{origin || '—'}</span></div>
-          <button onClick={() => signOut({ callbackUrl: '/' })} className="px-4 py-2 rounded border text-sm hover:bg-gray-50">
+        <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas space-y-3">
+          <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider pb-2.5 border-b border-[#DDE6F0]">Session</h2>
+          <div className="text-sm text-slate-700">
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">User</span>
+            <div className="font-semibold text-slate-900 mt-0.5">{session?.user?.name || session?.user?.email || 'Signed-in user'}</div>
+          </div>
+          <div className="text-sm text-slate-700">
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Origin</span>
+            <div className="font-semibold text-slate-900 mt-0.5 break-all text-xs">{origin || '—'}</div>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: '/' })}
+            className="px-4 py-2 rounded-lg border border-[#DDE6F0] text-sm font-semibold text-slate-700 hover:bg-[#F5F8FC] transition"
+          >
             Sign out
           </button>
         </div>
 
-        <div className="p-4 bg-white rounded shadow border border-gray-100 space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900">Pilot Summary</h2>
-          <div className="text-sm text-gray-700">Stored runs available: <span className="font-semibold">{runs.length}</span></div>
-          <div className="text-sm text-gray-700">Active stored runs: <span className="font-semibold">{runs.filter(run => !run.archivedAt).length}</span></div>
-          <div className="text-sm text-gray-700">Archived stored runs: <span className="font-semibold">{runs.filter(run => run.archivedAt).length}</span></div>
-          <div className="text-sm text-gray-700">Report downloads and feedback use the authenticated proxy route.</div>
+        <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas space-y-3">
+          <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider pb-2.5 border-b border-[#DDE6F0]">Platform Summary</h2>
+          <div className="space-y-2 text-sm text-slate-700">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Stored evaluations:</span>
+              <span className="font-semibold text-slate-900">{runs.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Active:</span>
+              <span className="font-semibold text-slate-900">{runs.filter(run => !run.archivedAt).length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Archived:</span>
+              <span className="font-semibold text-slate-900">{runs.filter(run => run.archivedAt).length}</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 pt-1">Report downloads and feedback use the authenticated proxy route.</p>
         </div>
       </section>
 
-      <section className="p-4 bg-white rounded shadow border border-gray-100">
-        <h2 className="text-lg font-semibold text-gray-900">Workspace Links</h2>
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Link href="/dashboard" className="p-3 border rounded hover:bg-gray-50">Dashboard</Link>
-          <Link href="/runs" className="p-3 border rounded hover:bg-gray-50">Runs</Link>
-          <Link href="/reports" className="p-3 border rounded hover:bg-gray-50">Reports</Link>
-          <Link href="/analytics" className="p-3 border rounded hover:bg-gray-50">Analytics</Link>
+      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+        <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-4 pb-2.5 border-b border-[#DDE6F0]">Workspace Links</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          {[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Runs', href: '/runs' },
+            { label: 'Reports', href: '/reports' },
+            { label: 'Analytics', href: '/analytics' },
+          ].map(({ label, href }) => (
+            <Link
+              key={label}
+              href={href}
+              className="p-3 border border-[#DDE6F0] rounded-lg text-xs font-semibold text-slate-700 hover:bg-[#F5F8FC] hover:border-[#0B5D3B] hover:text-[#0B5D3B] transition"
+            >
+              {label}
+            </Link>
+          ))}
         </div>
       </section>
     </PilotWorkspaceShell>

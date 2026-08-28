@@ -97,10 +97,10 @@ export default function PilotWorkspaceShell({
               </div>
             </div>
 
-            {/* Run Context Quick Indicator */}
+            {/* Evaluation Context Quick Indicator */}
             {runId ? (
               <div className="hidden sm:flex items-center gap-2 bg-[#EAF3FF] border border-[#D6E8FF] px-3 py-1 rounded-lg text-xs">
-                <span className="font-bold text-[#004085]">Run #{String(runId).slice(0, 8)}</span>
+                <span className="font-bold text-[#004085]">Evaluation: {String(runId).slice(0, 12)}</span>
                 {status ? (
                   <span className="px-1.5 py-0.5 rounded bg-white text-slate-700 text-[10px] font-extrabold uppercase border border-[#D6E8FF]">
                     {status}
@@ -110,7 +110,7 @@ export default function PilotWorkspaceShell({
             ) : null}
           </div>
           {description ? (
-            <div className="max-w-7xl mx-auto mt-1 text-xs text-slate-500 truncate">
+            <div className="max-w-7xl mx-auto mt-1 text-xs text-slate-400 line-clamp-2">
               {description}
             </div>
           ) : null}

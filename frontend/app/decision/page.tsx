@@ -134,7 +134,7 @@ export default function DecisionWorkspacePage() {
             value={selectedRunId}
             onChange={(e) => setSelectedRunId(e.target.value)}
           >
-            <option value="">Choose a stored run…</option>
+            <option value="">Select Evaluation Target…</option>
             {runs.map(run => (
               <option key={run.runId} value={run.runId}>
                 #{run.runId} · {run.startupName} ({run.founderName}) — Verdict: {run.recommendation || 'OBSERVE'}

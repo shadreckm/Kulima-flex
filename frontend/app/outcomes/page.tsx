@@ -148,10 +148,16 @@ export default function OutcomesPage() {
   return (
     <PilotWorkspaceShell
       workspace="Outcomes"
-      title="Decision Learning System"
-      description="Evidence → Trust → Signals → Decision → Outcome → Learning. Close the feedback loop."
+      title="Outcome Intelligence"
+      description="Track real-world results, calibrate trust scores, and close the evidence-to-learning feedback loop."
     >
       {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
+      {loading && activeTab !== 'history' ? (
+        <div className="p-6 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-[#0B5D3B] animate-pulse" />
+          <span className="text-sm font-semibold text-slate-500">Loading outcome data…</span>
+        </div>
+      ) : null}
       {saveSuccess ? (
         <div className="p-4 bg-emerald-50 text-emerald-800 rounded-[12px] border border-emerald-200 text-sm font-bold flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#12B76A]" />

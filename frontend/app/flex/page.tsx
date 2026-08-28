@@ -66,14 +66,21 @@ function FlexPageInner() {
   }, [runId, polling, currentRun, setCurrentRun])
 
   if (authStatus === 'loading' || !ready) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Checking session…</div>
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
+        Checking session…
+      </div>
+    )
   }
 
   if (authStatus === 'unauthenticated') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-semibold">Sign in to use Kulima OS</div>
-        <button onClick={() => signIn()} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+      <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <button
+          onClick={() => signIn()}
+          className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm"
+        >
           Sign in
         </button>
       </div>

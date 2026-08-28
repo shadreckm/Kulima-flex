@@ -215,10 +215,12 @@ export default function ChatShell({ personaName, initialMessages, recommendation
 
   return (
     <Card className="flex-1 flex flex-col relative">
-      <header className="p-4 border-b flex items-center justify-between">
+      <header className="p-4 border-b border-[#DDE6F0] flex items-center justify-between bg-white">
         <div>
-          <h2 className="text-lg font-semibold">{personaName}</h2>
-          <p className="text-sm text-gray-500">IC Analyst</p>
+          <h2 className="text-sm font-extrabold text-slate-900">{personaName}</h2>
+          <p className="text-xs text-slate-500">
+            {runId ? `Evaluation context loaded` : 'No evaluation selected — demo mode active'}
+          </p>
         </div>
         {recommendationCard ? (
           <div className="flex items-center gap-3">
