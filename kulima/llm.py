@@ -13,13 +13,31 @@ from kulima.config import get_settings
 
 
 class LLMClient:
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self, model: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
         self.model = model or settings.openai_model
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self._api_key = (api_key or settings.openai_api_key or "").strip()
+        self._client: OpenAI | None = None
+
+    @property
+    def client(self) -> OpenAI:
+        if self._client is None:
+            if not self._api_key:
+                raise RuntimeError("Missing OpenAI credentials. Please pass an api_key or set the OPENAI_API_KEY environment variable.")
+            self._client = OpenAI(api_key=self._api_key)
+        return self._client
+
+    @property
+    def is_available(self) -> bool:
+        return bool(self._api_key)
+
+    def complete(self, system: str, user: str, temperature: float = 0.35) -> str:
+        if not self._api_key:
+            raise RuntimeError("Missing OpenAI credentials. Please pass an api_key or set the OPENAI_API_KEY environment variable.")
+        return self._call_completion(system, user, temperature)
 
     @retry(wait=wait_exponential(min=1, max=8), stop=stop_after_attempt(3), reraise=True)
-    def complete(self, system: str, user: str, temperature: float = 0.35) -> str:
+    def _call_completion(self, system: str, user: str, temperature: float = 0.35) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             temperature=temperature,

@@ -8,24 +8,29 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 from fastapi import HTTPException, Request, status
 
 
-def _load_nextauth_secret() -> str | None:
+def _load_nextauth_secret() -> str:
     secret = os.environ.get("NEXTAUTH_SECRET")
     if secret:
         return secret
 
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if env_path.is_file():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            if key.strip() == "NEXTAUTH_SECRET":
-                secret = value.strip().strip('"').strip("'")
-                if secret:
-                    os.environ["NEXTAUTH_SECRET"] = secret
-                    return secret
-    return None
+    candidates = [
+        Path(__file__).resolve().parents[3] / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+        Path(__file__).resolve().parents[3] / "frontend" / ".env.local",
+    ]
+    for env_path in candidates:
+        if env_path.is_file():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key.strip() == "NEXTAUTH_SECRET":
+                    secret = value.strip().strip('"').strip("'")
+                    if secret:
+                        os.environ["NEXTAUTH_SECRET"] = secret
+                        return secret
+    return "kulima-pilot-dev-secret-key-do-not-use-in-production-32b"
 
 
 JWT_SECRET = _load_nextauth_secret()

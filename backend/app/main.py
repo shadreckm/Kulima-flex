@@ -47,6 +47,7 @@ os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 
+@app.get("/health")
 @app.get("/api/v1/health")
 async def health():
     return {"status": "ok"}

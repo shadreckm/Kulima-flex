@@ -15,10 +15,17 @@ from .run_repository import RunRepository
 
 _log = logging.getLogger(__name__)
 
-_orchestrator = IntelligenceOrchestrator()
+_orchestrator: IntelligenceOrchestrator | None = None
 _signals_orchestrator = SignalsOrchestrator()
 _repo = IntelligenceRepository()
 _run_repo = RunRepository()
+
+
+def get_orchestrator() -> IntelligenceOrchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = IntelligenceOrchestrator()
+    return _orchestrator
 
 
 def start_intelligence_run(founder: str, startup: str, user_id: str | None = None) -> str:
@@ -29,7 +36,8 @@ def start_intelligence_run(founder: str, startup: str, user_id: str | None = Non
     def _worker(rid: str, founder: str, startup: str, owner_id: str | None) -> None:
         try:
             _log.info("Orchestrator: starting analysis for %s / %s", founder, startup)
-            brief: InvestmentBrief = _orchestrator.analyze(founder, startup, user_id=owner_id)
+            orchestrator = get_orchestrator()
+            brief: InvestmentBrief = orchestrator.analyze(founder, startup, user_id=owner_id)
             # Persist to DB (synchronous)
             db_id = _repo.save_brief(brief, user_id=owner_id)
             # Mark run completed in persistent store
