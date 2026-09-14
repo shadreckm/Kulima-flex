@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+frontend/.env.local
+frontend/.env.*
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/.next
+*.db
+*.sqlite
+*.sqlite3
+backend/uploads

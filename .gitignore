@@ -5,6 +5,12 @@
 venv/
 .env
 .env.local
+.env.production
+.env.development
+.env.test
+*.pem
+*.key
+credentials.json
 
 __pycache__/
 *.pyc
@@ -91,14 +97,6 @@ evidence-integrity-review.md
 trust-layer-coding-plan.md
 trust-layer-implementation-blueprint.md
 trust-layer-product-design.md
-
-#################################################
-# Deployment Secrets
-#################################################
-
-.env.production
-.env.development
-.env.test
 
 #################################################
 # Temporary Scripts and Local Utilities
