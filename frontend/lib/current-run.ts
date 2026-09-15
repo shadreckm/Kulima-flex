@@ -46,6 +46,24 @@ export const OSTX_CASES = [
     outcome: 'PASS',
     summary: 'Grade-F integrity with unverified concession claims.',
   },
+  {
+    startupName: 'HealthBridge Lagos',
+    founderName: 'Dr. Adaeze Okonkwo',
+    liveRunId: 'pilot-healthbridge-lagos',
+    recommendation: 'Review Required',
+    trustScore: 71,
+    outcome: 'REVIEW',
+    summary: 'Outcome claims are promising, but beneficiary and baseline evidence need verification.',
+  },
+  {
+    startupName: 'FarmStack Kenya Program Review',
+    founderName: 'James Kariuki',
+    liveRunId: 'pilot-farmstack-kenya',
+    recommendation: 'Observe',
+    trustScore: 58,
+    outcome: 'OBSERVE',
+    summary: 'Government program with coverage and operating evidence — verification gaps remain.',
+  },
 ] as const
 
 export function findOstxCase(runId: string) {
@@ -112,5 +130,29 @@ export function hrefWithRun(path: string, run: CurrentRunState | null | undefine
   if (!runId) return path
   const join = path.includes('?') ? '&' : '?'
   return `${path}${join}run=${encodeURIComponent(runId)}`
+}
+
+export function resolveStoredRunId<T extends { runId: number | string; startupName?: string }>(
+  records: T[],
+  requestedRunId: string,
+  storedRun: CurrentRunState | null,
+): string {
+  if (records.some(record => String(record.runId) === String(requestedRunId))) {
+    return requestedRunId
+  }
+
+  const demoCase = findOstxCase(requestedRunId)
+  const expectedName = storedRun?.startupName || demoCase?.startupName
+  const matchingRecord = expectedName
+    ? records.find(record => String(record.startupName || '').toLowerCase() === expectedName.toLowerCase())
+    : undefined
+
+  // If a known demo case but no matching DB record, keep the canonical demo run ID
+  // so backend can resolve it via the pilot/ostx live-run registry.
+  if (demoCase && !matchingRecord) {
+    return requestedRunId
+  }
+
+  return String(matchingRecord?.runId || storedRun?.storedRunId || records[0]?.runId || '')
 }
 

@@ -3,8 +3,8 @@ import React from 'react'
 import AuthSessionProvider from '../components/AuthSessionProvider'
 
 export const metadata = {
-  title: 'Kulima OS — Decision Intelligence',
-  description: 'Kulima OS: evidence-backed investment decision intelligence for funds, NGOs, accelerators, and development finance programs.',
+  title: 'Kulima FLEX — Evidence Intelligence',
+  description: 'Kulima FLEX: evidence-backed decision intelligence for funds, NGOs, accelerators, and development programs.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

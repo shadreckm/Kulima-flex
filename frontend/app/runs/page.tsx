@@ -54,7 +54,7 @@ export default function RunsPage() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button
           onClick={() => signIn()}
           className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm"

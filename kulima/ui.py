@@ -1424,7 +1424,7 @@ def render_hero() -> None:
             <p class="kulima-brand">Kulima FLEX</p>
             <p class="kulima-sub">AI Investment Intelligence Operating System for Africa</p>
             <div class="hero-pills">
-                <span class="hero-pill">Kulima OS Pilot v1</span>
+                <span class="hero-pill">Kulima FLEX v2.0</span>
                 <span class="hero-pill">Multi-Agent Diligence</span>
                 <span class="hero-pill">Twin Syndicate IC</span>
                 <span class="hero-pill">Continental Futures</span>
@@ -1440,7 +1440,7 @@ def render_empty_state() -> None:
         <div class="empty-state">
             <h3>Executive IC Workspace</h3>
             <p>Enter a founder and startup in the sidebar, then run full intelligence.
-            Kulima OS will research, score, convene the Twin Syndicate, simulate African
+            Kulima FLEX will research, score, convene the Twin Syndicate, simulate African
             market futures, and produce an IC-ready memo pack.</p>
             <ol>
               <li>Review the live decision snapshot after each run.</li>

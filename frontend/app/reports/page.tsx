@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
-import { loadCurrentRun } from '../../lib/current-run'
+import { loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import Link from 'next/link'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
@@ -24,7 +24,7 @@ export default function ReportsPage() {
       setRuns(res.runs)
       const fromQuery = searchParams.get('run')
       const stored = loadCurrentRun()
-      setSelectedRunId(fromQuery || stored?.runId || String(res.runs[0]?.runId || ''))
+      setSelectedRunId(resolveStoredRunId(res.runs, fromQuery || stored?.runId || '', stored))
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))
@@ -43,7 +43,7 @@ export default function ReportsPage() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">
           Sign in
         </button>
@@ -81,7 +81,7 @@ export default function ReportsPage() {
           <KulimaLogo variant="report" />
           <div className="w-px h-10 bg-[#DDE6F0] flex-shrink-0" />
           <div>
-            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Kulima OS</div>
+            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Kulima FLEX</div>
             <div className="text-sm font-black text-slate-900">Decision Intelligence Reports</div>
             <div className="text-[11px] text-slate-400 mt-0.5">Evidence-backed exports for investment committees, donors, and program evaluators</div>
           </div>

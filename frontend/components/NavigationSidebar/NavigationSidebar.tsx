@@ -194,7 +194,7 @@ export default function NavigationSidebar({
       </div>
 
       <div className="pt-4 mt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between flex-shrink-0">
-        <span className="font-semibold">Kulima OS</span>
+        <span className="font-semibold">Kulima FLEX</span>
         <span className="font-mono opacity-60">v2.0</span>
       </div>
     </aside>

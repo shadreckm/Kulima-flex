@@ -9,7 +9,7 @@ import os
 from .core.rate_limit import RateLimitMiddleware
 from .routers import intelligence, ask_ic, ask_signals, documents, outcomes
 
-app = FastAPI(title="Kulima OS API", version="0.1.0")
+app = FastAPI(title="Kulima FLEX API", version="2.0.0")
 
 environment = os.environ.get("ENVIRONMENT", "development").strip().lower()
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
@@ -47,7 +47,7 @@ app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 @app.get("/")
 async def root():
-    return {"service": "Kulima OS API", "version": "0.1.0", "status": "ok", "docs": "/docs"}
+    return {"service": "Kulima FLEX API", "version": "2.0.0", "status": "ok", "docs": "/docs"}
 
 
 @app.get("/health")

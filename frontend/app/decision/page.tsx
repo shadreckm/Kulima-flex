@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getFullBrief, listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
-import { loadCurrentRun } from '../../lib/current-run'
+import { loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 
 type FullBrief = Record<string, any>
@@ -28,7 +28,7 @@ export default function DecisionWorkspacePage() {
       setRuns(res.runs)
       const fromQuery = searchParams.get('run')
       const stored = loadCurrentRun()
-      const nextSelected = fromQuery || stored?.runId || String(res.runs[0]?.runId || '')
+      const nextSelected = resolveStoredRunId(res.runs, fromQuery || stored?.runId || '', stored)
       setSelectedRunId(nextSelected)
     }
     if (authStatus === 'authenticated') {
@@ -104,7 +104,7 @@ export default function DecisionWorkspacePage() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">
           Sign in
         </button>

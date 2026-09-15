@@ -137,7 +137,7 @@ export function askICStream(runId: string, question: string, history: Array<any>
   const listeners: { [k: string]: Array<(ev: any) => void> } = { delta: [], complete: [], error: [] }
   let closed = false
 
-  ;(async () => {
+  queueMicrotask(async () => {
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -179,7 +179,7 @@ export function askICStream(runId: string, question: string, history: Array<any>
     } catch (err) {
       if (!closed) listeners.error.forEach(fn => fn(err))
     }
-  })()
+  })
 
   return {
     addEventListener: (name: string, handler: (ev: any) => void) => {
@@ -209,7 +209,7 @@ export function askSignalsStream(runId: string, question: string, history: Array
   const listeners: { [k: string]: Array<(ev: any) => void> } = { delta: [], complete: [], error: [] }
   let closed = false
 
-  ;(async () => {
+  queueMicrotask(async () => {
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -250,7 +250,7 @@ export function askSignalsStream(runId: string, question: string, history: Array
     } catch (err) {
       if (!closed) listeners.error.forEach(fn => fn(err))
     }
-  })()
+  })
 
   return {
     addEventListener: (name: string, handler: (ev: any) => void) => {
@@ -387,6 +387,39 @@ export async function submitRunFeedback(runId: number | string, payload: RunFeed
 
 export function reportDownloadHref(runId: number | string, reportKind: 'memo' | 'report' | 'signals' | 'due-diligence' | 'one-pager', format: 'pdf' | 'txt' = 'pdf') {
   return `/api/v1/intelligence/${encodeURIComponent(String(runId))}/reports/${reportKind}?format=${format}`
+}
+
+// ── Feedback ─────────────────────────────────────────────────────────────────
+
+export type FeedbackRecord = {
+  id: number
+  runId: number | string
+  userName: string
+  rating: number
+  comment: string
+  createdAt: string
+  // present in list_all_feedback
+  startupName?: string | null
+  founderName?: string | null
+  recommendation?: string | null
+  trustScore?: number | null
+  integrityGrade?: string | null
+}
+
+export async function getRunFeedback(runId: number | string): Promise<{ feedback: FeedbackRecord[]; total: number; runId: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/feedback`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getRunFeedback failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ feedback: FeedbackRecord[]; total: number; runId: string }>(res, 'getRunFeedback')
+}
+
+export async function listAllFeedback(limit = 100): Promise<{ feedback: FeedbackRecord[]; total: number }> {
+  const res = await fetch(`${API_BASE}/api/v1/intelligence/feedback/all?limit=${encodeURIComponent(String(limit))}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`listAllFeedback failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ feedback: FeedbackRecord[]; total: number }>(res, 'listAllFeedback')
 }
 
 // ── Outcome Tracking & Decision Learning ─────────────────────────────────────

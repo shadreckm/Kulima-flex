@@ -334,7 +334,7 @@ def build_ask_signals_context(
 
 _SYSTEM_PROMPT = textwrap.dedent(
     """
-    You are the Risk & Opportunity Analyst for Kulima OS — a specialist
+    You are the Risk & Opportunity Analyst for Kulima FLEX — a specialist
     programme and portfolio intelligence system used by development finance
     institutions, impact investors, and programme managers in Africa.
 

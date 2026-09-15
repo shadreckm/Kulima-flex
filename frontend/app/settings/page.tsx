@@ -39,7 +39,7 @@ export default function SettingsPage() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button
           onClick={() => signIn()}
           className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm"
@@ -144,7 +144,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-slate-600">
             <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <div className="font-bold text-slate-700 mb-0.5">Platform</div>
-              <div>Kulima OS v2.0</div>
+              <div>Kulima FLEX v2.0</div>
             </div>
             <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <div className="font-bold text-slate-700 mb-0.5">Engine</div>
@@ -156,7 +156,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <p className="text-xs text-slate-400">
-            Kulima OS is a white-label decision intelligence platform for investment committees, development finance institutions, NGOs, accelerators, and government program evaluators.
+            Kulima FLEX is a white-label evidence intelligence platform for investment committees, development finance institutions, NGOs, accelerators, and government program evaluators.
           </p>
         </div>
       </section>

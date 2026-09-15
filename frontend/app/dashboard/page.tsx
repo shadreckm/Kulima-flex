@@ -64,7 +64,7 @@ export default function DashboardPage() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
-        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima OS</div>
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button
           onClick={() => signIn()}
           className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm"
@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <KulimaLogo variant="hero" />
           <div className="w-px h-14 bg-[#DDE6F0] flex-shrink-0 hidden sm:block" />
           <div>
-            <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">Kulima OS</div>
+            <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">Kulima FLEX</div>
             <div className="text-xs font-bold text-[#0B5D3B] mt-0.5">Decision Intelligence Platform</div>
             <div className="text-[11px] text-slate-400 mt-1 max-w-sm">
               Evidence-backed evaluation pipeline for funds, NGOs, accelerators, and development finance programs.
@@ -211,6 +211,7 @@ export default function DashboardPage() {
                     <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
                       c.outcome === 'INVEST' ? 'bg-[#12B76A] text-white shadow-sm' :
                       c.outcome === 'OBSERVE' ? 'bg-[#F79009] text-white shadow-sm' :
+                      c.outcome === 'REVIEW' ? 'bg-[#2E90FA] text-white shadow-sm' :
                       'bg-[#F04438] text-white shadow-sm'
                     }`}>
                       {c.outcome}

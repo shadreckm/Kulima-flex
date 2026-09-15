@@ -403,6 +403,79 @@ class IntelligenceRepository:
                 raise RuntimeError("feedback insert did not return a row id")
             return int(cur.lastrowid)
 
+    # ── Feedback Retrieval ───────────────────────────────────────────────────
+
+    def get_feedback_for_run(
+        self,
+        run_id: int,
+        user_id: str | None = None,
+    ) -> list[dict]:
+        """Return all feedback records for a given run.
+
+        Shared demo runs (user_id IS NULL) are accessible by any user.
+        """
+        with self._connect() as conn:
+            run_row = conn.execute(
+                "SELECT user_id FROM intelligence_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if run_row is None:
+                return []
+            existing_owner = run_row["user_id"] if hasattr(run_row, "__getitem__") else run_row[0]
+            if existing_owner is not None and user_id is not None and existing_owner != user_id:
+                return []
+            rows = conn.execute(
+                """
+                SELECT id, run_id, user_name, rating, comment, created_at
+                FROM run_feedback
+                WHERE run_id = ?
+                ORDER BY created_at DESC
+                """,
+                (run_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_all_feedback(
+        self,
+        limit: int = 100,
+        user_id: str | None = None,
+    ) -> list[dict]:
+        """Return all feedback records visible to the given user.
+
+        Includes feedback on shared demo runs (user_id IS NULL on the run).
+        Admin view: pass user_id=None to get all records.
+        """
+        with self._connect() as conn:
+            if user_id is None:
+                # Admin: all feedback
+                rows = conn.execute(
+                    """
+                    SELECT f.id, f.run_id, f.user_name, f.rating, f.comment, f.created_at,
+                           r.startup_name, r.founder_name, r.recommendation, r.trust_score,
+                           r.integrity_grade, r.user_id as run_owner_id
+                    FROM run_feedback f
+                    LEFT JOIN intelligence_runs r ON r.id = f.run_id
+                    ORDER BY f.created_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                # Scoped: feedback on runs owned by user or shared demo runs
+                rows = conn.execute(
+                    """
+                    SELECT f.id, f.run_id, f.user_name, f.rating, f.comment, f.created_at,
+                           r.startup_name, r.founder_name, r.recommendation, r.trust_score,
+                           r.integrity_grade, r.user_id as run_owner_id
+                    FROM run_feedback f
+                    LEFT JOIN intelligence_runs r ON r.id = f.run_id
+                    WHERE r.user_id IS NULL OR r.user_id = ?
+                    ORDER BY f.created_at DESC
+                    LIMIT ?
+                    """,
+                    (user_id, limit),
+                ).fetchall()
+            return [dict(row) for row in rows]
+
     # ── Outcome Tracking & Learning Repository ────────────────────────────────
 
     def save_decision_outcome(

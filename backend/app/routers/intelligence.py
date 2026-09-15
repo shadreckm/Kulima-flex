@@ -236,6 +236,62 @@ async def download_report(
     return Response(content=body, media_type=media_type, headers=headers)
 
 
+@router.get("/feedback/all")
+async def list_all_feedback(
+    limit: int = Query(default=100, ge=1, le=500),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Admin/reviewer view: list all feedback entries visible to this user."""
+    check_rate_limit(user.user_id, "intelligence:feedback_list")
+    records = _brief_repo.list_all_feedback(limit=limit, user_id=user.user_id)
+    return {
+        "feedback": [
+            {
+                "id": row.get("id"),
+                "runId": row.get("run_id"),
+                "userName": row.get("user_name"),
+                "rating": row.get("rating"),
+                "comment": row.get("comment"),
+                "createdAt": row.get("created_at"),
+                "startupName": row.get("startup_name"),
+                "founderName": row.get("founder_name"),
+                "recommendation": row.get("recommendation"),
+                "trustScore": row.get("trust_score"),
+                "integrityGrade": row.get("integrity_grade"),
+            }
+            for row in records
+        ],
+        "total": len(records),
+    }
+
+
+@router.get("/{run_id}/feedback")
+async def get_run_feedback(
+    run_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Get all feedback entries for a specific run."""
+    check_rate_limit(user.user_id, "intelligence:feedback_get")
+    if not run_id.isdigit():
+        return {"feedback": [], "total": 0, "runId": run_id}
+    records = _brief_repo.get_feedback_for_run(int(run_id), user_id=user.user_id)
+    return {
+        "feedback": [
+            {
+                "id": row.get("id"),
+                "runId": row.get("run_id"),
+                "userName": row.get("user_name"),
+                "rating": row.get("rating"),
+                "comment": row.get("comment"),
+                "createdAt": row.get("created_at"),
+            }
+            for row in records
+        ],
+        "total": len(records),
+        "runId": run_id,
+    }
+
+
 @router.post("/{run_id}/feedback")
 async def save_run_feedback(
     run_id: str,

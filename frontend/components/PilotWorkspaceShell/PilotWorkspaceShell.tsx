@@ -95,7 +95,7 @@ export default function PilotWorkspaceShell({
 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <span className="hidden md:inline">Kulima OS</span>
+                  <span className="hidden md:inline">Kulima FLEX</span>
                   <span className="hidden md:inline">/</span>
                   <span className="text-[#0B5D3B]">{workspace}</span>
                 </div>
