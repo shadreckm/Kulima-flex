@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getFullBrief, listStoredRuns, uploadDocument, type StoredRunRecord } from '../../lib/api'
-import { loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 
 type FullBrief = Record<string, any>
@@ -26,10 +26,11 @@ export default function EvidencePage() {
     async function loadRuns() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
-      setRuns(res.runs)
+      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
+      setRuns(userRuns)
       const fromQuery = searchParams.get('run')
       const stored = loadCurrentRun()
-      const nextSelected = resolveStoredRunId(res.runs, fromQuery || stored?.runId || '', stored)
+      const nextSelected = resolveStoredRunId(userRuns, fromQuery || stored?.runId || '', stored)
       setSelectedRunId(nextSelected)
     }
     if (authStatus === 'authenticated') {
@@ -122,6 +123,12 @@ export default function EvidencePage() {
       trustScore={selectedRun?.trustScore}
     >
       {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
+      {runs.length === 0 ? (
+        <div className="rounded-[12px] border border-[#DDE6F0] bg-white p-5 text-sm text-slate-600 shadow-saas">
+          <div className="font-bold text-slate-800">No documents uploaded yet</div>
+          <div className="mt-1 text-xs text-slate-500">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
+        </div>
+      ) : null}
       {uploadSuccess ? (
         <div className="p-4 bg-emerald-50 text-emerald-800 rounded-[12px] border border-emerald-200 text-sm font-bold flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#12B76A]" />

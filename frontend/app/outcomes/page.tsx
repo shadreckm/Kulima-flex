@@ -10,6 +10,7 @@ import {
   saveOutcome,
   type OutcomeUpdatePayload,
 } from '../../lib/api'
+import { isDemoRunRecord } from '../../lib/current-run'
 
 type Tab = 'history' | 'intelligence' | 'calibration' | 'meal' | 'timeline'
 
@@ -45,7 +46,11 @@ export default function OutcomesPage() {
         getDecisionHistory(100),
         getOutcomeIntelligence(),
       ])
-      setDecisions(hist.decisions)
+      setDecisions(hist.decisions.filter(decision => !isDemoRunRecord({
+        runId: decision.run_id || decision.id || '',
+        startupName: decision.startup_name || decision.startupName,
+        userId: decision.user_id,
+      })))
       setIntelligence(intel)
     } catch (err: any) {
       setError(err.message || String(err))

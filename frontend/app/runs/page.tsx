@@ -5,15 +5,7 @@ import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { archiveRun, deleteRun, listLiveRuns, listStoredRuns, reopenRun, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
-
-function isDemoRun(run: StoredRunRecord): boolean {
-  if (run.userId === null || run.userId === undefined) return true
-  const idStr = String(run.runId).toLowerCase()
-  if (idStr.startsWith('ostx-') || idStr.startsWith('pilot-')) return true
-  const demoNames = ['agrinova malawi', 'greenlink foods', 'solarharvest cooperative', 'nilepay logistics', 'farmstack kenya', 'healthbridge lagos']
-  if (demoNames.includes(String(run.startupName || '').toLowerCase())) return true
-  return false
-}
+import { isDemoRunRecord } from '../../lib/current-run'
 
 export default function RunsPage() {
   const { status: authStatus } = useSession()
@@ -27,8 +19,8 @@ export default function RunsPage() {
     setLoading(true)
     try {
       const [liveRes, storedRes] = await Promise.all([listLiveRuns(50), listStoredRuns(50, true)])
-      setLiveRuns(liveRes.runs)
-      setStoredRuns(storedRes.runs)
+      setLiveRuns(liveRes.runs.filter(run => run.userId != null))
+      setStoredRuns(storedRes.runs.filter(run => !isDemoRunRecord(run)))
     } finally {
       setLoading(false)
     }
@@ -109,8 +101,8 @@ export default function RunsPage() {
         <div className="space-y-3">
           {liveRuns.length === 0 ? (
             <div className="py-6 text-center">
-              <div className="text-xs font-semibold text-slate-500">No live evaluations running.</div>
-              <div className="text-[11px] text-slate-400 mt-1">Start a new evaluation from the AI Analyst Workspace or Signals workspace.</div>
+                <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
+                <div className="text-[11px] text-slate-400 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
             </div>
           ) : liveRuns.map(run => (
             <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
@@ -140,9 +132,9 @@ export default function RunsPage() {
           <div className="space-y-3">
             {activeStoredRuns.length === 0 ? (
               <div className="py-6 text-center">
-                <div className="text-xs font-semibold text-slate-500">No active evaluations.</div>
+                <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  Start an evaluation from the{' '}
+                  Upload your first pitch deck, NGO report, survey, business plan, or program report from the{' '}
                   <Link href="/flex" className="text-[#0B5D3B] font-bold hover:underline">AI Analyst Workspace</Link>.
                 </div>
               </div>
@@ -163,7 +155,7 @@ export default function RunsPage() {
                   Run #{run.runId} · Score: {run.overallScore ?? '—'} · Trust: {run.trustScore ?? '—'} · Grade: {run.integrityGrade ?? '—'}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {isDemoRun(run) ? (
+                  {isDemoRunRecord(run) ? (
                     <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[11px] border border-emerald-200">
                       Demo — Read Only
                     </span>
@@ -216,7 +208,7 @@ export default function RunsPage() {
                   Run #{run.runId} · Archived: {run.archivedAt || '—'} · Score: {run.overallScore ?? '—'} · Trust: {run.trustScore ?? '—'}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {isDemoRun(run) ? (
+                  {isDemoRunRecord(run) ? (
                     <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[11px] border border-emerald-200">
                       Demo — Read Only
                     </span>

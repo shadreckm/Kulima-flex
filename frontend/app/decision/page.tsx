@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getFullBrief, listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
-import { loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 
 type FullBrief = Record<string, any>
@@ -25,10 +25,11 @@ export default function DecisionWorkspacePage() {
     async function loadRuns() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
-      setRuns(res.runs)
+      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
+      setRuns(userRuns)
       const fromQuery = searchParams.get('run')
       const stored = loadCurrentRun()
-      const nextSelected = resolveStoredRunId(res.runs, fromQuery || stored?.runId || '', stored)
+      const nextSelected = resolveStoredRunId(userRuns, fromQuery || stored?.runId || '', stored)
       setSelectedRunId(nextSelected)
     }
     if (authStatus === 'authenticated') {

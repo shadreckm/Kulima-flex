@@ -5,8 +5,7 @@ import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getPilotAnalytics, listLiveRuns, listStoredRuns, type LiveRunRecord, type PilotAnalyticsMetrics, type StoredRunRecord } from '../../lib/api'
-import { useRouter } from 'next/navigation'
-import { OSTX_CASES, saveCurrentRun } from '../../lib/current-run'
+import { isDemoRunRecord } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
@@ -23,12 +22,10 @@ function metric(metrics: PilotAnalyticsMetrics | null, key: string): string {
 
 export default function DashboardPage() {
   const { status: authStatus } = useSession()
-  const router = useRouter()
   const [metrics, setMetrics] = useState<PilotAnalyticsMetrics | null>(null)
   const [liveRuns, setLiveRuns] = useState<LiveRunRecord[]>([])
   const [storedRuns, setStoredRuns] = useState<StoredRunRecord[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [showDemoEvals, setShowDemoEvals] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -41,8 +38,8 @@ export default function DashboardPage() {
         ])
         if (cancelled) return
         setMetrics(analyticsRes)
-        setLiveRuns(liveRes.runs)
-        setStoredRuns(storedRes.runs)
+        setLiveRuns(liveRes.runs.filter(run => run.userId != null))
+        setStoredRuns(storedRes.runs.filter(run => !isDemoRunRecord(run)))
       } catch (err) {
         if (!cancelled) setError(String(err))
       }
@@ -79,19 +76,6 @@ export default function DashboardPage() {
   const activeStoredRuns = storedRuns.filter(run => !run.archivedAt)
   const latestRuns = [...storedRuns].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 5)
   const activeEvaluations = activeStoredRuns.length + liveRuns.length
-
-  function handleLaunchOstxCase(c: typeof OSTX_CASES[number]) {
-    const runState = {
-      runId: c.liveRunId,
-      startupName: c.startupName,
-      founderName: c.founderName,
-      recommendation: c.recommendation,
-      trustScore: c.trustScore,
-      status: 'completed',
-    }
-    saveCurrentRun(runState)
-    router.push(`/flex?run=${encodeURIComponent(c.liveRunId)}`)
-  }
 
   return (
     <PilotWorkspaceShell
@@ -170,75 +154,6 @@ export default function DashboardPage() {
         ))}
       </section>
 
-      {/* Pipeline Evaluations — collapsed by default */}
-      <section className="bg-gradient-to-br from-[#061C14] via-[#0B5D3B] to-[#17855A] text-white rounded-[12px] border border-[#0E3627] shadow-saas-elevated overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 border-b border-white/10">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                Evaluation Suite
-              </span>
-            </div>
-            <h2 className="text-lg font-black tracking-tight text-white mt-1">
-              Pipeline Evaluations
-            </h2>
-            <p className="text-xs text-emerald-100/80 mt-0.5 max-w-2xl">
-              Explore the full evaluation pipeline: AI analysis, evidence integrity, signals, and reporting.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowDemoEvals(v => !v)}
-            className="self-start md:self-auto shrink-0 bg-[#174836] hover:bg-[#1E6047] text-emerald-200 border border-emerald-400/30 text-xs px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-colors"
-          >
-            {showDemoEvals ? 'Hide Demo Evaluations' : 'Load Demo Evaluations'}
-          </button>
-        </div>
-
-        {showDemoEvals ? (
-          <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-5">
-            {OSTX_CASES.map((c, idx) => (
-              <div
-                key={c.liveRunId}
-                onClick={() => handleLaunchOstxCase(c)}
-                className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 hover:border-emerald-400 rounded-[12px] p-5 cursor-pointer transition-all duration-200 flex flex-col justify-between group shadow-sm hover:shadow-md"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-300">
-                      Case #{idx + 1}
-                    </span>
-                    <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
-                      c.outcome === 'INVEST' ? 'bg-[#12B76A] text-white shadow-sm' :
-                      c.outcome === 'OBSERVE' ? 'bg-[#F79009] text-white shadow-sm' :
-                      c.outcome === 'REVIEW' ? 'bg-[#2E90FA] text-white shadow-sm' :
-                      'bg-[#F04438] text-white shadow-sm'
-                    }`}>
-                      {c.outcome}
-                    </span>
-                  </div>
-                  <div className="text-lg font-black mt-2.5 text-white tracking-tight group-hover:text-emerald-200 transition-colors">
-                    {c.startupName}
-                  </div>
-                  <div className="text-xs text-emerald-200/90 font-medium mt-0.5">{c.founderName}</div>
-                  <p className="text-xs text-emerald-100/80 mt-3 leading-relaxed">{c.summary}</p>
-                </div>
-
-                <div className="mt-5 pt-3 border-t border-white/15 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-emerald-300 font-medium">Trust Assessment:</span>
-                    <TrustGauge score={c.trustScore} size="sm" showLabel={false} />
-                  </div>
-                  <span className="text-xs font-bold text-emerald-300 group-hover:text-white flex items-center gap-1 group-hover:translate-x-0.5 transition-all">
-                    Launch →
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
       {/* Secondary Metrics Grid */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -295,8 +210,8 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {latestRuns.length === 0 ? (
               <div className="py-6 text-center">
-                <div className="text-xs font-semibold text-slate-500">No evaluations available.</div>
-                <div className="text-[11px] text-slate-400 mt-1">Upload documents or create a new evaluation.</div>
+                <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
+                <div className="text-[11px] text-slate-400 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
                 <Link href="/runs" className="mt-3 inline-block text-xs font-bold text-[#0B5D3B] hover:underline">
                   Go to Runs →
                 </Link>

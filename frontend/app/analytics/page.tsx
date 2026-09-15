@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getPilotAnalytics, listStoredRuns, type PilotAnalyticsMetrics, type StoredRunRecord } from '../../lib/api'
+import { isDemoRunRecord } from '../../lib/current-run'
 
 function metric(metrics: PilotAnalyticsMetrics | null, key: string): string {
   if (!metrics) return '—'
@@ -26,7 +27,7 @@ export default function AnalyticsPage() {
       const [analyticsRes, runsRes] = await Promise.all([getPilotAnalytics(), listStoredRuns(100, true)])
       if (cancelled) return
       setMetrics(analyticsRes)
-      setRuns(runsRes.runs)
+      setRuns(runsRes.runs.filter(run => !isDemoRunRecord(run)))
     }
     if (authStatus === 'authenticated') {
       load().catch(err => setError(String(err)))
@@ -121,7 +122,7 @@ export default function AnalyticsPage() {
           <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-4 pb-2.5 border-b border-[#DDE6F0]">Top Evaluations by Score</h2>
           <div className="space-y-3">
             {topRuns.length === 0 ? (
-              <div className="text-xs text-slate-500 py-3">No evaluations available.</div>
+              <div className="text-sm font-bold text-slate-700 py-3">No documents uploaded yet</div>
             ) : topRuns.map(run => (
               <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
                 <div className="text-xs font-bold text-slate-900">{run.startupName}</div>

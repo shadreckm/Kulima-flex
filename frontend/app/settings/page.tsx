@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, type StoredRunRecord } from '../../lib/api'
+import { isDemoRunRecord } from '../../lib/current-run'
 
 export default function SettingsPage() {
   const { status: authStatus, data: session } = useSession()
@@ -20,7 +21,7 @@ export default function SettingsPage() {
     let cancelled = false
     async function loadRuns() {
       const res = await listStoredRuns(20, true)
-      if (!cancelled) setRuns(res.runs)
+      if (!cancelled) setRuns(res.runs.filter(run => !isDemoRunRecord(run)))
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))

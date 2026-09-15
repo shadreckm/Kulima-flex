@@ -161,17 +161,13 @@ async def get_runs_analytics(user: AuthenticatedUser = Depends(get_current_user)
         limit=100,
         include_archived=True,
         user_id=user.user_id,
-        include_shared=True,
+        include_shared=False,
     )
     full_rows = []
     for r in summary_rows:
         run_id = r.get("id")
         if run_id is not None:
             full_row = _brief_repo.get_run(int(run_id), user_id=user.user_id)
-            if full_row is None:
-                legacy = _brief_repo.get_run(int(run_id))
-                if legacy is not None and legacy.get("user_id") is None:
-                    full_row = legacy
             full_rows.append(full_row if full_row is not None else r)
         else:
             full_rows.append(r)

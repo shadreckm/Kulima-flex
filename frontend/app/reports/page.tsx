@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
-import { loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import Link from 'next/link'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
@@ -21,10 +21,11 @@ export default function ReportsPage() {
     async function loadRuns() {
       const res = await listStoredRuns(50, true)
       if (cancelled) return
-      setRuns(res.runs)
+      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
+      setRuns(userRuns)
       const fromQuery = searchParams.get('run')
       const stored = loadCurrentRun()
-      setSelectedRunId(resolveStoredRunId(res.runs, fromQuery || stored?.runId || '', stored))
+      setSelectedRunId(resolveStoredRunId(userRuns, fromQuery || stored?.runId || '', stored))
     }
     if (authStatus === 'authenticated') {
       loadRuns().catch(err => setError(String(err)))
@@ -94,8 +95,8 @@ export default function ReportsPage() {
 
       {runs.length === 0 ? (
         <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-center">
-          <div className="text-sm font-bold text-slate-700">No evaluations available.</div>
-          <div className="text-xs text-slate-500 mt-1">Upload documents or create a new evaluation in the Runs workspace.</div>
+          <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
+          <div className="text-xs text-slate-500 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
           <Link href="/runs" className="mt-4 inline-block px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition">
             Go to Runs
           </Link>

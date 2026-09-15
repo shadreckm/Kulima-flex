@@ -70,6 +70,14 @@ export function findOstxCase(runId: string) {
   return OSTX_CASES.find(c => c.liveRunId === runId || String(c.liveRunId) === String(runId))
 }
 
+export function isDemoRunRecord(run: { runId: number | string; startupName?: string; userId?: string | null }): boolean {
+  if (run.userId === null || run.userId === undefined) return true
+  const runId = String(run.runId).toLowerCase()
+  if (runId.startsWith('ostx-') || runId.startsWith('pilot-')) return true
+  const name = String(run.startupName || '').toLowerCase()
+  return ['agrinova malawi', 'greenlink foods', 'solarharvest cooperative', 'nilepay logistics', 'farmstack kenya', 'healthbridge lagos'].includes(name)
+}
+
 export function loadCurrentRun(): CurrentRunState | null {
   if (typeof window === 'undefined') return null
   try {

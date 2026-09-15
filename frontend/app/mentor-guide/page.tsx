@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
 const steps = [
   ['01', 'Choose a use case', 'Start with Startup / Investor, NGO / Donor, or Government Program. FLEX changes the evidence checklist to match the decision you need to make.'],
@@ -9,21 +10,16 @@ const steps = [
   ['06', 'Export and learn', 'Download the decision brief or diligence report, then record the eventual outcome so future decisions can be calibrated.'],
 ]
 
-const cases = [
-  ['Startup / Investor', 'AgriNova Malawi', 'Invest', '/flex?run=ostx-agrinova-malawi'],
-  ['NGO / Donor', 'HealthBridge Lagos', 'Review Required', '/flex?run=pilot-healthbridge-lagos'],
-  ['Government Program', 'FarmStack Kenya Program Review', 'Observe', '/flex?run=pilot-farmstack-kenya'],
-]
-
 export default function MentorGuidePage() {
   return (
     <main className="min-h-screen bg-[#F5F8FC] text-slate-900">
       <section className="mx-auto max-w-5xl px-5 py-8 md:px-8 md:py-12">
         <Link href="/" className="text-xs font-extrabold text-[#0B5D3B] hover:underline">Back to Evidence Review</Link>
+        <div className="mt-6"><KulimaLogo variant="header" /></div>
         <div className="mt-10 max-w-3xl">
           <div className="text-xs font-black uppercase tracking-[0.2em] text-[#0B5D3B]">Mentor onboarding guide</div>
           <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight text-[#061C14] md:text-5xl">Make one decision you can defend.</h1>
-          <p className="mt-5 text-lg leading-8 text-slate-600">Spend five minutes moving one case from documents to evidence, trust, risk, recommendation, and export. FLEX remains useful in Demo Assessment and Evidence Assessment modes when live AI services are unavailable.</p>
+          <p className="mt-5 text-lg leading-8 text-slate-600">Spend five minutes moving your own documents from evidence to trust, risk, recommendation, and export. FLEX remains useful in Evidence Assessment mode when live AI services are unavailable.</p>
         </div>
 
         <section className="mt-10 grid gap-4 md:grid-cols-2">
@@ -46,18 +42,9 @@ export default function MentorGuidePage() {
         </section>
 
         <section className="mt-10 rounded-[12px] border border-[#DDE6F0] bg-white p-5 shadow-saas">
-          <h2 className="text-xl font-black text-slate-900">Choose a mentor case</h2>
-          <p className="mt-1 text-sm text-slate-500">These cases are designed to work without OpenAI or Tavily credits.</p>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {cases.map(([type, name, result, href]) => (
-              <Link key={name} href={href} className="rounded-lg border border-[#DDE6F0] p-4 hover:border-[#0B5D3B] hover:bg-[#ECFDF3]">
-                <div className="text-[10px] font-black uppercase tracking-wider text-[#0B5D3B]">{type}</div>
-                <div className="mt-2 text-sm font-extrabold text-slate-900">{name}</div>
-                <div className="mt-3 text-xs font-black uppercase text-slate-600">Expected: {result}</div>
-                <div className="mt-4 text-xs font-extrabold text-[#0B5D3B]">Open case -&gt;</div>
-              </Link>
-            ))}
-          </div>
+          <h2 className="text-xl font-black text-slate-900">Start with your documents</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Upload your first pitch deck, NGO report, survey, business plan, or program report. Your assessment is built from your evidence, not a shared demo case.</p>
+          <Link href="/" className="mt-4 inline-block rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold text-white hover:bg-[#08482E]">Upload Evidence</Link>
         </section>
       </section>
     </main>
