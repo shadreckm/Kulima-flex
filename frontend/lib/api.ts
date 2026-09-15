@@ -1,22 +1,6 @@
 const API_BASE = typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_URL || '' : ''
 
-function getAuthTokenFromCookie(): string | null {
-  if (typeof document === 'undefined') return null
-  const cookies = document.cookie.split(';').map(c => c.trim())
-  const keys = ['next-auth.session-token', '__Secure-next-auth.session-token']
-  for (const key of keys) {
-    const prefix = key + '='
-    const match = cookies.find(c => c.startsWith(prefix))
-    if (match) {
-      return decodeURIComponent(match.slice(prefix.length))
-    }
-  }
-  return null
-}
-
 function withAuth(headers: HeadersInit = {}): HeadersInit {
-  const token = getAuthTokenFromCookie()
-  if (!token) return headers
   const base: Record<string, string> = {}
   if (headers instanceof Headers) {
     headers.forEach((value, key) => {
@@ -29,7 +13,6 @@ function withAuth(headers: HeadersInit = {}): HeadersInit {
   } else {
     Object.assign(base, headers as Record<string, string>)
   }
-  base['Authorization'] = `Bearer ${token}`
   return base
 }
 

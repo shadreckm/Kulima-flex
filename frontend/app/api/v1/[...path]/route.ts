@@ -14,32 +14,31 @@ async function proxy(request: NextRequest) {
   headers.delete('host')
   headers.delete('connection')
   headers.delete('content-length')
+  headers.delete('authorization')
 
-  if (!headers.get('authorization')) {
-    const decodedToken = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
-    const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken ? String((decodedToken as { sub?: unknown }).sub || '') : ''
-    const secret = process.env.NEXTAUTH_SECRET
+  const decodedToken = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
+  const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken ? String((decodedToken as { sub?: unknown }).sub || '') : ''
+  const secret = process.env.NEXTAUTH_SECRET
 
-    let backendToken: string | null = null
-    if (tokenSub && secret) {
-      backendToken = await new SignJWT({})
-        .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-        .setSubject(tokenSub)
-        .setIssuedAt()
-        .setExpirationTime('1h')
-        .sign(new TextEncoder().encode(secret))
-    }
+  let backendToken: string | null = null
+  if (tokenSub && secret) {
+    backendToken = await new SignJWT({})
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setSubject(tokenSub)
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(secret))
+  }
 
-    console.info('[kulima-proxy]', {
-      path: request.nextUrl.pathname,
-      tokenExists: Boolean(decodedToken),
-      tokenSub: Boolean(tokenSub),
-      authorizationForwarded: Boolean(backendToken),
-    })
+  console.info('[kulima-proxy]', {
+    path: request.nextUrl.pathname,
+    tokenExists: Boolean(decodedToken),
+    tokenSub: Boolean(tokenSub),
+    authorizationForwarded: Boolean(backendToken),
+  })
 
-    if (backendToken) {
-      headers.set('authorization', `Bearer ${backendToken}`)
-    }
+  if (backendToken) {
+    headers.set('authorization', `Bearer ${backendToken}`)
   }
 
   const init: RequestInit = {
