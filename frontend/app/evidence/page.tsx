@@ -7,6 +7,7 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { getFullBrief, listStoredRuns, uploadDocument, type StoredRunRecord } from '../../lib/api'
 import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
+import { patchAssessment, onAssessmentChanged } from '../../lib/assessment-store'
 
 type FullBrief = Record<string, any>
 
@@ -20,6 +21,7 @@ export default function EvidencePage() {
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
+  const [pipelineReady, setPipelineReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -38,6 +40,18 @@ export default function EvidencePage() {
     }
     return () => { cancelled = true }
   }, [authStatus, searchParams])
+
+  // Listen for cross-tab assessment updates (e.g. upload on another tab)
+  useEffect(() => {
+    const unsub = onAssessmentChanged((state) => {
+      if (!state || state.runId !== selectedRunId) return
+      if (state.pipelineStatus === 'ready' && state.briefSnapshot) {
+        setBrief(state.briefSnapshot)
+        setPipelineReady(true)
+      }
+    })
+    return unsub
+  }, [selectedRunId])
 
   async function refreshBrief() {
     if (!selectedRunId) {
@@ -69,12 +83,46 @@ export default function EvidencePage() {
     setUploading(true)
     setError(null)
     setUploadSuccess(null)
+
+    // Mark pipeline as uploading in the shared assessment store
+    if (selectedRunId) {
+      patchAssessment(selectedRunId, { pipelineStatus: 'uploading' })
+    }
+
     try {
       const res = await uploadDocument(file, selectedRunId || null)
-      setUploadSuccess(`Successfully ingested "${res.name}" into Evidence Pipeline. Trust evaluated at ${res.trustScore ?? 80}/100.`)
-      await refreshBrief()
+      const trustMsg = res.trustScore != null ? `${res.trustScore}/100` : '—'
+      setUploadSuccess(
+        `Successfully ingested "${res.name}" into Evidence Pipeline. Trust Score: ${trustMsg} · Status: ${res.evidenceStatus ?? 'PROCESSED'}`
+      )
+
+      // Refresh brief and broadcast to all tabs
+      const updatedBrief = selectedRunId ? await getFullBrief(selectedRunId).catch(() => null) : null
+
+      if (selectedRunId) {
+        patchAssessment(selectedRunId, {
+          hasEvidence: true,
+          pipelineStatus: 'ready',
+          lastUpload: {
+            id: res.id,
+            name: res.name,
+            trustScore: res.trustScore ?? 0,
+            evidenceStatus: res.evidenceStatus ?? 'PROCESSED',
+            signals: res.signals ?? [],
+          },
+          briefSnapshot: updatedBrief,
+        })
+      }
+
+      if (updatedBrief) setBrief(updatedBrief)
+      else await refreshBrief()
+      setPipelineReady(true)
     } catch (err: any) {
-      setError(`Document upload failed: ${err.message || String(err)}`)
+      const msg = err.message || String(err)
+      setError(`Document upload failed: ${msg}`)
+      if (selectedRunId) {
+        patchAssessment(selectedRunId, { pipelineStatus: 'error', pipelineError: msg })
+      }
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -136,6 +184,38 @@ export default function EvidencePage() {
         </div>
       ) : null}
 
+      {/* Auto-flow: pipeline ready — direct user to next steps */}
+      {pipelineReady && selectedRunId ? (
+        <section className="p-4 bg-[#ECFDF3] border border-[#A6F4C5] rounded-[12px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-extrabold text-[#027A48]">✓ Evidence Pipeline Complete</div>
+            <div className="text-xs text-[#027A48]/80 mt-0.5">
+              Trust Score, Evidence Status, and Signals have been generated. Continue your assessment below.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a
+              href={`/decision?run=${encodeURIComponent(selectedRunId)}`}
+              className="px-3 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-extrabold uppercase tracking-wider hover:bg-[#08482E] transition"
+            >
+              Decision →
+            </a>
+            <a
+              href={`/signals?run=${encodeURIComponent(selectedRunId)}`}
+              className="px-3 py-2 rounded-lg border border-[#0B5D3B] text-[#0B5D3B] text-xs font-extrabold uppercase tracking-wider hover:bg-[#ECFDF3] transition"
+            >
+              Signals →
+            </a>
+            <a
+              href={`/reports?run=${encodeURIComponent(selectedRunId)}`}
+              className="px-3 py-2 rounded-lg border border-[#DDE6F0] text-slate-700 text-xs font-extrabold uppercase tracking-wider hover:border-[#0B5D3B] transition"
+            >
+              Reports →
+            </a>
+          </div>
+        </section>
+      ) : null}
+
       {/* Evidence Corroboration Status Banner */}
       {selectedRunId ? (
         <section className={`p-4 rounded-[12px] border flex items-center gap-3 text-xs font-semibold ${
@@ -188,6 +268,16 @@ export default function EvidencePage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Document Intelligence Mode badge — shown when no AI run is attached */}
+          {!brief?.executive_summary && selectedRunId ? (
+            <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EAF3FF] border border-[#D6E8FF] text-[10px] font-extrabold uppercase tracking-wider text-[#004085]">
+              📄 Document Intelligence Mode
+            </span>
+          ) : brief?.executive_summary?.includes('Offline Intelligence Mode') ? (
+            <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FFFAEB] border border-[#FEDF89] text-[10px] font-extrabold uppercase tracking-wider text-[#B54708]">
+              ⚡ Document Intelligence Mode
+            </span>
+          ) : null}
           <label className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider transition shadow-sm ${
             uploading ? 'bg-slate-400 text-white cursor-not-allowed' : 'bg-[#0B5D3B] text-white hover:bg-[#08482E]'
           }`}>

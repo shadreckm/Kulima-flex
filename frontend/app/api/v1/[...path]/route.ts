@@ -4,6 +4,20 @@ import { getToken } from 'next-auth/jwt'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+// Raise the body-size limit to 26 MB so files up to 25 MB clear the proxy.
+// The default Next.js App Router limit is 4 MB, which caused 413 on large PDFs.
+export const maxDuration = 60
+export const fetchCache = 'force-no-store'
+
+// Override the Next.js body-size cap for this catch-all API route.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '26mb',
+    },
+    responseLimit: false,
+  },
+}
 
 const BACKEND_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace('http://localhost:8000', 'http://127.0.0.1:8000')
 

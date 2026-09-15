@@ -8,6 +8,7 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { getFullBrief, listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
 import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
+import { loadAssessment, onAssessmentChanged } from '../../lib/assessment-store'
 
 type FullBrief = Record<string, any>
 
@@ -45,6 +46,13 @@ export default function DecisionWorkspacePage() {
         setBrief(null)
         return
       }
+      // Check shared assessment store first — avoids redundant API call after upload
+      const cached = loadAssessment()
+      if (cached?.runId === selectedRunId && cached.briefSnapshot) {
+        if (!cancelled) setBrief(cached.briefSnapshot)
+        setLoading(false)
+        // Still fetch fresh in background to ensure latest state
+      }
       setLoading(true)
       setError(null)
       try {
@@ -61,6 +69,15 @@ export default function DecisionWorkspacePage() {
     }
     return () => { cancelled = true }
   }, [authStatus, selectedRunId])
+
+  // Listen for assessment updates from Evidence page (cross-tab/same-tab sync)
+  useEffect(() => {
+    const unsub = onAssessmentChanged((state) => {
+      if (!state || state.runId !== selectedRunId) return
+      if (state.briefSnapshot) setBrief(state.briefSnapshot)
+    })
+    return unsub
+  }, [selectedRunId])
 
   const selectedRun = useMemo(() => runs.find(run => String(run.runId) === String(selectedRunId)), [runs, selectedRunId])
 

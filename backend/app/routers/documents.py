@@ -44,8 +44,11 @@ async def upload_document(
 
     try:
         res = save_uploaded_file(file, run_uuid=runId, user_id=user.user_id)
-    except InvalidUploadError:
-        raise HTTPException(status_code=400, detail="Unsupported file type or payload too large")
+    except InvalidUploadError as exc:
+        msg = str(exc)
+        if msg == "file_too_large":
+            raise HTTPException(status_code=400, detail="File too large. Maximum upload size is 25 MB. Please compress or split the document.")
+        raise HTTPException(status_code=400, detail="Unsupported file type. Accepted: PDF, DOCX, PPTX, XLSX, CSV, TXT.")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return res

@@ -7,10 +7,9 @@ import { Badge } from '../shadcn/Badge'
 
 interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: string }
 
-const MOCK_REPLY = `Recommendation: PASS. The founding team demonstrates strong domain expertise and early traction. Key factors: product-market fit, efficient unit economics, and a defensible niche. Top risks include runway constraints and competitive pressure. Suggested next steps: validate retention cohorts and secure bridge funding.`
-
 import * as api from '../../lib/api'
 import { buildDemoModeResponse } from '../../lib/demo-chat'
+import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
 
 export default function ChatShell({ personaName, initialMessages, recommendationCard, runId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null }) {
   const storageKey = `kulima_messages_${personaName.replace(/\s+/g, '_')}`
@@ -24,6 +23,13 @@ export default function ChatShell({ personaName, initialMessages, recommendation
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
+
+  // Build use-case context hint to send as the first system message
+  // This removes the need for Ask IC to ask the user what they're evaluating.
+  const useCaseCtx = useCaseContextHint(loadUseCase())
+  const contextHistory: Array<{ role: string; content: string }> = useCaseCtx
+    ? [{ role: 'system', content: useCaseCtx }]
+    : []
 
   useEffect(() => {
     // load persisted messages
@@ -128,11 +134,11 @@ export default function ChatShell({ personaName, initialMessages, recommendation
       let receivedText = ''
       try {
         if (personaName.toLowerCase().includes('ic')) {
-          stream = api.askICStream(runId, text, [])
+          stream = api.askICStream(runId, text, contextHistory)
         } else if (personaName.toLowerCase().includes('signal')) {
-          stream = api.askSignalsStream(runId, text, [])
+          stream = api.askSignalsStream(runId, text, contextHistory)
         } else {
-          stream = api.askICStream(runId, text, [])
+          stream = api.askICStream(runId, text, contextHistory)
         }
       } catch (e) {
         stream = null
@@ -183,7 +189,7 @@ export default function ChatShell({ personaName, initialMessages, recommendation
 
       // Fallback: non-streaming API or offline demo mode
       try {
-        const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, []) : await api.askIC(runId, text, [])
+        const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, contextHistory) : await api.askIC(runId, text, contextHistory)
         if (res?.answer) {
           simulateSSEStreaming(res.answer)
         } else {
@@ -219,7 +225,9 @@ export default function ChatShell({ personaName, initialMessages, recommendation
         <div>
           <h2 className="text-sm font-extrabold text-slate-900">{personaName}</h2>
           <p className="text-xs text-slate-500">
-            {runId ? `Evaluation context loaded` : 'No evaluation selected — demo mode active'}
+            {runId
+              ? `Evaluation context loaded${useCaseCtx ? ` · ${loadUseCase()?.label ?? ''}` : ''}`
+              : 'No evaluation selected — demo mode active'}
           </p>
         </div>
         {recommendationCard ? (

@@ -37,6 +37,10 @@ class DocumentResponse(BaseModel):
     id: str
     name: str
     url: str
+    trustScore: Optional[float] = None
+    evidenceStatus: Optional[str] = None
+    signals: Optional[List[str]] = Field(default_factory=list)
+    mode: Optional[str] = None
 
 
 class DecisionSnapshot(BaseModel):
