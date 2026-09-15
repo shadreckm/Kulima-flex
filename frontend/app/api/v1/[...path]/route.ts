@@ -4,25 +4,23 @@ import { getToken } from 'next-auth/jwt'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-// Raise the body-size limit to 26 MB so files up to 25 MB clear the proxy.
-// The default Next.js App Router limit is 4 MB, which caused 413 on large PDFs.
 export const maxDuration = 60
 export const fetchCache = 'force-no-store'
 
-// Override the Next.js body-size cap for this catch-all API route.
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '26mb',
-    },
-    responseLimit: false,
-  },
-}
+// 25 MB file + multipart overhead. Next.js 13.5 App Router has no next.config
+// `api.bodyParser.sizeLimit`; enforce the limit in this route handler instead.
+const MAX_REQUEST_BYTES = 26 * 1024 * 1024
 
 const BACKEND_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace('http://localhost:8000', 'http://127.0.0.1:8000')
 
 async function proxy(request: NextRequest) {
   const upstreamUrl = new URL(request.nextUrl.pathname + request.nextUrl.search, BACKEND_API_URL)
+
+  const declaredLength = Number(request.headers.get('content-length') || 0)
+  if (declaredLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: true, message: 'Request exceeds the 25 MB upload limit' }, { status: 413 })
+  }
+
   const headers = new Headers(request.headers)
 
   headers.delete('host')
@@ -63,6 +61,9 @@ async function proxy(request: NextRequest) {
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = await request.arrayBuffer()
+    if (init.body.byteLength > MAX_REQUEST_BYTES) {
+      return NextResponse.json({ error: true, message: 'Request exceeds the 25 MB upload limit' }, { status: 413 })
+    }
   }
 
   const upstreamResponse = await fetch(upstreamUrl, init)
