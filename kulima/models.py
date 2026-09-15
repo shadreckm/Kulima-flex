@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 class Recommendation(str, Enum):
     INVEST = "Invest"
     OBSERVE = "Observe"
+    REVIEW_REQUIRED = "Review Required"
     PASS = "Pass"
     CO_INVEST = "Co-Invest"
     FOLLOW_ON_WATCH = "Follow-On Watch"

@@ -205,6 +205,9 @@ def recommendation_from_score(
     ):
         return Recommendation.INVEST
 
+    if low_depth and 18 <= trust < 45:
+        return Recommendation.REVIEW_REQUIRED
+
     if (
         score >= 18
         and risk_score < 70
