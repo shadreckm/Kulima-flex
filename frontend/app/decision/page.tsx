@@ -5,12 +5,24 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { getFullBrief, listStoredRuns, reportDownloadHref, type StoredRunRecord } from '../../lib/api'
+import { getDecisionSnapshot, getFullBrief, listStoredRuns, reportDownloadHref, type DecisionSnapshot, type StoredRunRecord } from '../../lib/api'
 import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import { loadAssessment, onAssessmentChanged } from '../../lib/assessment-store'
 
 type FullBrief = Record<string, any>
+
+function domainScoreTone(score: number): string {
+  if (score >= 70) return 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]'
+  if (score >= 50) return 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]'
+  return 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
+}
+
+function domainScoreBar(score: number): string {
+  if (score >= 70) return 'bg-[#12B76A]'
+  if (score >= 50) return 'bg-[#F79009]'
+  return 'bg-[#F04438]'
+}
 
 export default function DecisionWorkspacePage() {
   const { status: authStatus } = useSession()
@@ -18,6 +30,7 @@ export default function DecisionWorkspacePage() {
   const [runs, setRuns] = useState<StoredRunRecord[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [brief, setBrief] = useState<FullBrief | null>(null)
+  const [snapshot, setSnapshot] = useState<DecisionSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,6 +57,7 @@ export default function DecisionWorkspacePage() {
     async function loadBrief() {
       if (!selectedRunId) {
         setBrief(null)
+        setSnapshot(null)
         return
       }
       // Check shared assessment store first — avoids redundant API call after upload
@@ -62,6 +76,14 @@ export default function DecisionWorkspacePage() {
         if (!cancelled) setError(String(err))
       } finally {
         if (!cancelled) setLoading(false)
+      }
+      // Expanded Decision Engine snapshot (Step 7) — best-effort; legacy runs
+      // may predate domain scores, in which case the scorecard stays hidden.
+      try {
+        const snap = await getDecisionSnapshot(selectedRunId)
+        if (!cancelled) setSnapshot(snap)
+      } catch {
+        if (!cancelled) setSnapshot(null)
       }
     }
     if (authStatus === 'authenticated') {
@@ -223,6 +245,67 @@ export default function DecisionWorkspacePage() {
               </div>
             </div>
           </section>
+
+          {/* Expanded Decision Engine — Nine Domain Scorecard (Step 7) */}
+          {snapshot && snapshot.domainScores && Object.keys(snapshot.domainScores).length > 0 ? (
+            <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-[#DDE6F0]">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#17855A]" />
+                  <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">
+                    Decision Engine — Domain Scorecard
+                  </h2>
+                </div>
+                {snapshot.decisionScore != null ? (
+                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${domainScoreTone(snapshot.decisionScore)}`}>
+                    Decision Score {Math.round(snapshot.decisionScore)}/100
+                    {snapshot.decisionBand ? ` · ${snapshot.decisionBand.replace(/_/g, ' ')}` : ''}
+                  </span>
+                ) : null}
+              </div>
+
+              {snapshot.decisionRationale && snapshot.decisionRationale.length > 0 ? (
+                <div className="mb-3 p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Why this score</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs text-slate-700">
+                    {snapshot.decisionRationale.map((line, idx) => (
+                      <li key={idx}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {Object.entries(snapshot.domainScores).map(([key, dom]) => {
+                  const domainScore = typeof dom.score === 'number' ? dom.score : 0
+                  const weightPct = typeof dom.weight === 'number' ? Math.round(dom.weight * 100) : 0
+                  const impact = typeof dom.impact === 'number' ? dom.impact : 0
+                  return (
+                    <div key={key} className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-extrabold text-slate-900">{dom.label}</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${domainScoreTone(domainScore)}`}>
+                          {Math.round(domainScore)}/100
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden my-1.5">
+                        <div
+                          className={`h-full rounded-full ${domainScoreBar(domainScore)}`}
+                          style={{ width: `${Math.max(0, Math.min(100, domainScore))}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                        <span>Weight {weightPct}%</span>
+                        <span className={impact >= 0 ? 'text-[#027A48]' : 'text-[#B42318]'}>
+                          Impact {impact >= 0 ? '+' : ''}{impact.toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ) : null}
 
           {/* 1. Executive Summary & 10. Decision Rationale */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">

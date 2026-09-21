@@ -1,16 +1,19 @@
 'use client'
 
 import React, { useEffect, useState, Suspense } from 'react'
+import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
 import CurrentRunBanner from '../../components/CurrentRunBanner/CurrentRunBanner'
 import EntityIntakeForm from '../../components/EntityIntakeForm/EntityIntakeForm'
+import AssessmentSummaryBar from '../../components/AssessmentSummaryBar/AssessmentSummaryBar'
 import * as api from '../../lib/api'
 import { entityToRunParams } from '../../lib/entity-types'
 import { saveRecentRun, updateRecentRunStatus } from '../../lib/run-history'
 import { useCurrentRun } from '../../hooks/useCurrentRun'
+import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
@@ -21,6 +24,19 @@ function FlexPageInner() {
   const [error, setError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+
+  // Single intake: the shared Assessment Context drives the run identity —
+  // no founder / startup / entity-type re-entry on this page.
+  const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
+    ready,
+    hasCurrentRun,
+    setCurrentRun,
+    route: 'flex',
+  })
+
+  useEffect(() => {
+    if (bootState === 'started') setPolling(true)
+  }, [bootState])
 
   useEffect(() => {
     if (!ready || !currentRun?.runId) return
@@ -129,6 +145,7 @@ function FlexPageInner() {
         trustScore={activeRun?.trustScore}
       />
       <main className="flex flex-col gap-4">
+        {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
         {hasCurrentRun && activeRun && !showCreateForm ? (
           <>
             <CurrentRunBanner
@@ -147,12 +164,65 @@ function FlexPageInner() {
             ) : null}
             <ChatShell personaName="IC Analyst" runId={runId} />
           </>
+        ) : assessmentContext?.assessmentId ? (
+          <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-sm">
+            {bootState === 'needs_confirmation' ? (
+              <>
+                <div className="font-bold text-slate-900">
+                  Extraction confidence is low — confirm the assessment identity once.
+                </div>
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  The shared assessment context was created from your upload, but the entity name could
+                  not be extracted with confidence. Confirm it on the intake page — Ask IC and every other
+                  workspace reuse it automatically.
+                </p>
+                <Link
+                  href="/"
+                  className="inline-block mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
+                >
+                  Review assessment details →
+                </Link>
+              </>
+            ) : bootState === 'error' ? (
+              <>
+                <div className="font-bold text-slate-900">Could not start the assessment run.</div>
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  The shared context is ready — retry starting the intelligence run. Tavily research and
+                  the IC Analyst will work from the extracted entity.
+                </p>
+                {error ? (
+                  <div className="mt-2 font-mono text-[10px] text-red-600 break-all">{error}</div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
+                >
+                  Retry run start
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#F79009] animate-pulse" />
+                  Starting your assessment run from the shared context…
+                </div>
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  Tavily research and the IC Analyst are driven by the extracted entity —{' '}
+                  <strong className="text-slate-800">
+                    {assessmentContext.displayEntity || assessmentContext.entityName || 'Assessment'}
+                  </strong>
+                  . No founder or organisation re-entry is needed.
+                </p>
+              </>
+            )}
+          </section>
         ) : (
           <EntityIntakeForm
             onSubmit={handleCreateRun}
             error={error}
             title="Start AI Analyst Evaluation"
-            subtitle="Select the entity type and enter the required fields to begin an evidence-backed analysis."
+            subtitle="No shared assessment context found — create one to skip these fields next time. Enter the entity details once to begin an evidence-backed analysis."
             submitLabel="Start Evaluation"
           />
         )}

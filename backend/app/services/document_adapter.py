@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -13,6 +13,14 @@ from fastapi import UploadFile
 from kulima.core.documents.models import Document, DocumentChunk, DocumentType, DocumentSource
 from kulima.core.documents.repository import DocumentRepository
 from kulima.core.documents.ingestion import DocumentIngestionService
+from kulima.core.audit import record_event
+from kulima.core.security.encryption import (
+    SCHEME_PLAIN,
+    EncryptionUnavailable,
+    build_storage_metadata,
+    encrypt_bytes,
+)
+from kulima.config import get_settings
 from kulima.models import (
     SourceAttribution,
     UploadedEvidenceRecord,
@@ -313,8 +321,22 @@ class UploadFileAdapter:
         return self._bytes
 
 
-def save_uploaded_file(file: UploadFile, run_uuid: Optional[str] = None, user_id: Optional[str] = None) -> dict:
-    """Execute the complete 7-step Evidence Pipeline for uploaded files."""
+def save_uploaded_file(
+    file: UploadFile,
+    run_uuid: Optional[str] = None,
+    user_id: Optional[str] = None,
+    *,
+    org_id: Optional[str] = None,
+    assessment_id: Optional[str] = None,
+    retention_days: Optional[int] = None,
+) -> dict:
+    """Execute the complete 7-step Evidence Pipeline for uploaded files.
+
+    Enterprise Trust (Phase 5): every stored file gets an encrypted-storage
+    metadata envelope (sha256, size, scheme, key reference), is bound to its
+    workspace (org + assessment), is private by default, and honours the
+    retention window when one is configured.
+    """
 
     # STEP 1: Validate and Store Document
     filename = file.filename or "uploaded_document"
@@ -332,8 +354,33 @@ def save_uploaded_file(file: UploadFile, run_uuid: Optional[str] = None, user_id
     target_name = f"{doc_id}{ext}"
     target_path = UPLOAD_DIR / target_name
 
+    # Encrypted storage metadata + optional AES-256-GCM at-rest encryption.
+    payload_bytes = content
+    at_rest_encrypted = False
+    try:
+        payload_bytes = encrypt_bytes(content)
+        at_rest_encrypted = True
+    except EncryptionUnavailable:
+        payload_bytes = content
+    storage_metadata = build_storage_metadata(
+        content, extra={"storagePath": target_name, "atRestApplied": at_rest_encrypted}
+    )
+    storage_metadata["encrypted"] = at_rest_encrypted
+    if not at_rest_encrypted:
+        storage_metadata["scheme"] = SCHEME_PLAIN
+        storage_metadata["algorithm"] = None
+        storage_metadata["keyRef"] = None
+
     with target_path.open("wb") as out_f:
-        out_f.write(content)
+        out_f.write(payload_bytes)
+
+    # Retention policy (Phase 5): explicit request > environment default > none.
+    effective_retention = retention_days if retention_days is not None else (get_settings().default_retention_days or None)
+    expires_at: Optional[str] = None
+    if effective_retention and int(effective_retention) > 0:
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=int(effective_retention))
+        ).isoformat()
 
     # STEP 2: Extract Metadata & Ingest Chunks
     adapter = UploadFileAdapter(filename, content)
@@ -426,7 +473,37 @@ def save_uploaded_file(file: UploadFile, run_uuid: Optional[str] = None, user_id
             "signals": signals,
         },
     )
-    _doc_repo.save_document(resolved_db_id, doc)
+    _doc_repo.save_document(
+        resolved_db_id,
+        doc,
+        org_id=org_id,
+        assessment_id=assessment_id,
+        storage_path=target_name,
+        size_bytes=len(content),
+        sha256=storage_metadata["sha256"],
+        visibility="private",
+        retention_days=effective_retention,
+        expires_at=expires_at,
+        encryption_metadata=storage_metadata,
+    )
+
+    # Audit trail (Phase 4): document upload is recorded for governance.
+    record_event(
+        "document.uploaded",
+        org_id=org_id,
+        user_id=user_id,
+        run_id=str(resolved_db_id) if resolved_db_id else (str(run_uuid) if run_uuid else None),
+        assessment_id=assessment_id,
+        document_id=doc_id,
+        metadata={
+            "filename": filename,
+            "mimeType": mime_type,
+            "sizeBytes": len(content),
+            "visibility": "private",
+            "encrypted": at_rest_encrypted,
+            "retentionDays": effective_retention,
+        },
+    )
 
     # STEP 7: Publish into Evidence & Reports Workspace
     if resolved_db_id and target_brief:
@@ -470,4 +547,23 @@ def save_uploaded_file(file: UploadFile, run_uuid: Optional[str] = None, user_id
         "signals": signals,
         # Indicate that this was scored deterministically (Document Intelligence Mode)
         "mode": "document_intelligence",
+        # ── Extended payload for the shared Assessment Context intake flow ──
+        # Additive keys: the /documents endpoint filters them out via its
+        # response_model, while the assessments adapter consumes them to build
+        # the Assessment Context (evidence items, decision impact, trust
+        # breakdown, and the extracted text used for auto-extraction).
+        "evidenceItems": evidence_items,
+        "decisionImpact": decision_impact,
+        "rawSummary": evidence_record.raw_summary,
+        "trustBreakdown": trust_breakdown.model_dump(mode="json"),
+        "uploadDate": now_iso,
+        "fileType": ext.lstrip(".").upper() or "DOCUMENT",
+        "extractedText": extracted_text,
+        # ── Enterprise Trust (Phase 5): storage security envelope ──
+        "sha256": storage_metadata["sha256"],
+        "sizeBytes": len(content),
+        "visibility": "private",
+        "retentionDays": effective_retention,
+        "expiresAt": expires_at,
+        "storageScheme": storage_metadata["scheme"],
     }

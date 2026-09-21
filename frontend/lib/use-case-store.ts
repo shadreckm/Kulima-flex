@@ -7,7 +7,7 @@
  */
 
 export type UseCaseSelection = {
-  useCase: 'startup' | 'ngo' | 'government_program' | 'development_program' | 'accelerator'
+  useCase: 'startup' | 'ngo' | 'government_program' | 'development_program' | 'tourism_sme' | 'accelerator'
   /** Human-readable label shown in context banners */
   label: string
   /** ISO timestamp when the user made the selection */
@@ -21,6 +21,7 @@ export const USE_CASE_LABELS: Record<UseCaseSelection['useCase'], string> = {
   ngo: 'NGO / Donor',
   government_program: 'Government Program',
   development_program: 'Development Program',
+  tourism_sme: 'Tourism SME',
   accelerator: 'Accelerator / Incubator',
 }
 
@@ -29,6 +30,8 @@ export const HOME_TO_ENTITY: Record<string, UseCaseSelection['useCase']> = {
   startup: 'startup',
   ngo: 'ngo',
   government: 'government_program',
+  development: 'development_program',
+  tourism: 'tourism_sme',
 }
 
 export function saveUseCase(useCase: UseCaseSelection['useCase']): void {
@@ -72,6 +75,7 @@ export function useCaseContextHint(selection: UseCaseSelection | null): string {
     ngo: 'The user is reviewing an NGO or development programme for donor funding. Focus on beneficiary evidence, outcome indicators, M&E quality, and budget integrity.',
     government_program: 'The user is assessing a government programme for parliamentary or donor review. Focus on policy alignment, implementation evidence, budget utilisation, and outcome data.',
     development_program: 'The user is evaluating a development finance programme. Focus on disbursement evidence, impact metrics, partner accountability, and learning loops.',
+    tourism_sme: 'The user is reviewing a tourism or hospitality SME. Focus on destination evidence, tourism contribution, cultural preservation, community impact, and climate resilience.',
     accelerator: 'The user is reviewing an accelerator or incubator portfolio. Focus on cohort outcomes, mentorship quality, graduation rates, and venture success metrics.',
   }
   return hints[selection.useCase] ?? ''

@@ -125,3 +125,5 @@ htmlcov/
 
 backend/uploads/
 backend/uploads/
+.qoder/ 
+*.tsbuildinfo 

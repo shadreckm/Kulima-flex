@@ -27,6 +27,13 @@ class Settings:
     analyst_daily_limit: int
     investor_daily_limit: int
     admin_emails: tuple[str, ...]
+    # ── Enterprise Trust & Monetization ─────────────────────────────────
+    paychangu_secret_key: str
+    paychangu_webhook_secret: str
+    paychangu_currency: str
+    billing_enforcement: bool
+    grace_period_days: int
+    default_retention_days: int
 
     def missing_required_secrets(self) -> list[str]:
         missing = []
@@ -64,6 +71,12 @@ def get_settings() -> Settings:
             for email in os.getenv("KULIMA_ADMIN_EMAILS", "").split(",")
             if email.strip()
         ),
+        paychangu_secret_key=os.getenv("PAYCHANGU_SECRET_KEY", ""),
+        paychangu_webhook_secret=os.getenv("PAYCHANGU_WEBHOOK_SECRET", ""),
+        paychangu_currency=os.getenv("PAYCHANGU_CURRENCY", "USD"),
+        billing_enforcement=os.getenv("KULIMA_BILLING_ENFORCEMENT", "false").lower() in {"1", "true", "yes", "on"},
+        grace_period_days=int(os.getenv("KULIMA_GRACE_PERIOD_DAYS", "7")),
+        default_retention_days=int(os.getenv("KULIMA_DEFAULT_RETENTION_DAYS", "0")),
     )
 
 

@@ -1,14 +1,20 @@
 /**
  * Entity-based evaluation intake types.
  * Kulima OS evaluates any organisation type, not just startups.
+ *
+ * The five canonical assessment types collected by the single intake engine
+ * (landing page) are: Startup, NGO, Government Program, Development Program,
+ * Tourism SME. `accelerator` is retained as a legacy alias so contexts stored
+ * before Tourism SME existed keep loading.
  */
 
 export type EntityType =
   | 'startup'
   | 'ngo'
-  | 'development_program'
-  | 'accelerator'
   | 'government_program'
+  | 'development_program'
+  | 'tourism_sme'
+  | 'accelerator' // legacy alias (kept for backward compatibility)
 
 export type EntityConfig = {
   type: EntityType
@@ -20,6 +26,8 @@ export type EntityConfig = {
   }
   /** Short description shown below the entity-type selector */
   description: string
+  /** True for legacy aliases that must not appear in the intake selector */
+  legacy?: boolean
 }
 
 export const ENTITY_CONFIGS: EntityConfig[] = [
@@ -42,6 +50,15 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     },
   },
   {
+    type: 'government_program',
+    label: 'Government Program',
+    description: 'Government agency programme under SPARC, parliamentary, or donor review.',
+    fields: {
+      primary:   { key: 'entityName',    label: 'Agency',        placeholder: 'e.g. Ministry of Agriculture, Tanzania' },
+      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. National Irrigation Strategy' },
+    },
+  },
+  {
     type: 'development_program',
     label: 'Development Program',
     description: 'Development finance program under DFI or bilateral-agency evaluation.',
@@ -51,27 +68,45 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     },
   },
   {
+    type: 'tourism_sme',
+    label: 'Tourism SME',
+    description: 'Tourism, hospitality, or destination business under impact and viability review.',
+    fields: {
+      primary:   { key: 'entityName',    label: 'Business Name', placeholder: 'e.g. SolarHarvest Lodge' },
+      secondary: { key: 'programName',   label: 'Owner / Lead',  placeholder: 'e.g. Grace Banda' },
+    },
+  },
+  {
     type: 'accelerator',
     label: 'Accelerator',
+    legacy: true,
     description: 'Accelerator or incubator programme under portfolio or impact review.',
     fields: {
       primary:   { key: 'entityName',    label: 'Accelerator Name', placeholder: 'e.g. MEST Africa' },
       secondary: { key: 'programName',   label: 'Program / Cohort', placeholder: 'e.g. Cohort 12 — AgriTech' },
     },
   },
-  {
-    type: 'government_program',
-    label: 'Government Program',
-    description: 'Government agency programme under SPARC, parliamentary, or donor review.',
-    fields: {
-      primary:   { key: 'entityName',    label: 'Agency',        placeholder: 'e.g. Ministry of Agriculture, Tanzania' },
-      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. National Irrigation Strategy' },
-    },
-  },
+]
+
+/** The five canonical assessment types shown in the landing-page intake. */
+export const INTAKE_ENTITY_TYPES: EntityType[] = [
+  'startup',
+  'ngo',
+  'government_program',
+  'development_program',
+  'tourism_sme',
 ]
 
 export function getEntityConfig(type: EntityType): EntityConfig {
   return ENTITY_CONFIGS.find(c => c.type === type) ?? ENTITY_CONFIGS[0]
+}
+
+/**
+ * Maps an entity type to the backend AssessmentType value used by the
+ * shared Assessment Context API (/api/v1/assessments).
+ */
+export function entityToAssessmentType(entityType: EntityType): string {
+  return entityType
 }
 
 /**

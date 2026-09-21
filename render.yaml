@@ -41,3 +41,26 @@ services:
         value: "60"
       - key: PYTHONPATH
         value: /app
+      # Enterprise Trust & Monetization (Phases 5, 7, 8)
+      - key: KULIMA_BILLING_ENFORCEMENT
+        value: "false" # flip to true when ready to enforce plan quotas
+      - key: KULIMA_BILLING_DEMO_MODE
+        value: "false"
+      - key: KULIMA_GRACE_PERIOD_DAYS
+        value: "7"
+      - key: KULIMA_PLAN_CURRENCY
+        value: USD
+      - key: KULIMA_PLAN_PRICING_JSON
+        sync: false # optional pricing overrides, e.g. {"pro": {"monthlyPrice": 49}}
+      - key: KULIMA_DOC_ENCRYPTION_KEY
+        sync: false # set to enable AES-256-GCM at-rest encryption
+      - key: KULIMA_DEFAULT_RETENTION_DAYS
+        value: "0"
+      - key: PAYCHANGU_SECRET_KEY
+        sync: false
+      - key: PAYCHANGU_WEBHOOK_SECRET
+        sync: false
+      - key: PAYCHANGU_CURRENCY
+        value: USD
+      - key: PAYCHANGU_API_BASE
+        sync: false

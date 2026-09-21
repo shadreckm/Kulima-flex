@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from tavily import TavilyClient
 
 from kulima.config import get_settings
+from kulima.core.security.tavily_guard import guard
 from kulima.models import SourceAttribution
 
 _HIGH_AUTHORITY_DOMAINS = (
@@ -48,8 +49,14 @@ class ResearchEngine:
             if self.africa_focus
             else ""
         )
+        # Phase 6 — Tavily safety choke point. Every outbound query passes
+        # through the guard so uploaded-document contents, financial figures,
+        # contact details and other sensitive strings never leave the platform.
+        # Only public entity metadata (org name, founder, sector, country)
+        # is ever forwarded to the third-party research provider.
+        safe_query = guard.sanitize_query(f"{query}{africa_boost}".strip())
         response = self.client.search(
-            query=f"{query}{africa_boost}".strip(),
+            query=safe_query,
             search_depth=depth,
             max_results=self.max_results,
             include_answer=True,
@@ -133,15 +140,20 @@ class ResearchEngine:
         return self._rank_sources(self._dedupe(out, limit=24))
 
     def research_bundle(
-        self, founder: str, startup: str
+        self, founder: str, startup: str, sector_hint: str = ""
     ) -> dict[str, list[SourceAttribution]]:
-        """One-shot parallel OSINT pack: founder, startup, market, risks."""
+        """One-shot parallel OSINT pack: founder, startup, market, risks.
+
+        ``sector_hint`` is an additive refinement sourced from the shared
+        Assessment Context (extracted from the uploaded documents); when empty
+        behaviour is identical to previous releases.
+        """
         from concurrent.futures import ThreadPoolExecutor
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             f_fut = pool.submit(self.research_founder, founder, startup)
             s_fut = pool.submit(self.research_startup, founder, startup)
-            m_fut = pool.submit(self.research_market, startup)
+            m_fut = pool.submit(self.research_market, startup, sector_hint)
             r_fut = pool.submit(self.research_risks, founder, startup)
             return {
                 "founder": f_fut.result(),

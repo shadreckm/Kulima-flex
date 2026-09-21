@@ -60,14 +60,23 @@ _DIRECTION_ICON: dict[str, str] = {
 }
 
 _CATEGORY_LABELS: dict[SignalCategory, str] = {
-    SignalCategory.GOVERNANCE:    "Governance",
-    SignalCategory.FINANCIAL:     "Financial",
-    SignalCategory.OPERATIONAL:   "Operational",
-    SignalCategory.SAFEGUARDING:  "Safeguarding",
-    SignalCategory.POLITICAL:     "Political",
-    SignalCategory.SOCIAL:        "Social",
-    SignalCategory.IMPACT:        "Impact",
-    SignalCategory.LEARNING:      "Learning",
+    SignalCategory.TRUST:            "Trust",
+    SignalCategory.RISK:             "Risk",
+    SignalCategory.MARKET:           "Market",
+    SignalCategory.FUNDING:          "Funding",
+    SignalCategory.COMPETITIVE:      "Competitive",
+    SignalCategory.CLIMATE:          "Climate",
+    SignalCategory.ENVIRONMENTAL:    "Environmental",
+    SignalCategory.TOURISM:          "Tourism",
+    SignalCategory.COMMUNITY_IMPACT: "Community Impact",
+    SignalCategory.GOVERNANCE:       "Governance",
+    SignalCategory.FINANCIAL:        "Financial",
+    SignalCategory.OPERATIONAL:      "Operational",
+    SignalCategory.SAFEGUARDING:     "Safeguarding",
+    SignalCategory.POLITICAL:        "Political",
+    SignalCategory.SOCIAL:           "Social",
+    SignalCategory.IMPACT:           "Impact",
+    SignalCategory.LEARNING:         "Learning",
 }
 
 

@@ -30,3 +30,7 @@ tenacity>=8.2.0
 
 # PDF export
 reportlab>=4.0.0
+
+# Document security (Phase 5): AES-256-GCM at-rest encryption for uploaded
+# documents when KULIMA_DOC_ENCRYPTION_KEY is configured.
+cryptography>=42.0.0

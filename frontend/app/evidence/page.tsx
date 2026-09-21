@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
+import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
 import { getFullBrief, listStoredRuns, uploadDocument, type StoredRunRecord } from '../../lib/api'
 import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
@@ -295,6 +296,9 @@ export default function EvidencePage() {
           </label>
         </div>
       </section>
+
+      {/* Governance Activity Timeline — per-assessment audit trail (Phase 4) */}
+      {selectedRunId ? <ActivityTimeline runId={selectedRunId} limit={50} /> : null}
 
       {/* Decision Intelligence Summary Block */}
       {brief ? (

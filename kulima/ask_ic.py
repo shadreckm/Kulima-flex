@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import textwrap
+from typing import Any
+
 from kulima.llm import LLMClient
 from kulima.models import InvestmentBrief
 from kulima.core.documents.context import build_document_context_for_subject
@@ -21,13 +23,99 @@ def _bullet_list(items: list[str], limit: int = 8) -> str:
     return "\n".join(f"- {_clip(item, 500)}" for item in items[:limit]) or "- None provided"
 
 
+def _format_assessment_section(assessment: dict[str, Any]) -> list[str]:
+    """Render the shared Assessment Context as an [ASSESSMENT_CONTEXT] block.
+
+    Ask IC must already know the assessment type, organisation, founder,
+    uploaded documents, and trust score — without asking the user again.
+    """
+    lines: list[str] = ["[ASSESSMENT_CONTEXT]"]
+    type_label = assessment.get("assessmentTypeLabel") or assessment.get("assessment_type") or "Assessment"
+    entity = assessment.get("displayEntity") or assessment.get("organizationName") or assessment.get("organization_name") or assessment.get("startupName") or assessment.get("startup_name") or "Unknown"
+    founder = assessment.get("founderName") or assessment.get("founder_name") or "Unknown"
+    lines.append(f"Assessment type: {type_label}")
+    lines.append(f"Organisation / entity: {entity}")
+    lines.append(f"Founder / lead: {founder}")
+    sector = assessment.get("sector") or "Unknown"
+    country = assessment.get("country") or "Unknown"
+    lines.append(f"Sector: {sector}; Country: {country}")
+    if assessment.get("website"):
+        lines.append(f"Website: {assessment['website']}")
+    if assessment.get("team"):
+        lines.append(f"Team: {assessment['team']}")
+    if assessment.get("problemStatement") or assessment.get("problem_statement"):
+        lines.append(
+            "Problem statement: "
+            + _clip(str(assessment.get("problemStatement") or assessment.get("problem_statement")), 400)
+        )
+    documents = assessment.get("uploadedDocuments") or assessment.get("uploaded_documents") or []
+    if documents:
+        names = [
+            str(doc.get("name") or doc.get("filename") or "document")
+            if isinstance(doc, dict)
+            else str(doc)
+            for doc in documents[:8]
+        ]
+        lines.append(f"Uploaded documents ({len(documents)}): " + "; ".join(names))
+    confidence = assessment.get("confidence")
+    if confidence is not None:
+        lines.append(f"Extraction confidence: {float(confidence):.2f}")
+    trust = assessment.get("trustScore", assessment.get("trust_score"))
+    if trust is not None:
+        lines.append(f"Trust score: {float(trust):.0f}/100")
+    decision = assessment.get("decision") or {}
+    if isinstance(decision, dict) and decision:
+        rec = decision.get("recommendation")
+        overall = decision.get("overallScore")
+        risk = decision.get("riskScore")
+        parts = [p for p in [
+            f"recommendation {rec}" if rec else "",
+            f"decision score {float(overall):.0f}/100" if isinstance(overall, (int, float)) else "",
+            f"risk score {float(risk):.0f}/100 (lower is better)" if isinstance(risk, (int, float)) else "",
+        ] if p]
+        if parts:
+            lines.append("Decision snapshot: " + "; ".join(parts))
+    return lines
+
+
+def _format_domain_section(domain_overviews: dict[str, dict]) -> list[str]:
+    """Render the nine dashboard domains as a [DOMAIN_SIGNALS] block."""
+    order = (
+        "trust", "risk", "opportunity", "market", "funding",
+        "climate", "environmental", "tourism", "community_impact",
+    )
+    lines: list[str] = ["[DOMAIN_SIGNALS]"]
+    for key in order:
+        entry = domain_overviews.get(key)
+        if not entry:
+            continue
+        label = entry.get("label") or key.replace("_", " ").title()
+        score = entry.get("score")
+        summary = _clip(str(entry.get("summary") or ""), 320)
+        recommendation = _clip(str(entry.get("recommendation") or ""), 240)
+        line = f"{label}: {score}/100"
+        if summary:
+            line += f" — {summary}"
+        if recommendation:
+            line += f" Recommendation: {recommendation}"
+        lines.append(line)
+    return lines
+
+
 def build_ask_ic_context(
     brief: InvestmentBrief,
     *,
     run_id: int | None = None,
     user_id: str | None = None,
+    assessment_context: dict[str, Any] | None = None,
+    domain_overviews: dict[str, dict] | None = None,
 ) -> str:
-    """Build a bounded, citable context pack from only generated IC artifacts."""
+    """Build a bounded, citable context pack from only generated IC artifacts.
+
+    ``assessment_context`` / ``domain_overviews`` are optional additive
+    grounding packs sourced from the shared Assessment Context; when absent,
+    the context pack is identical to previous releases.
+    """
     sections: list[str] = [
         "[REPORT]",
         f"Founder: {brief.founder_name}",
@@ -54,6 +142,13 @@ def build_ask_ic_context(
         "Next steps:\n" + _bullet_list(brief.next_steps),
         "Explainability:\n" + _bullet_list(brief.explainability, 12),
     ]
+
+    # Intake grounding first so it survives context truncation.
+    if assessment_context:
+        sections.extend(_format_assessment_section(assessment_context))
+    if domain_overviews:
+        sections.extend(_format_domain_section(domain_overviews))
+
     tm = brief.thesis_match
     if tm is None:
         try:
@@ -190,13 +285,21 @@ def answer_ask_ic_question(
     *,
     run_id: int | None = None,
     user_id: str | None = None,
+    assessment_context: dict[str, Any] | None = None,
+    domain_overviews: dict[str, dict] | None = None,
 ) -> str:
     """Answer a follow-up question as an IC analyst using only the brief context."""
     history_text = "\n".join(
         f"{msg.get('role', 'user').upper()}: {_clip(msg.get('content', ''), 800)}"
         for msg in (history or [])[-8:]
     )
-    context = build_ask_ic_context(brief, run_id=run_id, user_id=user_id)
+    context = build_ask_ic_context(
+        brief,
+        run_id=run_id,
+        user_id=user_id,
+        assessment_context=assessment_context,
+        domain_overviews=domain_overviews,
+    )
     system = textwrap.dedent(
         """
         You are a Senior Investment Committee Associate for Kulima FLEX.
@@ -238,6 +341,17 @@ def answer_ask_ic_question(
           [R1], [V2], [F1], [S3] for web sources, and [D1], [D2] for document
           evidence when referring to uploaded documents in the [DOCUMENTS]
           section. For source-backed claims, prefer [S#] and [D#].
+        - The [ASSESSMENT_CONTEXT] section already contains the intake facts
+          (assessment type, organisation, founder/lead, sector, country,
+          uploaded documents, trust score). NEVER ask the user for these again —
+          they were captured once at intake and auto-extracted from the
+          uploaded documents.
+        - The [DOMAIN_SIGNALS] section carries the nine signal domains
+          (Trust, Risk, Opportunity, Market, Funding, Climate, Environment,
+          Tourism, Community) each with a score, summary, and recommendation.
+          Cite [DOMAIN_SIGNALS] for questions about climate, environmental,
+          tourism, or community impact exposure, and cite
+          [ASSESSMENT_CONTEXT] for questions about the assessment itself.
         - Style the response as if it comes from a senior investment associate
           briefing a Partner.
 

@@ -57,7 +57,14 @@ class IntelligenceOrchestrator:
         on_progress: ProgressCallback | None = None,
         *,
         user_id: str | None = None,
+        sector_hint: str = "",
     ) -> InvestmentBrief:
+        """Run the full intelligence pipeline.
+
+        ``sector_hint`` is an optional additive refinement sourced from the
+        shared Assessment Context (auto-extracted from uploaded documents).
+        When empty, behaviour is identical to previous releases.
+        """
         def progress(pct: float, message: str) -> None:
             if on_progress:
                 on_progress(pct, message)
@@ -67,7 +74,7 @@ class IntelligenceOrchestrator:
 
         progress(0.05, "Initializing Investment Intelligence OS…")
         progress(0.12, "Parallel OSINT sweep — founder · startup · market · risks…")
-        bundle = self.research.research_bundle(founder, startup)
+        bundle = self.research.research_bundle(founder, startup, sector_hint)
         founder_sources = bundle["founder"]
         startup_sources = ResearchEngine._dedupe(bundle["startup"] + bundle["market"])
         risk_sources = bundle["risks"]
@@ -82,7 +89,7 @@ class IntelligenceOrchestrator:
         try:
             progress(0.18, "Evidence Integrity Engine — source consistency analysis…")
             integrity_report = self.evidence_engine.evaluate(
-                all_sources, founder, startup, sector=""
+                all_sources, founder, startup, sector=sector_hint
             )
             _log.info(
                 "EIE complete — grade %s (%.0f/100), sparse=%s, contradictions=%d",

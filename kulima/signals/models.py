@@ -25,10 +25,28 @@ class SignalLevel(str, Enum):
 class SignalCategory(str, Enum):
     """Thematic category for a signal.
 
-    Categories are intentionally broad and are suitable for development
-    programs, risk, and operational monitoring.
+    Categories encompass both the core assessment domains and foundational
+    monitoring categories.
+
+    Display order (9 dashboard domains): Trust, Risk, Opportunity, Market,
+    Funding, Climate, Environment, Tourism, Community. COMPETITIVE is retained
+    as a signal category for backward compatibility and folds into the
+    Opportunity domain at display time.
     """
 
+    # Core Assessment Domains
+    TRUST = "trust"
+    RISK = "risk"
+    OPPORTUNITY = "opportunity"
+    MARKET = "market"
+    FUNDING = "funding"
+    COMPETITIVE = "competitive"
+    CLIMATE = "climate"
+    ENVIRONMENTAL = "environmental"
+    TOURISM = "tourism"
+    COMMUNITY_IMPACT = "community_impact"
+
+    # Legacy & Foundational Monitoring Categories
     GOVERNANCE = "governance"
     FINANCIAL = "financial"
     OPERATIONAL = "operational"

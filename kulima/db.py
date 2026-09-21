@@ -160,6 +160,13 @@ class IntelligenceRepository:
                 "ALTER TABLE intelligence_runs ADD COLUMN user_id TEXT DEFAULT NULL"
             )
             _log.debug("_migrate_schema: added column user_id")
+        # Enterprise Trust (Phase 2): workspace isolation. Legacy rows keep
+        # NULL until claimed by OrgRepository.claim_legacy_data on first login.
+        if "org_id" not in existing:
+            conn.execute(
+                "ALTER TABLE intelligence_runs ADD COLUMN org_id TEXT DEFAULT NULL"
+            )
+            _log.debug("_migrate_schema: added column org_id")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -170,7 +177,12 @@ class IntelligenceRepository:
         finally:
             conn.close()
 
-    def save_brief(self, brief: InvestmentBrief, user_id: str | None = None) -> int:
+    def save_brief(
+        self,
+        brief: InvestmentBrief,
+        user_id: str | None = None,
+        org_id: str | None = None,
+    ) -> int:
         payload = brief.model_dump(mode="json")
         # Extract Trust Layer flat values — both are NULL when EIE has not run.
         ei = brief.evidence_integrity
@@ -184,8 +196,8 @@ class IntelligenceRepository:
                     overall_score, founder_score, startup_score, market_score, trust_score,
                     risk_score, growth_potential, investment_readiness, confidence,
                     recommendation, executive_summary, payload_json,
-                    integrity_score, integrity_grade, user_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    integrity_score, integrity_grade, user_id, org_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
@@ -209,6 +221,7 @@ class IntelligenceRepository:
                     integrity_score,
                     integrity_grade,
                     user_id,
+                    org_id,
                 ),
             )
             # Legacy compatibility table
@@ -235,19 +248,28 @@ class IntelligenceRepository:
         include_archived: bool = False,
         user_id: str | None = None,
         include_shared: bool = False,
+        org_id: str | None = None,
     ) -> list[dict[str, Any]]:
         with self._connect() as conn:
             query = """
                 SELECT id, created_at, founder_name, startup_name, sector, geography, stage,
                        overall_score, founder_score, trust_score, recommendation, confidence,
-                       integrity_score, integrity_grade, archived_at, user_id
+                       integrity_score, integrity_grade, archived_at, user_id, org_id
                 FROM intelligence_runs
             """
             params: list[Any] = []
             conditions: list[str] = []
             if not include_archived:
                 conditions.append("archived_at IS NULL")
-            if user_id is not None:
+            if org_id is not None:
+                # Phase 2 workspace isolation: runs are visible to the owning
+                # organization only (plus shared demo rows when requested).
+                if include_shared:
+                    conditions.append("(org_id = ? OR user_id IS NULL)")
+                else:
+                    conditions.append("org_id = ?")
+                params.append(org_id)
+            elif user_id is not None:
                 # Shared OSTX / pilot demo rows are stored with user_id NULL so every
                 # authenticated pilot can explore them without OpenAI credits.
                 if include_shared:
@@ -262,11 +284,20 @@ class IntelligenceRepository:
             rows = conn.execute(query, tuple(params)).fetchall()
             return [dict(r) for r in rows]
 
-    def get_run(self, run_id: int, user_id: str | None = None) -> dict[str, Any] | None:
+    def get_run(
+        self,
+        run_id: int,
+        user_id: str | None = None,
+        org_id: str | None = None,
+    ) -> dict[str, Any] | None:
         with self._connect() as conn:
             query = "SELECT * FROM intelligence_runs WHERE id = ?"
             params: list[Any] = [run_id]
-            if user_id is not None:
+            if org_id is not None:
+                # Same-org members share visibility; shared demo rows stay open.
+                query += " AND (org_id = ? OR user_id IS NULL)"
+                params.append(org_id)
+            elif user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
             row = conn.execute(query, tuple(params)).fetchone()
@@ -298,33 +329,42 @@ class IntelligenceRepository:
             )
             return None
 
-    def archive_run(self, run_id: int, user_id: str | None = None) -> bool:
+    def archive_run(self, run_id: int, user_id: str | None = None, org_id: str | None = None) -> bool:
         with self._connect() as conn:
             query = "UPDATE intelligence_runs SET archived_at = ? WHERE id = ?"
             params: list[Any] = [datetime.now(timezone.utc).isoformat(), run_id]
-            if user_id is not None:
+            if org_id is not None:
+                query += " AND org_id = ?"
+                params.append(org_id)
+            elif user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
             cur = conn.execute(query, tuple(params))
             conn.commit()
             return cur.rowcount > 0
 
-    def reopen_run(self, run_id: int, user_id: str | None = None) -> bool:
+    def reopen_run(self, run_id: int, user_id: str | None = None, org_id: str | None = None) -> bool:
         with self._connect() as conn:
             query = "UPDATE intelligence_runs SET archived_at = NULL WHERE id = ?"
             params: list[Any] = [run_id]
-            if user_id is not None:
+            if org_id is not None:
+                query += " AND org_id = ?"
+                params.append(org_id)
+            elif user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
             cur = conn.execute(query, tuple(params))
             conn.commit()
             return cur.rowcount > 0
 
-    def delete_run(self, run_id: int, user_id: str | None = None) -> bool:
+    def delete_run(self, run_id: int, user_id: str | None = None, org_id: str | None = None) -> bool:
         with self._connect() as conn:
             query = "SELECT founder_name, startup_name FROM intelligence_runs WHERE id = ?"
             params: list[Any] = [run_id]
-            if user_id is not None:
+            if org_id is not None:
+                query += " AND org_id = ?"
+                params.append(org_id)
+            elif user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
             row = conn.execute(query, tuple(params)).fetchone()

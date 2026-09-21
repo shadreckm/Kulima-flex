@@ -256,7 +256,7 @@ reviewed sources. Evidence Depth: {depth_label}.
 """
 
     return f"""{header}
-KULIMA FLEX â€” INVESTMENT COMMITTEE MEMO
+KULIMA FLEX — INVESTMENT COMMITTEE MEMO
 ========================================
 Deal: {brief.founder_name} / {brief.startup_name}
 Sector: {brief.sector or 'â€”'} | Geography: {brief.geography or 'â€”'} | Stage: {brief.stage or 'â€”'}
@@ -302,7 +302,7 @@ Risk (lower better): {brief.risk_score:.0f}/100
 Growth Potential: {brief.growth_potential:.0f}/100
 Investment Readiness: {brief.investment_readiness:.0f}/100
 {verification_section}
-â€” End of Memo â€”
+— End of Memo —
 ================================================================================
 Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically
 """.strip()

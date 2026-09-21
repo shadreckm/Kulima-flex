@@ -56,6 +56,12 @@ export type DecisionSnapshot = {
   topReasons: string[];
   topRisks: string[];
   nextAction: string;
+  // Expanded decision engine (evidence + trust + risk + climate + environment
+  // + tourism + community impact) — optional for backward compatibility.
+  decisionScore?: number | null;
+  decisionBand?: string | null;
+  decisionRationale?: string[] | null;
+  domainScores?: Record<string, { label: string; score: number; weight: number; impact: number }> | null;
 }
 
 export type SignalItem = {
@@ -67,6 +73,23 @@ export type SignalItem = {
   description: string;
   recommendedAction: string;
   confidence: number;
+  evidenceRefs?: string[];
+  evidenceSummary?: string;
+  timeHorizon?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export type DomainSignals = {
+  domain: string;
+  label: string;
+  count: number;
+  riskCount: number;
+  opportunityCount: number;
+  signals: SignalItem[];
+  // Per-domain rollup (Step 6): score 0–100, higher = healthier.
+  score?: number;
+  summary?: string;
+  recommendation?: string;
 }
 
 export type SignalsSummary = {
@@ -76,11 +99,15 @@ export type SignalsSummary = {
   low: number;
   topRisks: SignalItem[];
   topOpportunities: SignalItem[];
+  domains?: Record<string, DomainSignals>;
+  allSignals?: SignalItem[];
 }
 
 export type CreateRunPayload = {
   founder: string
   startup?: string
+  /** When present the run identity is resolved from the shared Assessment Context. */
+  assessmentId?: string
   /** Entity type for display purposes — passed through to backend when supported */
   entityType?: string
   /** Additional entity metadata forwarded to backend */
@@ -95,6 +122,138 @@ export async function createRun(founder: string, startup?: string, extra?: Omit<
   })
   if (!res.ok) throw new Error(`createRun failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ runId: string; status: string }>(res, 'createRun')
+}
+
+// ── Assessment Context (single intake engine) ─────────────────────────────
+// The landing page uploads documents once; the backend extracts entity
+// fields and returns the shared context reused by every workspace.
+
+export type AssessmentFieldPayload = {
+  value: string
+  confidence: number
+  source: string
+}
+
+export type AssessmentContextPayload = {
+  assessmentId: string
+  assessmentType: string
+  assessmentTypeLabel: string
+  status: string
+  runId?: string | null
+  requiresConfirmation: boolean
+  confidenceThreshold: number
+  displayEntity: string
+  organizationName: string
+  startupName: string
+  founderName: string
+  sector: string
+  country: string
+  website: string
+  team: string
+  problemStatement: string
+  confidence: number
+  extraction: {
+    confidence: number
+    textAvailable: boolean
+    fields: Record<string, AssessmentFieldPayload>
+  }
+  documentIds: string[]
+  uploadedDocuments: Array<Record<string, any>>
+  documentCount: number
+  extractedTextPreview: string
+  extractedTextLength: number
+  trustScore?: number | null
+  signals: string[]
+  decision: Record<string, any>
+  createdAt: string
+  updatedAt: string
+}
+
+export type AssessmentIntakeHints = {
+  entityName?: string
+  founderName?: string
+  organizationName?: string
+  sector?: string
+  country?: string
+}
+
+/**
+ * Create the shared Assessment Context: uploads documents once, runs the
+ * evidence pipeline + auto extraction, and returns everything every other
+ * workspace needs (no duplicate data entry).
+ */
+export async function createAssessment(
+  files: File[],
+  assessmentType: string,
+  hints: AssessmentIntakeHints = {},
+): Promise<AssessmentContextPayload> {
+  const form = new FormData()
+  files.forEach(file => form.append('files', file))
+  form.append('assessmentType', assessmentType)
+  if (hints.entityName) form.append('entityName', hints.entityName)
+  if (hints.founderName) form.append('founderName', hints.founderName)
+  if (hints.organizationName) form.append('organizationName', hints.organizationName)
+  if (hints.sector) form.append('sector', hints.sector)
+  if (hints.country) form.append('country', hints.country)
+  const res = await fetch(`${API_BASE}/api/v1/assessments/`, {
+    method: 'POST',
+    headers: withAuth(),
+    body: form,
+  })
+  if (!res.ok) throw new Error(`createAssessment failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentContextPayload>(res, 'createAssessment')
+}
+
+export async function getAssessment(assessmentId: string): Promise<AssessmentContextPayload> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getAssessment failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentContextPayload>(res, 'getAssessment')
+}
+
+export async function getAssessmentByRun(runId: string | number): Promise<AssessmentContextPayload> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/by-run/${encodeURIComponent(String(runId))}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getAssessmentByRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentContextPayload>(res, 'getAssessmentByRun')
+}
+
+export async function patchAssessmentContext(
+  assessmentId: string,
+  patch: {
+    assessmentType?: string
+    entityName?: string
+    founderName?: string
+    organizationName?: string
+    sector?: string
+    country?: string
+  },
+): Promise<AssessmentContextPayload> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}`, {
+    method: 'PATCH',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) throw new Error(`patchAssessmentContext failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentContextPayload>(res, 'patchAssessmentContext')
+}
+
+/**
+ * Start (or reuse) the intelligence run grounded in the Assessment Context.
+ * Tavily research is driven by the extracted entity — the user never
+ * re-enters founder or organisation names.
+ */
+export async function startAssessmentRun(
+  assessmentId: string,
+): Promise<{ assessmentId: string; runId: string; status: string; reused?: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}/start`, {
+    method: 'POST',
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`startAssessmentRun failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ assessmentId: string; runId: string; status: string; reused?: boolean }>(res, 'startAssessmentRun')
 }
 
 export async function getRunStatus(runId: string): Promise<RunStatus> {

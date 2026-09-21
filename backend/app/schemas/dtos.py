@@ -5,8 +5,16 @@ from pydantic import BaseModel, Field
 
 
 class IntelligenceCreateRequest(BaseModel):
-    founder: str
+    """Start a run.
+
+    Legacy callers pass ``founder`` (+ optional ``startup``). When
+    ``assessmentId`` is supplied (single-intake flow), the run identity is
+    resolved from the shared Assessment Context and ``founder`` is optional.
+    """
+
+    founder: Optional[str] = None
     startup: Optional[str] = None
+    assessmentId: Optional[str] = None
 
 
 class IntelligenceCreateResponse(BaseModel):
@@ -29,6 +37,17 @@ class AskRequest(BaseModel):
     history: Optional[List[dict]] = Field(default_factory=list)
 
 
+class AssessmentPatchRequest(BaseModel):
+    """User corrections applied when auto-extraction confidence is low."""
+
+    assessmentType: Optional[str] = None
+    entityName: Optional[str] = None
+    founderName: Optional[str] = None
+    organizationName: Optional[str] = None
+    sector: Optional[str] = None
+    country: Optional[str] = None
+
+
 class AskResponse(BaseModel):
     answer: str
 
@@ -49,6 +68,12 @@ class DecisionSnapshot(BaseModel):
     This mirrors the Streamlit Decision Snapshot panel but is shaped for
     the web ContextPanel. It does not introduce new intelligence logic –
     all fields are derived from InvestmentBrief and EvidenceIntegrity.
+
+    Extended decision fields (decisionScore, decisionBand, domainScores,
+    decisionRationale) come from the expanded Decision Engine
+    (kulima.decision) which consumes Trust, Risk, Opportunity, Market,
+    Funding, Climate, Environment, Tourism and Community Impact domains
+    on top of Evidence.
     """
 
     verdict: str
@@ -59,6 +84,11 @@ class DecisionSnapshot(BaseModel):
     topReasons: List[str]
     topRisks: List[str]
     nextAction: str
+    # Expanded Decision Engine outputs (additive; None for legacy runs)
+    decisionScore: Optional[float] = None
+    decisionBand: Optional[str] = None
+    decisionRationale: Optional[List[str]] = None
+    domainScores: Optional[dict[str, Any]] = None
 
 
 class SignalItem(BaseModel):
@@ -70,6 +100,24 @@ class SignalItem(BaseModel):
     description: str
     recommendedAction: str
     confidence: float
+    evidenceRefs: List[str] = Field(default_factory=list)
+    evidenceSummary: str = ""
+    timeHorizon: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainSignals(BaseModel):
+    domain: str
+    label: str
+    count: int = 0
+    riskCount: int = 0
+    opportunityCount: int = 0
+    # Expanded dashboard fields (Step 6): every domain renders score, summary
+    # and recommendation.
+    score: int = 50
+    summary: str = ""
+    recommendation: str = ""
+    signals: List[SignalItem] = Field(default_factory=list)
 
 
 class SignalsSummary(BaseModel):
@@ -79,3 +127,5 @@ class SignalsSummary(BaseModel):
     low: int = 0
     topRisks: List[SignalItem] = Field(default_factory=list)
     topOpportunities: List[SignalItem] = Field(default_factory=list)
+    domains: dict[str, DomainSignals] = Field(default_factory=dict)
+    allSignals: List[SignalItem] = Field(default_factory=list)

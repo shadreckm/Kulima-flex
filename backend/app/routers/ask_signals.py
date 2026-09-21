@@ -2,9 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from ..schemas.dtos import AskRequest, AskResponse
 from ..services.orchestrator_adapter import ask_signals, get_brief_for_run, get_run_status
-from ..core.auth import get_current_user, AuthenticatedUser
+from ..core.auth import OrgContext, require_permission
 from ..core.rate_limit import check_rate_limit
 from ..services.demo_chat import doc_intelligence_ask_signals_answer
+from kulima.core.orgs.models import Permission
 import asyncio
 import json
 import logging
@@ -41,43 +42,43 @@ def _make_signals_doc_intel_fallback(run_id: str, question: str, user_id: str | 
 
 
 @router.post("/signals", response_model=AskResponse)
-async def post_ask_signals(req: AskRequest, user: AuthenticatedUser = Depends(get_current_user)):
+async def post_ask_signals(req: AskRequest, current: OrgContext = Depends(require_permission(Permission.VIEW))):
     # Rate limit hook (no-op in pre-beta)
-    check_rate_limit(user.user_id, "ask_signals:post")
+    check_rate_limit(current.user_id, "ask_signals:post")
 
-    info = get_run_status(req.runId, user.user_id)
+    info = get_run_status(req.runId, current.user_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
     if info.get("status") != "completed":
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, user.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
         return {"answer": answer}
 
     try:
-        answer = ask_signals(req.runId, req.question, req.history, user_id=user.user_id)
+        answer = ask_signals(req.runId, req.question, req.history, user_id=current.user_id)
     except Exception as exc:
         _log.warning("ask_signals live failed in router (%s) — activating Document Intelligence Mode.", exc)
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, user.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
     return {"answer": answer}
 
 
 @router.post('/signals/stream')
-async def post_ask_signals_stream(req: AskRequest, user: AuthenticatedUser = Depends(get_current_user)):
+async def post_ask_signals_stream(req: AskRequest, current: OrgContext = Depends(require_permission(Permission.VIEW))):
     # Rate limit hook (no-op in pre-beta)
-    check_rate_limit(user.user_id, "ask_signals:stream")
+    check_rate_limit(current.user_id, "ask_signals:stream")
 
-    info = get_run_status(req.runId, user.user_id)
+    info = get_run_status(req.runId, current.user_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
     if info.get('status') != 'completed':
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, user.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
     else:
         try:
-            answer = ask_signals(req.runId, req.question, req.history, user_id=user.user_id)
+            answer = ask_signals(req.runId, req.question, req.history, user_id=current.user_id)
         except Exception as exc:
             _log.warning("ask_signals live failed in stream router (%s) — activating Document Intelligence Mode.", exc)
-            answer = _make_signals_doc_intel_fallback(req.runId, req.question, user.user_id)
+            answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
 
     async def event_stream():
         import re

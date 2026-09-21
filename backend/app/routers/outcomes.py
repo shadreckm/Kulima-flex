@@ -8,7 +8,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from ..core.auth import get_current_user, AuthenticatedUser
+from ..core.auth import OrgContext, require_permission
+from kulima.core.orgs.models import Permission
 from kulima.db import IntelligenceRepository
 
 router = APIRouter()
@@ -30,17 +31,17 @@ class OutcomeUpdateRequest(BaseModel):
 @router.get("/history")
 def get_decision_history(
     limit: int = 50,
-    user: AuthenticatedUser = Depends(get_current_user),
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
 ) -> dict:
     """Return all decision runs enriched with outcome data."""
-    rows = _repo.list_decision_history(user_id=user.user_id, limit=limit, include_shared=True)
+    rows = _repo.list_decision_history(user_id=current.user_id, limit=limit, include_shared=True)
     return {"decisions": rows, "total": len(rows)}
 
 
 @router.get("/{run_id}/outcome")
 def get_outcome(
     run_id: int,
-    user: AuthenticatedUser = Depends(get_current_user),
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
 ) -> dict:
     """Return outcome record for a specific run."""
     outcome = _repo.get_decision_outcome(run_id)
@@ -53,7 +54,7 @@ def get_outcome(
 def save_outcome(
     run_id: int,
     payload: OutcomeUpdateRequest,
-    user: AuthenticatedUser = Depends(get_current_user),
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
 ) -> dict:
     """Upsert outcome tracking record for a decision run."""
     valid_statuses = {"Pending", "In Progress", "Completed", "Successful", "Partially Successful", "Unsuccessful"}
@@ -73,7 +74,7 @@ def save_outcome(
             outcome_date=payload.outcome_date,
             outcome_notes=payload.outcome_notes,
             lessons=lessons,
-            user_id=user.user_id,
+            user_id=current.user_id,
         )
         return {"outcome_id": outcome_id, "run_id": run_id, "status": "saved"}
     except KeyError as exc:
@@ -87,7 +88,7 @@ def save_outcome(
 
 @router.get("/intelligence")
 def get_outcome_intelligence(
-    user: AuthenticatedUser = Depends(get_current_user),
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
 ) -> dict:
     """Compute trust calibration and accuracy metrics from real outcome data."""
-    return _repo.compute_outcome_intelligence(user_id=user.user_id)
+    return _repo.compute_outcome_intelligence(user_id=current.user_id)

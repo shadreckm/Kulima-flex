@@ -1,9 +1,11 @@
 'use client'
 
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { hrefWithRun, loadCurrentRun } from '../../lib/current-run'
+import { getOrgContext } from '../../lib/enterprise'
 import TrustGauge from '../TrustGauge/TrustGauge'
 import type { EntityType } from '../../lib/entity-types'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
@@ -14,6 +16,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   development_program: 'Dev. Program',
   accelerator: 'Accelerator',
   government_program: 'Gov. Program',
+  tourism_sme: 'Tourism SME',
 }
 
 type SidebarProps = {
@@ -44,6 +47,17 @@ const INSIGHTS_ITEMS = [
 const SYSTEM_ITEMS = [
   { label: 'Feedback', href: '/feedback' },
   { label: 'Settings', href: '/settings' },
+]
+
+// Enterprise Trust & Monetization navigation. Items with `requires` are
+// hidden when the active organization context lacks the permission. Read
+// pages (Billing, Privacy, Legal) are member-scoped on the backend and
+// always visible; mutations inside them are gated separately by RBAC.
+const GOVERNANCE_ITEMS: { label: string; href: string; requires?: string }[] = [
+  { label: 'Trust & Governance', href: '/trust', requires: 'view_audit' },
+  { label: 'Billing & Plan', href: '/billing' },
+  { label: 'Privacy & Data', href: '/privacy' },
+  { label: 'Legal & Policies', href: '/legal' },
 ]
 
 function NavGroup({
@@ -99,6 +113,39 @@ export default function NavigationSidebar({
 }: SidebarProps) {
   const pathname = usePathname()
   const currentRun = useMemo(() => loadCurrentRun(), [runId, startupName])
+
+  const { status: authStatus } = useSession()
+  const [permissions, setPermissions] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') {
+      setPermissions(null)
+      return
+    }
+    let cancelled = false
+    getOrgContext()
+      .then(org => {
+        if (!cancelled) setPermissions(org.permissions)
+      })
+      .catch(() => {
+        // Unknown permissions → show every item; the backend enforces RBAC
+        // on each endpoint regardless of what the sidebar renders.
+        if (!cancelled) setPermissions(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authStatus])
+
+  const governanceItems = useMemo(
+    () =>
+      GOVERNANCE_ITEMS.filter(item => {
+        if (!item.requires) return true
+        if (permissions === null) return true
+        return permissions.includes(item.requires)
+      }).map(({ label, href }) => ({ label, href })),
+    [permissions],
+  )
 
   const currentStatus = useMemo(() => status || currentRun?.status || 'idle', [status, currentRun?.status])
   const displayStartup = startupName || currentRun?.startupName
@@ -184,6 +231,14 @@ export default function NavigationSidebar({
           />
           <div className="border-t border-[#0E3627]" />
           <NavGroup
+            label="Governance"
+            items={governanceItems}
+            pathname={pathname}
+            currentRun={currentRun}
+            onCloseMobile={onCloseMobile}
+          />
+          <div className="border-t border-[#0E3627]" />
+          <NavGroup
             label="System"
             items={SYSTEM_ITEMS}
             pathname={pathname}
@@ -194,7 +249,7 @@ export default function NavigationSidebar({
       </div>
 
       <div className="pt-4 mt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between flex-shrink-0">
-        <span className="font-semibold">Kulima FLEX</span>
+        <span className="font-semibold">Kulima OS</span>
         <span className="font-mono opacity-60">v2.0</span>
       </div>
     </aside>

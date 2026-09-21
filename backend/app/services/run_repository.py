@@ -97,3 +97,10 @@ class RunRepository:
             params.append(limit)
             rows = conn.execute(query, tuple(params)).fetchall()
             return [dict(r) for r in rows]
+
+    def delete_run(self, run_id: str) -> bool:
+        """Remove a live-run bookkeeping row (complete assessment deletion)."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM api_runs WHERE run_id = ?", (str(run_id),))
+            conn.commit()
+            return bool(cur.rowcount)

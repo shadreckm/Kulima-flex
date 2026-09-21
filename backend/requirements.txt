@@ -26,3 +26,8 @@ tenacity
 
 # Testing (if you run tests inside the container)
 pytest
+
+# Document security (Phase 5): AES-256-GCM at-rest encryption for uploaded
+# documents. Without this package, storage falls back to provider disk-level
+# encryption metadata even when KULIMA_DOC_ENCRYPTION_KEY is configured.
+cryptography>=42.0.0

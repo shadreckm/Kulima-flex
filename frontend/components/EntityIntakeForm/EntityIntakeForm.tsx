@@ -3,10 +3,14 @@
 import React, { useState } from 'react'
 import {
   ENTITY_CONFIGS,
+  INTAKE_ENTITY_TYPES,
   type EntityType,
   getEntityConfig,
   entityToRunParams,
 } from '../../lib/entity-types'
+
+/** Only the five canonical assessment types may appear in the intake selector. */
+const INTAKE_CONFIGS = ENTITY_CONFIGS.filter(c => !c.legacy && INTAKE_ENTITY_TYPES.includes(c.type))
 
 type Props = {
   /** Called with derived { founder, startup, entityType, entityMeta } when form is submitted */
