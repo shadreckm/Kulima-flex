@@ -117,7 +117,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       {
         heading: '4. Subscriptions and billing',
         bullets: [
-          'Plans: Free (5 assessments per month), Pro (unlimited assessments, advanced signals, Ask IC, enterprise reports), Enterprise (unlimited users, RBAC, audit logs, private deployment, API integration).',
+          'Plans: Free (5 assessments per month), Pro (unlimited assessments, advanced signals, Ask AI Analyst, enterprise reports), Enterprise (unlimited users, RBAC, audit logs, private deployment, API integration).',
           'Payments are processed via PayChangu. Pricing is configurable per deployment and shown in the billing workspace.',
           'Failed payments enter a grace period before suspension. Suspension blocks new assessments only — your data always remains readable and exportable.',
           'Downgrades are scheduled for the end of the paid period; upgrades apply immediately.',

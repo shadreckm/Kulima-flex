@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
     run_id TEXT,
     assessment_id TEXT,
     document_id TEXT,
+    case_id TEXT,
     metadata_json TEXT,
+    ip_hash TEXT,
+    user_agent TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -43,6 +46,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_assessment
     ON audit_events(assessment_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_run
     ON audit_events(run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_case
+    ON audit_events(case_id, created_at DESC);
 """
 
 
@@ -70,6 +75,21 @@ EVENT_TYPES: dict[str, str] = {
     "billing.grace_started": "Grace Period Started",
     "billing.suspended": "Account Suspended",
     "billing.reactivated": "Account Reactivated",
+    # Phase 4 Enterprise: New event types for collaboration and lifecycle
+    "research.started": "Research Started",
+    "research.completed": "Research Completed",
+    "document.extraction_completed": "Document Extraction Completed",
+    "case.lifecycle_changed": "Case Lifecycle Changed",
+    "case.created": "Case Created",
+    "review.requested": "Review Requested",
+    "review.approved": "Review Approved",
+    "review.rejected": "Review Rejected",
+    "comment.added": "Comment Added",
+    "comment.edited": "Comment Edited",
+    "comment.deleted": "Comment Deleted",
+    "dossier.generated": "Decision Dossier Generated",
+    "dossier.approved": "Decision Dossier Approved",
+    "session.exit_with_pending": "Session Exit with Pending Tasks",
 }
 
 LABELS_BY_PREFIX = {
@@ -112,7 +132,27 @@ class AuditRepository:
     def _initialize(self) -> None:
         with self._connect() as conn:
             conn.executescript(AUDIT_SCHEMA)
+            # Enterprise Phase 4: Add new columns for forensics and case linkage
+            self._migrate_schema(conn)
             conn.commit()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Add enterprise audit columns if they don't exist."""
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(audit_events)")}
+        if "case_id" not in existing:
+            conn.execute("ALTER TABLE audit_events ADD COLUMN case_id TEXT")
+            _log.debug("_migrate_schema: added column case_id")
+        if "ip_hash" not in existing:
+            conn.execute("ALTER TABLE audit_events ADD COLUMN ip_hash TEXT")
+            _log.debug("_migrate_schema: added column ip_hash")
+        if "user_agent" not in existing:
+            conn.execute("ALTER TABLE audit_events ADD COLUMN user_agent TEXT")
+            _log.debug("_migrate_schema: added column user_agent")
+        # Create case_id index if it doesn't exist
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_case ON audit_events(case_id, created_at DESC)")
+        except Exception:  # noqa: BLE001
+            pass
 
     # ── Writes ───────────────────────────────────────────────────────────
 
@@ -125,7 +165,10 @@ class AuditRepository:
         run_id: str | None = None,
         assessment_id: str | None = None,
         document_id: str | None = None,
+        case_id: str | None = None,
         metadata: dict | None = None,
+        ip_hash: str | None = None,
+        user_agent: str | None = None,
     ) -> int | None:
         try:
             with self._connect() as conn:
@@ -133,8 +176,8 @@ class AuditRepository:
                     """
                     INSERT INTO audit_events (
                         event_type, org_id, user_id, run_id, assessment_id, document_id,
-                        metadata_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        case_id, metadata_json, ip_hash, user_agent, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event_type,
@@ -143,7 +186,10 @@ class AuditRepository:
                         str(run_id) if run_id is not None else None,
                         assessment_id,
                         document_id,
+                        case_id,
                         json.dumps(metadata or {}, default=str),
+                        ip_hash,
+                        user_agent,
                         datetime.now(timezone.utc).isoformat(),
                     ),
                 )
@@ -267,7 +313,10 @@ def record_event(
     run_id: str | None = None,
     assessment_id: str | None = None,
     document_id: str | None = None,
+    case_id: str | None = None,
     metadata: dict | None = None,
+    ip_hash: str | None = None,
+    user_agent: str | None = None,
 ) -> int | None:
     return AuditRepository().record(
         event_type,
@@ -276,7 +325,10 @@ def record_event(
         run_id=run_id,
         assessment_id=assessment_id,
         document_id=document_id,
+        case_id=case_id,
         metadata=metadata,
+        ip_hash=ip_hash,
+        user_agent=user_agent,
     )
 
 

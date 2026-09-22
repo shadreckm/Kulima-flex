@@ -1,0 +1,461 @@
+You are the Chief Product Architect for Kulima FLEX.
+
+We have completed:
+
+- Single Intake Engine
+- Assessment Context
+- Evidence Intelligence
+- Signals Intelligence
+- Decision Intelligence
+- Climate Signals
+- Tourism Signals
+- Community Signals
+- Privacy Layer
+- Governance Layer
+- RBAC
+- Audit Trail
+- Billing Foundations
+
+Now redesign Kulima FLEX as a true Enterprise Decision Management System.
+
+Do NOT redesign the UI from scratch.
+
+Do NOT remove existing functionality.
+
+Build the missing operating-system layer that makes the platform usable by organizations at scale.
+
+====================================================
+
+CORE DESIGN PRINCIPLE
+
+Think like:
+
+Banking System
+Case Management System
+CRM
+Investment Committee Platform
+
+not
+
+Document Analysis Tool.
+
+====================================================
+
+PHASE 1
+
+MULTI-DOCUMENT ASSESSMENTS
+
+Allow unlimited documents in one assessment.
+
+Examples:
+
+Assessment:
+Kulima Africa
+
+Documents:
+
+Business Plan
+Pitch Deck
+Financial Statements
+Due Diligence Report
+Strategy Document
+
+All documents contribute to:
+
+Evidence
+Trust
+Signals
+Decision
+
+Display:
+
+Assessment Documents
+
+with:
+
+status
+trust contribution
+document type
+
+====================================================
+
+PHASE 2
+
+RESEARCH + DOCUMENT FUSION
+
+Current issue:
+
+Documents and Tavily research feel separate.
+
+New flow:
+
+Documents
++
+OpenAI Analysis
++
+Tavily Research
+
+become
+
+ONE Evidence Graph
+
+Workflow:
+
+Upload document
+
+Extract:
+
+Organization
+Founder
+Sector
+Country
+
+Automatically launch:
+
+Research Pack
+
+without requiring separate forms.
+
+Create:
+
+Research Status
+
+Pending
+Running
+Completed
+
+====================================================
+
+PHASE 3
+
+ASSESSMENT WORKSPACES
+
+Create workspace model.
+
+Examples:
+
+Startup Workspace
+
+NGO Workspace
+
+Tourism SME Workspace
+
+Government Program Workspace
+
+Each workspace contains:
+
+Documents
+Research
+Evidence
+Signals
+Decision
+Reports
+Audit Log
+
+====================================================
+
+PHASE 4
+
+TRANSACTION SYSTEM
+
+Every analysis should behave like a transaction.
+
+Create:
+
+Draft
+
+Processing
+
+Review
+
+Decision Ready
+
+Exported
+
+Archived
+
+statuses.
+
+User can leave platform.
+
+Transaction continues.
+
+On login:
+
+Resume Assessment
+
+appears automatically.
+
+====================================================
+
+PHASE 5
+
+PENDING TASKS ENGINE
+
+Before logout:
+
+System checks:
+
+Running Research
+
+Pending Review
+
+Pending Extraction
+
+Pending Decision
+
+If unfinished:
+
+Display
+
+You have 3 active assessments.
+
+Resume before leaving?
+
+Save & Exit
+
+Continue Working
+
+====================================================
+
+PHASE 6
+
+WORK QUEUES
+
+Create dashboard sections:
+
+My Work
+
+Team Work
+
+Pending Reviews
+
+Completed Assessments
+
+Archived Assessments
+
+====================================================
+
+PHASE 7
+
+ROLE-BASED WORKFLOW
+
+Owner
+
+Can see everything.
+
+Manager
+
+Can review team assessments.
+
+Reviewer
+
+Can assess.
+
+Viewer
+
+Can only view finalized reports.
+
+====================================================
+
+PHASE 8
+
+ASSESSMENT TIMELINE
+
+For every assessment show:
+
+Document Uploaded
+
+Research Started
+
+Research Completed
+
+Signals Generated
+
+Decision Generated
+
+Report Exported
+
+User Updated Record
+
+Like internet banking transaction history.
+
+====================================================
+
+PHASE 9
+
+ACTIVITY LOG
+
+Who uploaded?
+
+Who changed?
+
+Who approved?
+
+Who exported?
+
+Who deleted?
+
+Track all actions.
+
+====================================================
+
+PHASE 10
+
+COLLABORATION
+
+Allow:
+
+Comments
+
+Notes
+
+Review Requests
+
+Approval Requests
+
+between users.
+
+====================================================
+
+PHASE 11
+
+DECISION DOSSIER
+
+Create a final dossier.
+
+Include:
+
+Evidence Score
+
+Trust Score
+
+Risk Score
+
+Climate Score
+
+Tourism Score
+
+Community Score
+
+Opportunity Score
+
+Recommendation
+
+Research Summary
+
+Executive Summary
+
+This becomes the single source of truth.
+
+====================================================
+
+PHASE 12
+
+TOURISM INTELLIGENCE
+
+Tourism SME assessments should additionally show:
+
+Tourism Contribution
+
+Visitor Economy Impact
+
+Local Employment Potential
+
+Cultural Preservation
+
+Environmental Sustainability
+
+Destination Growth Potential
+
+====================================================
+
+PHASE 13
+
+INVESTMENT READINESS
+
+Startup assessments should automatically produce:
+
+Investment Readiness Score
+
+Founder Readiness
+
+Market Readiness
+
+Traction Readiness
+
+Due Diligence Readiness
+
+Funding Recommendation
+
+====================================================
+
+PHASE 14
+
+WORKFLOW GOAL
+
+A user should:
+
+Upload once
+
+Leave platform
+
+Return tomorrow
+
+See all progress
+
+Continue from same assessment
+
+Export final report
+
+Never lose work.
+
+====================================================
+
+PHASE 15
+
+FINAL UX GOAL
+
+In 5 seconds user understands:
+
+Upload Documents
+↓
+AI + Research
+↓
+Signals
+↓
+Decision
+↓
+Report
+
+while the enterprise layer quietly handles:
+
+roles
+permissions
+tracking
+audit
+collaboration
+storage
+history
+
+====================================================
+
+OUTPUT
+
+Files to modify
+
+Architecture changes
+
+Database changes
+
+Workflow changes
+
+Migration risks
+
+Final verdict:
+
+READY FOR ORGANIZATIONAL PILOTS
+
+or
+
+BLOCKERS REMAIN

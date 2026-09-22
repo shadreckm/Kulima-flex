@@ -34,6 +34,13 @@ class Settings:
     billing_enforcement: bool
     grace_period_days: int
     default_retention_days: int
+    # ── Supabase Cloud Migration ───────────────────────────────────────
+    supabase_url: str
+    supabase_key: str
+    supabase_service_role_key: str
+    database_url: str
+    use_supabase: bool
+    storage_bucket_name: str
 
     def missing_required_secrets(self) -> list[str]:
         missing = []
@@ -77,6 +84,13 @@ def get_settings() -> Settings:
         billing_enforcement=os.getenv("KULIMA_BILLING_ENFORCEMENT", "false").lower() in {"1", "true", "yes", "on"},
         grace_period_days=int(os.getenv("KULIMA_GRACE_PERIOD_DAYS", "7")),
         default_retention_days=int(os.getenv("KULIMA_DEFAULT_RETENTION_DAYS", "0")),
+        # Supabase configuration
+        supabase_url=os.getenv("SUPABASE_URL", ""),
+        supabase_key=os.getenv("SUPABASE_KEY", ""),
+        supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+        database_url=os.getenv("DATABASE_URL", ""),
+        use_supabase=os.getenv("USE_SUPABASE", "false").lower() in {"1", "true", "yes"},
+        storage_bucket_name=os.getenv("STORAGE_BUCKET_NAME", "kulima-documents"),
     )
 
 

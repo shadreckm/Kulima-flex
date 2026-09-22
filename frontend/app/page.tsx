@@ -9,9 +9,19 @@ import { saveUseCase } from '../lib/use-case-store'
 import { INTAKE_ENTITY_TYPES, entityToAssessmentType, getEntityConfig, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
 import * as api from '../lib/api'
+import UploadGuidance from '../components/UploadGuidance/UploadGuidance'
 
 const TYPE_LABELS: Record<EntityType, string> = {
   startup: 'Startup', ngo: 'NGO', government_program: 'Government Programme', development_program: 'Development Programme', tourism_sme: 'Tourism SME', accelerator: 'Accelerator',
+}
+
+const UPLOAD_GUIDANCE: Record<EntityType, string> = {
+  startup: 'Upload pitch deck, financial projections, market analysis, team bios, product roadmap',
+  ngo: 'Upload monitoring reports, impact assessments, donor reports, financial statements, annual reports',
+  government_program: 'Upload program proposals, budget allocations, implementation reports, impact evaluations, policy documents',
+  development_program: 'Upload program frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
+  tourism_sme: 'Upload visitor statistics, sustainability reports, destination impact data, business licenses, financial statements',
+  accelerator: 'Upload cohort reports, startup pitch decks, program metrics, portfolio summaries, impact reports',
 }
 
 const FLOW = [
@@ -89,7 +99,7 @@ function HomeInner() {
 
       <section id="about" className="mx-auto grid max-w-7xl gap-14 px-6 py-20 lg:grid-cols-2 lg:px-10"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Why FLEX</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Not just another AI summary.</h2><p className="mt-5 max-w-lg text-base leading-7 text-[#667085]">ChatGPT helps you write. Kulima FLEX helps you decide — with a transparent evidence layer built for high-consequence work.</p></div><div className="overflow-hidden rounded-2xl border border-[#D0D5DD]"><div className="grid grid-cols-2 border-b border-[#D0D5DD] bg-[#F8FAFC] text-sm font-bold"><div className="p-5 text-[#667085]">ChatGPT</div><div className="border-l border-[#D0D5DD] p-5 text-[#117A4B]">Kulima FLEX</div></div>{['Generates text', 'Summarizes documents', 'One perspective'].map((item, index) => <div key={item} className="grid grid-cols-2 border-b border-[#EAECF0] last:border-0"><div className="p-5 text-sm text-[#667085]">{item}</div><div className="border-l border-[#EAECF0] p-5 text-sm font-semibold text-[#344054]">{['Generates decisions', 'Scores evidence', 'Trust · Risk · Climate · Tourism · Impact'][index]}</div></div>)}</div></section>
 
-      <section id="pricing" className="border-t border-[#EAECF0] bg-[#101828] text-white"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7BE0A9]">Simple plans</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Decision intelligence that scales with you.</h2></div><div className="mt-10 grid gap-4 md:grid-cols-3">{[['Starter','Limited assessments'],['Professional','Advanced signals · Reports · Ask IC'],['Enterprise','Organizations · RBAC · Audit logs · Private workspace']].map(([name, detail], index) => <div key={name} className={`rounded-xl border p-6 ${index === 1 ? 'border-[#159A62] bg-[#143B2B]' : 'border-[#344054] bg-[#182230]'}`}><h3 className="text-lg font-bold">{name}</h3><p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{detail}</p><a href="#intake" className="mt-8 inline-block text-sm font-bold text-[#7BE0A9]">Get started →</a></div>)}</div></div></section>
+      <section id="pricing" className="border-t border-[#EAECF0] bg-[#101828] text-white"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7BE0A9]">Simple plans</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Decision intelligence that scales with you.</h2></div><div className="mt-10 grid gap-4 md:grid-cols-3">{[['Starter','Limited assessments'],['Professional','Advanced signals · Reports · Ask AI Analyst'],['Enterprise','Organizations · RBAC · Audit logs · Private workspace']].map(([name, detail], index) => <div key={name} className={`rounded-xl border p-6 ${index === 1 ? 'border-[#159A62] bg-[#143B2B]' : 'border-[#344054] bg-[#182230]'}`}><h3 className="text-lg font-bold">{name}</h3><p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{detail}</p><a href="#intake" className="mt-8 inline-block text-sm font-bold text-[#7BE0A9]">Get started →</a></div>)}</div></div></section>
 
       <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10"><div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div><div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex?run=ostx-agrinova-malawi">Case study</Link></div></footer>
     </main>

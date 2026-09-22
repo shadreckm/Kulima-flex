@@ -112,13 +112,26 @@ class AssessmentExtraction(BaseModel):
         return ""
 
 
+class DocumentStatus(str, Enum):
+    """Processing status of a document within an assessment."""
+    UPLOADED = "uploaded"
+    EXTRACTING = "extracting"
+    EXTRACTED = "extracted"
+    FAILED = "failed"
+
+
 class AssessmentDocument(BaseModel):
-    """Compact record of a document ingested into the assessment."""
+    """Compact record of a document ingested into the assessment.
+
+    Phase 1 Enterprise: Added per-document status, trust contribution,
+    evidence count, and document type for multi-document assessments.
+    """
 
     id: str
     name: str
     url: str = ""
     file_type: str = ""
+    doc_type: str = ""  # business_plan, pitch_deck, financial_statement, etc.
     trust_score: Optional[float] = None
     evidence_status: Optional[str] = None
     signals: List[str] = Field(default_factory=list)
@@ -127,6 +140,12 @@ class AssessmentDocument(BaseModel):
     raw_summary: str = ""
     trust_breakdown: Dict[str, Any] = Field(default_factory=dict)
     upload_date: str = ""
+
+    # Phase 1: Multi-document assessment enhancements
+    status: DocumentStatus = DocumentStatus.UPLOADED
+    trust_contribution: float = 0.0  # Delta this document adds to assessment trust
+    evidence_count: int = 0  # Number of evidence items contributed by this document
+    extraction_confidence: float = 0.0  # Confidence in entity extraction from this doc
 
 
 class AssessmentContext(BaseModel):

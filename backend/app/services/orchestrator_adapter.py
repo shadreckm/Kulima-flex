@@ -15,12 +15,27 @@ from kulima.signals.orchestrator import SignalsOrchestrator
 from kulima.signals.signals_summary import build_domain_overviews
 from .run_repository import RunRepository
 
+# Phase 4 Enterprise: Import job system for durable processing
+try:
+    from kulima.core.jobs.models import Job, JobKind, JobStatus
+    from kulima.core.jobs.repository import JobRepository
+    from kulima.core.cases.service import CaseService
+    from kulima.core.cases.models import CaseLifecycleStatus
+    from kulima.core.orgs.models import Role
+    JOBS_AVAILABLE = True
+except ImportError:
+    JOBS_AVAILABLE = False
+
 _log = logging.getLogger(__name__)
 
 _orchestrator: IntelligenceOrchestrator | None = None
 _signals_orchestrator = SignalsOrchestrator()
 _repo = IntelligenceRepository()
 _run_repo = RunRepository()
+
+# Phase 4 Enterprise: Job and case services
+_job_repo: JobRepository | None = None
+_case_service: CaseService | None = None
 
 
 def get_orchestrator() -> IntelligenceOrchestrator:
@@ -51,6 +66,9 @@ def start_intelligence_run(
 
     Enterprise Trust: ``org_id`` binds the run to its workspace and the
     external-research trigger is recorded in the audit log (Phase 4).
+
+    Phase 4 Enterprise: When job system is available, enqueues durable jobs
+    instead of spawning daemon threads for better restart recovery.
     """
     run_id = str(uuid.uuid4())
     # Persist run record so it survives restarts
@@ -66,6 +84,13 @@ def start_intelligence_run(
         metadata={"provider": "tavily", "founder": founder, "startup": startup, "mode": "metadata_only"},
     )
 
+    # Phase 4 Enterprise: Use job queue if available, otherwise fall back to threads
+    if JOBS_AVAILABLE and assessment_id and org_id:
+        return _enqueue_intelligence_job(
+            run_id, founder, startup, user_id, assessment_id, document_ids, sector_hint, org_id
+        )
+
+    # Legacy: Use daemon thread for backward compatibility
     def _worker(rid: str, founder: str, startup: str, owner_id: str | None) -> None:
         try:
             _log.info("Orchestrator: starting analysis for %s / %s", founder, startup)
@@ -94,6 +119,102 @@ def start_intelligence_run(
 
     t = threading.Thread(target=_worker, args=(run_id, founder, startup, user_id), daemon=True)
     t.start()
+    return run_id
+
+
+def _enqueue_intelligence_job(
+    run_id: str,
+    founder: str,
+    startup: str,
+    user_id: str | None,
+    assessment_id: str,
+    document_ids: list[str] | None,
+    sector_hint: str,
+    org_id: str,
+) -> str:
+    """Phase 4 Enterprise: Enqueue intelligence run as durable job."""
+    global _job_repo, _case_service
+    if _job_repo is None:
+        _job_repo = JobRepository()
+    if _case_service is None:
+        _case_service = CaseService()
+
+    # Get or create case for this assessment
+    case = _case_service.get_case_by_assessment(assessment_id, org_id=org_id)
+    if case is None:
+        # Create case from assessment context
+        from kulima.core.assessment.repository import AssessmentRepository
+        from kulima.core.assessment.models import AssessmentType
+        from kulima.core.cases.models import CaseSubject
+
+        ctx = AssessmentRepository().get(assessment_id, org_id=org_id)
+        if ctx:
+            subject = CaseSubject(
+                name=ctx.display_entity() or startup,
+                secondary_name=founder,
+                sector=ctx.sector or sector_hint,
+                region=ctx.country,
+            )
+            case = _case_service.create_case(
+                assessment_id=assessment_id,
+                assessment_type=ctx.assessment_type,
+                subject=subject,
+                org_id=org_id,
+                created_by=user_id or "system",
+            )
+            # Transition to PROCESSING
+            from kulima.core.orgs.models import Role
+            _case_service.transition_lifecycle(
+                case.id, CaseLifecycleStatus.PROCESSING, user_id or "system", Role.ADMIN, org_id=org_id
+            )
+
+    if case is None:
+        _log.warning("Could not create case for assessment %s, falling back to thread", assessment_id)
+        # Fall back to thread-based execution
+        return start_intelligence_run(
+            founder, startup, user_id,
+            assessment_id=assessment_id,
+            document_ids=document_ids,
+            sector_hint=sector_hint,
+            org_id=org_id,
+        )
+
+    # Enqueue research job
+    from datetime import datetime, timezone
+    import hashlib
+
+    idempotency_key = hashlib.sha256(
+        f"{case.id}:{founder}:{startup}:{sector_hint}".encode()
+    ).hexdigest()
+
+    # Check if job already exists
+    existing_job = _job_repo.get_by_idempotency_key(idempotency_key)
+    if existing_job and existing_job.status in (JobStatus.SUCCEEDED, JobStatus.RUNNING):
+        _log.info("Job already exists with idempotency key %s, status %s", idempotency_key, existing_job.status.value)
+        return run_id
+
+    # Create and enqueue job
+    job = Job(
+        id=str(uuid.uuid4()),
+        case_id=case.id,
+        kind=JobKind.RESEARCH,
+        status=JobStatus.QUEUED,
+        payload={
+            "founder": founder,
+            "startup": startup,
+            "sector_hint": sector_hint,
+            "user_id": user_id,
+            "assessment_id": assessment_id,
+            "document_ids": document_ids,
+            "run_id": run_id,
+        },
+        idempotency_key=idempotency_key,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    _job_repo.enqueue(job)
+    _log.info("Enqueued intelligence job %s for case %s", job.id, case.id)
+
     return run_id
 
 

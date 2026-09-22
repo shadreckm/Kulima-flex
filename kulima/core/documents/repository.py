@@ -149,67 +149,77 @@ class DocumentRepository:
         """
 
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO documents (
-                    id, run_id, filename, mime_type, doc_type, uploaded_by,
-                    uploaded_at, source_type, entities_json, tags_json,
-                    metadata_json, org_id, assessment_id, storage_path,
-                    size_bytes, sha256, visibility, retention_days, expires_at,
-                    encryption_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    doc.id,
-                    run_id,
-                    doc.filename,
-                    doc.mime_type,
-                    doc.doc_type.value,
-                    doc.uploaded_by,
-                    doc.uploaded_at.isoformat(),
-                    doc.source_type,
-                    json.dumps(doc.entities),
-                    json.dumps(doc.tags),
-                    json.dumps(doc.metadata),
-                    org_id,
-                    assessment_id,
-                    storage_path,
-                    size_bytes,
-                    sha256,
-                    visibility or "private",
-                    retention_days,
-                    expires_at,
-                    json.dumps(encryption_metadata) if encryption_metadata else None,
-                ),
-            )
-            conn.commit()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO documents (
+                        id, run_id, filename, mime_type, doc_type, uploaded_by,
+                        uploaded_at, source_type, entities_json, tags_json,
+                        metadata_json, org_id, assessment_id, storage_path,
+                        size_bytes, sha256, visibility, retention_days, expires_at,
+                        encryption_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        doc.id,
+                        run_id,
+                        doc.filename,
+                        doc.mime_type,
+                        doc.doc_type.value,
+                        doc.uploaded_by,
+                        doc.uploaded_at.isoformat(),
+                        doc.source_type,
+                        json.dumps(doc.entities),
+                        json.dumps(doc.tags),
+                        json.dumps(doc.metadata),
+                        org_id,
+                        assessment_id,
+                        storage_path,
+                        size_bytes,
+                        sha256,
+                        visibility or "private",
+                        retention_days,
+                        expires_at,
+                        json.dumps(encryption_metadata) if encryption_metadata else None,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def save_chunks(self, chunks: List[DocumentChunk]) -> None:
         if not chunks:
             return
         with self._connect() as conn:
-            conn.executemany(
-                """
-                INSERT OR REPLACE INTO document_chunks (
-                    id, document_id, sequence, page_number, section_heading,
-                    text, tokens, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        ch.id,
-                        ch.document_id,
-                        ch.sequence,
-                        ch.page_number,
-                        ch.section_heading,
-                        ch.text,
-                        ch.tokens,
-                        json.dumps(ch.metadata),
-                    )
-                    for ch in chunks
-                ],
-            )
-            conn.commit()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO document_chunks (
+                        id, document_id, sequence, page_number, section_heading,
+                        text, tokens, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            ch.id,
+                            ch.document_id,
+                            ch.sequence,
+                            ch.page_number,
+                            ch.section_heading,
+                            ch.text,
+                            ch.tokens,
+                            json.dumps(ch.metadata),
+                        )
+                        for ch in chunks
+                    ],
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def link_documents_to_run(self, document_ids: List[str], run_id: int) -> int:
         """Attach previously uploaded documents to a stored intelligence run.
@@ -409,6 +419,30 @@ class DocumentRepository:
                 1 for r in rows if r.get("deletedAt") and not r.get("purgedAt")
             ),
         }
+
+    def cleanup_expired_documents(self, org_id: str | None = None) -> int:
+        """Clean up expired documents for storage management."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        query = "SELECT id FROM documents WHERE expires_at IS NOT NULL AND expires_at < ?"
+        params = [now.isoformat()]
+        if org_id is not None:
+            query += " AND org_id = ?"
+            params.append(org_id)
+
+        with self._connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+            expired_ids = [row["id"] for row in rows]
+
+        # Soft delete expired documents
+        cleaned_count = 0
+        for doc_id in expired_ids:
+            if self.soft_delete_document(doc_id, deleted_by="system_retention"):
+                cleaned_count += 1
+
+        _log.info("Cleanup: soft-deleted %d expired documents", cleaned_count)
+        return cleaned_count
 
     @staticmethod
     def is_expired(doc: dict, *, now=None) -> bool:

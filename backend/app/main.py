@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi import HTTPException
+from contextlib import asynccontextmanager
 
 from kulima.core.documents.repository import DocumentRepository
 from kulima.core.security.encryption import decrypt_bytes, is_encrypted
@@ -23,7 +24,53 @@ from .routers import (
     governance,
 )
 
-app = FastAPI(title="Kulima FLEX API", version="2.0.0")
+# Phase 4 Enterprise: Import new routers conditionally
+# We'll import them directly in the include_router section to avoid startup issues
+ENTERPRISE_ROUTERS_AVAILABLE = True
+
+# Phase 4 Enterprise: Import job runner
+try:
+    from kulima.core.jobs.runner import JobRunner
+    JOB_RUNNER_AVAILABLE = True
+except ImportError:
+    JOB_RUNNER_AVAILABLE = False
+
+# Phase 4 Enterprise: Job runner instance
+_job_runner: JobRunner | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for enterprise features."""
+    # Startup
+    global _job_runner
+    if JOB_RUNNER_AVAILABLE:
+        try:
+            _job_runner = JobRunner()
+            import asyncio
+            # Properly await startup to ensure initialization
+            await _job_runner.start()
+            # Give it a moment to initialize worker loop
+            await asyncio.sleep(0.1)
+            print("Enterprise JobRunner started successfully")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Failed to start JobRunner: {exc}")
+            _job_runner = None
+
+    yield
+
+    # Shutdown
+    if _job_runner:
+        try:
+            import asyncio
+            # Properly await shutdown
+            await _job_runner.stop()
+            print("Enterprise JobRunner stopped successfully")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Failed to stop JobRunner: {exc}")
+
+
+app = FastAPI(title="Kulima FLEX API", version="2.0.0", lifespan=lifespan)
 
 environment = os.environ.get("ENVIRONMENT", "development").strip().lower()
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
@@ -54,6 +101,19 @@ app.include_router(outcomes.router, prefix="/api/v1/outcomes", tags=["outcomes"]
 app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
+
+# Phase 4 Enterprise: Mount new routers conditionally
+try:
+    from .routers import cases
+    app.include_router(cases.router, tags=["cases"])
+except ImportError:
+    pass
+
+try:
+    from .routers import tasks
+    app.include_router(tasks.router, tags=["tasks"])
+except ImportError:
+    pass
 
 # ── Guarded upload serving (Phase 5 — Document Security) ────────────────────
 # Replaces the previous StaticFiles mount. Every served file is validated:

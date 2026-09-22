@@ -1,13 +1,13 @@
-"""Kulima OS Case models (Phase 4A).
+"""Kulima OS Case models (Phase 4 Enterprise Layer).
 
-These models introduce a vertical-agnostic Case abstraction for Kulima OS
-without changing the existing InvestmentBrief model or FLEX behaviour.
+These models introduce the enterprise Case abstraction that becomes the
+aggregate root for transaction management, workspaces, collaboration, and
+decision dossiers.
 
-Phase 4A is foundation only:
-- CaseType enumerates top-level case categories.
-- CaseSubject describes what the case is about.
-- Case wraps a vertical-specific payload (e.g. InvestmentBrief) plus
-  shared OS intelligence fields.
+Phase 4 Enterprise:
+- Case lifecycle state machine (Draft → Processing → Review → Decision Ready → Exported → Archived)
+- Workspace types mapping to assessment types
+- Case service and repository for durable case management
 """
 
 from __future__ import annotations
@@ -52,24 +52,62 @@ class CaseSubject(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkspaceType(str, Enum):
+    """Workspace templates that map 1:1 to AssessmentType.
+
+    Each workspace type renders the same six tabs: Documents · Research ·
+    Evidence · Signals · Decision · Reports + Activity (audit feed).
+    """
+
+    STARTUP = "startup"
+    NGO = "ngo"
+    GOVERNMENT_PROGRAM = "government_program"
+    DEVELOPMENT_PROGRAM = "development_program"
+    TOURISM_SME = "tourism_sme"
+
+
+class CaseLifecycleStatus(str, Enum):
+    """Enterprise transaction lifecycle state machine.
+
+    Draft → Processing → Review → Decision Ready → Exported → Archived
+    """
+
+    DRAFT = "draft"
+    PROCESSING = "processing"
+    REVIEW = "review"
+    DECISION_READY = "decision_ready"
+    EXPORTED = "exported"
+    ARCHIVED = "archived"
+
+
 class Case(BaseModel):
-    """Generic Kulima OS Case abstraction.
+    """Enterprise Case aggregate root - the single source of truth for assessments.
 
     A Case encapsulates:
     - identity and type information (CaseType, CaseSubject)
+    - workspace and lifecycle management
+    - assessment linkage
     - evidence-level artefacts (sources, evidence_integrity, trust_graph)
     - a vertical-specific payload (e.g. InvestmentBrief) stored as
       opaque JSON in `payload`.
 
-    Phase 4A only introduces the model; orchestration, repository, and
-    UI continue to use InvestmentBrief directly.
+    Phase 4 Enterprise: This becomes the persisted aggregate root with
+    lifecycle state machine, workspace binding, and role-based workflow.
     """
 
     id: str
     case_type: CaseType
     subject: CaseSubject
+    workspace_type: WorkspaceType
+    lifecycle_status: CaseLifecycleStatus = CaseLifecycleStatus.DRAFT
+    assessment_id: str | None = None  # Link to AssessmentContext
+    org_id: str | None = None  # Workspace binding
+    assignee_id: str | None = None  # Primary owner
+    reviewer_id: str | None = None  # Current reviewer in REVIEW state
+    version: int = 1
     created_at: datetime = Field(default_factory=datetime.utcnow)
     created_by: str | None = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Evidence & graph surfaces shared across verticals
     sources: list[SourceAttribution] = Field(default_factory=list)
@@ -80,3 +118,7 @@ class Case(BaseModel):
     # Vertical-specific payload (opaque to the core OS layer). For FLEX
     # this will contain a serialised InvestmentBrief.
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    # Phase 4: Transaction metadata
+    last_transition_at: datetime | None = None
+    last_transition_by: str | None = None
