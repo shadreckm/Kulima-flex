@@ -10,7 +10,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator, Optional
 
 from kulima.config import get_settings
@@ -110,7 +110,7 @@ class JobRepository:
         Uses SQLite-safe UPDATE with RETURNING pattern for lease claiming.
         """
         now = datetime.now(timezone.utc)
-        lease_expires = now.replace(second=lease_duration_seconds)
+        lease_expires = now + timedelta(seconds=lease_duration_seconds)
 
         with self._connect() as conn:
             # Use BEGIN IMMEDIATE for write safety and concurrency control

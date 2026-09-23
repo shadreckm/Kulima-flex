@@ -64,3 +64,31 @@ services:
         value: USD
       - key: PAYCHANGU_API_BASE
         sync: false
+      # Supabase readiness (disabled by default; enable only after migration validation)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: USE_SUPABASE
+        value: "false"
+      - key: STORAGE_BUCKET_NAME
+        value: kulima-documents
+      - key: SUPABASE_DOCUMENT_BUCKET
+        sync: false
+      # Enterprise OS access controls
+      - key: KULIMA_ACCESS_MODE
+        value: pilot
+      - key: KULIMA_GUEST_DAILY_LIMIT
+        value: "3"
+      - key: KULIMA_ANALYST_DAILY_LIMIT
+        value: "25"
+      - key: KULIMA_INVESTOR_DAILY_LIMIT
+        value: "10"
+      - key: KULIMA_ADMIN_EMAILS
+        sync: false

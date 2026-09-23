@@ -3,14 +3,18 @@ import AzureADProvider from "next-auth/providers/azure-ad"
 import GoogleProvider from "next-auth/providers/google"
 
 // Build provider list dynamically so unconfigured providers are never registered.
-// Registering AzureADProvider with empty clientId/clientSecret causes NextAuth
-// to silently break or log confusing errors on startup.
-const providers: NextAuthOptions["providers"] = [
-  GoogleProvider({
-    clientId: process.env.GOOGLE_CLIENT_ID || "",
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-  }),
-]
+// Registering GoogleProvider with empty clientId/clientSecret causes NextAuth
+// to fail the OpenID discovery fetch when the sign-in challenge is issued.
+const providers: NextAuthOptions["providers"] = []
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })
+  )
+}
 
 // Only register Azure AD if all three required credentials are present.
 if (

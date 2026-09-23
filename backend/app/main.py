@@ -22,11 +22,9 @@ from .routers import (
     orgs,
     billing,
     governance,
+    cases,
+    tasks,
 )
-
-# Phase 4 Enterprise: Import new routers conditionally
-# We'll import them directly in the include_router section to avoid startup issues
-ENTERPRISE_ROUTERS_AVAILABLE = True
 
 # Phase 4 Enterprise: Import job runner
 try:
@@ -102,18 +100,9 @@ app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
 
-# Phase 4 Enterprise: Mount new routers conditionally
-try:
-    from .routers import cases
-    app.include_router(cases.router, tags=["cases"])
-except ImportError:
-    pass
-
-try:
-    from .routers import tasks
-    app.include_router(tasks.router, tags=["tasks"])
-except ImportError:
-    pass
+# Phase 4 Enterprise: case workspace + task queues (self-prefixed routers)
+app.include_router(cases.router, tags=["cases"])
+app.include_router(tasks.router, tags=["tasks"])
 
 # ── Guarded upload serving (Phase 5 — Document Security) ────────────────────
 # Replaces the previous StaticFiles mount. Every served file is validated:

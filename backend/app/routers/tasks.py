@@ -7,7 +7,6 @@ and managing work queues for enterprise workflow.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,21 +17,7 @@ from kulima.core.jobs.repository import JobRepository
 from kulima.core.research.repository import ResearchRepository
 from kulima.core.orgs.models import Role
 
-# Import auth dependencies conditionally to avoid startup issues
-try:
-    from backend.app.core.auth import get_current_user, get_org_context
-    AUTH_AVAILABLE = True
-except ImportError:
-    AUTH_AVAILABLE = False
-    # Provide fallback dependencies for testing only
-    if os.getenv("KULIMA_SKIP_AUTH") == "true":
-        def get_current_user():
-            return {"user_id": "test_user"}
-        def get_org_context():
-            return {"org_id": "test_org", "role": "admin"}
-    else:
-        # If auth not available and not explicitly skipped, raise error
-        raise ImportError("Auth module required unless KULIMA_SKIP_AUTH=true")
+from ..core.auth import OrgContext, get_current_org
 
 _log = logging.getLogger(__name__)
 
@@ -76,15 +61,14 @@ class PendingTasksDetailResponse(BaseModel):
 
 @router.get("/pending", response_model=PendingTasksResponse)
 def get_pending_tasks(
-    current_user: dict = Depends(get_current_user),
-    org_context: dict = Depends(get_org_context),
+    current: OrgContext = Depends(get_current_org),
 ) -> PendingTasksResponse:
     """Get summary of pending tasks for the current user.
 
     This is called before logout to determine if the user has unfinished work.
     """
-    user_id = current_user.get("user_id")
-    org_id = org_context.get("org_id")
+    user_id = current.user_id
+    org_id = current.org_id
 
     case_service = CaseService()
     job_repo = JobRepository()
@@ -104,7 +88,7 @@ def get_pending_tasks(
         running_research = 0
 
     # Count pending reviews
-    user_role = Role(org_context.get("role", "viewer"))
+    user_role = current.role
     pending_reviews = len(case_service.list_pending_reviews(user_id, org_id, user_role))
 
     # Count failed jobs (extractions, etc.)
@@ -147,12 +131,11 @@ def get_pending_tasks(
 
 @router.get("/pending/detail", response_model=PendingTasksDetailResponse)
 def get_pending_tasks_detail(
-    current_user: dict = Depends(get_current_user),
-    org_context: dict = Depends(get_org_context),
+    current: OrgContext = Depends(get_current_org),
 ) -> PendingTasksDetailResponse:
     """Get detailed list of pending tasks for the current user."""
-    user_id = current_user.get("user_id")
-    org_id = org_context.get("org_id")
+    user_id = current.user_id
+    org_id = current.org_id
 
     case_service = CaseService()
     job_repo = JobRepository()
@@ -190,7 +173,7 @@ def get_pending_tasks_detail(
             )
 
     # Get pending reviews
-    user_role = Role(org_context.get("role", "viewer"))
+    user_role = current.role
     review_cases = case_service.list_pending_reviews(user_id, org_id, user_role)
     for case in review_cases:
         tasks.append(
@@ -231,12 +214,11 @@ def get_pending_tasks_detail(
 
 @router.post("/exit-with-pending")
 def exit_with_pending(
-    current_user: dict = Depends(get_current_user),
-    org_context: dict = Depends(get_org_context),
+    current: OrgContext = Depends(get_current_org),
 ) -> dict:
     """Record that user is exiting with pending tasks (for governance analytics)."""
-    user_id = current_user.get("user_id")
-    org_id = org_context.get("org_id")
+    user_id = current.user_id
+    org_id = current.org_id
 
     from kulima.core.audit import record_event
 
