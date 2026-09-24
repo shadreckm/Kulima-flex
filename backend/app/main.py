@@ -24,6 +24,7 @@ from .routers import (
     governance,
     cases,
     tasks,
+    auth_diagnostics,
 )
 
 # Phase 4 Enterprise: Import job runner
@@ -97,6 +98,7 @@ app.include_router(ask_signals.router, prefix="/api/v1/ask", tags=["ask_signals"
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(outcomes.router, prefix="/api/v1/outcomes", tags=["outcomes"])
 app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
+app.include_router(auth_diagnostics.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
 
@@ -187,7 +189,18 @@ async def health():
 # Structured error handlers
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"error": True, "message": exc.detail})
+    # FastAPI may carry the diagnostic payload as a dict (auth/rbac/billing
+    # paths) or a plain string. Flatten dicts so `code`/`required`/`role`
+    # surface at the TOP level — a nested "message": {...} hides the code
+    # from the browser and turns every 401 into an undiagnosable blob.
+    detail = exc.detail
+    if isinstance(detail, dict):
+        content = {"error": True, **detail}
+        if "message" not in content:
+            content["message"] = "Request failed"
+    else:
+        content = {"error": True, "message": detail}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(RequestValidationError)

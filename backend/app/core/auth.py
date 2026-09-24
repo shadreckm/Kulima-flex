@@ -47,7 +47,7 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
     if not auth or not auth.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "message": "Unauthorized"},
+            detail={"error": True, "code": "SESSION_MISSING", "message": "Missing bearer token — the frontend proxy did not forward an Authorization header."},
         )
     token = auth.split(" ", 1)[1].strip()
     try:
@@ -57,23 +57,23 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
         # Explicit path for expired tokens
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "message": "Unauthorized"},
+            detail={"error": True, "code": "SESSION_EXPIRED", "message": "Session token has expired — sign in again."},
         )
     except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "message": "Unauthorized"},
+            detail={"error": True, "code": "SESSION_INVALID", "message": "Session token could not be verified — check that NEXTAUTH_SECRET matches between frontend and backend."},
         )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "message": "Unauthorized"},
+            detail={"error": True, "code": "BACKEND_AUTH_FAILED", "message": "Token validation failed unexpectedly."},
         )
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "message": "Unauthorized"},
+            detail={"error": True, "code": "SESSION_INVALID", "message": "Session token contains no subject (sub) claim."},
         )
     return AuthenticatedUser(user_id=user_id)
 
@@ -153,10 +153,23 @@ async def get_current_org(
     (validated against their memberships — never trusting the raw value).
     """
     repo = _org_repo()
-    org = repo.ensure_personal_org(user.user_id)
-    membership = repo.get_membership_for_org(org.id, user.user_id)
-    if membership is None:  # pragma: no cover — repaired by ensure_personal_org
-        membership = repo.add_member(org.id, user.user_id, Role.OWNER)
+    try:
+        org = repo.ensure_personal_org(user.user_id)
+        membership = repo.get_membership_for_org(org.id, user.user_id)
+        if membership is None:  # pragma: no cover — repaired by ensure_personal_org
+            membership = repo.add_member(org.id, user.user_id, Role.OWNER)
+    except Exception as exc:  # noqa: BLE001 — workspace provisioning failed
+        # Org resolution is never optional: without a workspace every scoped
+        # query would silently return empty instead of erroring.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": True,
+                "code": "ORG_CONTEXT_MISSING",
+                "message": "Could not resolve or provision your workspace context.",
+                "detail": str(exc)[:200],
+            },
+        ) from exc
 
     requested = (request.headers.get("X-Org-Id") or "").strip()
     if requested and requested != org.id:
@@ -179,7 +192,8 @@ def require_permission(permission: Permission | str) -> Callable[..., Awaitable[
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": True,
-                    "code": "PERMISSION_DENIED",
+                    "code": "RBAC_DENIED",
+                    "permission": "PERMISSION_DENIED",
                     "message": (
                         f"Your role ({current.role_label}) does not include the "
                         f"'{perm_value}' permission. Ask an organization Owner or Admin."

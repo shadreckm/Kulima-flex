@@ -24,6 +24,48 @@ async function readResponseText(res: Response): Promise<string> {
   }
 }
 
+/** Extract the backend diagnostic code (SESSION_MISSING, SESSION_INVALID,
+ *  RBAC_DENIED, ORG_CONTEXT_MISSING, …) from a 401/403 JSON body. */
+export function diagnosticCode(raw: string): string | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    const code = typeof parsed?.code === 'string' ? parsed.code : null
+    return code || null
+  } catch {
+    return null
+  }
+}
+
+/** Human-readable explanation for auth failure codes. */
+function authFailureHint(code: string | null): string {
+  switch (code) {
+    case 'SESSION_MISSING':
+      return 'Your session has expired. Please sign in again.'
+    case 'SESSION_INVALID':
+      return 'Session could not be verified — the deployment secrets are mismatched (contact support).'
+    case 'SESSION_EXPIRED':
+      return 'Your session has expired. Please sign in again.'
+    case 'FRONTEND_SECRET_MISSING':
+      return 'Server authentication is not configured (contact support).'
+    case 'BACKEND_AUTH_FAILED':
+      return 'Authentication failed unexpectedly (contact support).'
+    case 'ORG_CONTEXT_MISSING':
+      return 'Your workspace could not be resolved (contact support).'
+    case 'RBAC_DENIED':
+      return 'Your role does not have permission for this action.'
+    default:
+      return ''
+  }
+}
+
+function describeFailure(res: Response, raw: string, context: string): string {
+  const code = diagnosticCode(raw)
+  const hint = authFailureHint(code)
+  if (code && hint) return `${context} failed: ${res.status} [${code}] ${hint}`
+  return `${context} failed: ${res.status} ${raw.slice(0, 400)}`
+}
+
 async function parseJsonResponse<T>(res: Response, context: string): Promise<T> {
   const raw = await readResponseText(res)
   if (!raw) {
@@ -200,8 +242,21 @@ export async function createAssessment(
     headers: withAuth(),
     body: form,
   })
-  if (!res.ok) throw new Error(`createAssessment failed: ${res.status} ${await readResponseText(res)}`)
+  if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'createAssessment'))
   return parseJsonResponse<AssessmentContextPayload>(res, 'createAssessment')
+}
+
+// ── Auth chain diagnostic (release engineering) ─────────────────────────
+// Proxies through the SAME chain as every protected endpoint. A 200 here
+// proves the full chain (cookie → getToken → mint → backend validate → org)
+// works; the error code tells you exactly which stage broke.
+export async function authDiagnostic(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/diagnostic`, {
+    headers: withAuth(),
+  })
+  const raw = await readResponseText(res)
+  if (!res.ok) throw new Error(describeFailure(res, raw, 'authDiagnostic'))
+  return parseJsonResponse<Record<string, unknown>>(res, 'authDiagnostic')
 }
 
 export async function getAssessment(assessmentId: string): Promise<AssessmentContextPayload> {
@@ -479,7 +534,7 @@ export async function listLiveRuns(limit = 50): Promise<{ runs: LiveRunRecord[] 
   const res = await fetch(`${API_BASE}/api/v1/intelligence/runs/live?limit=${encodeURIComponent(String(limit))}`, {
     headers: withAuth(),
   })
-  if (!res.ok) throw new Error(`listLiveRuns failed: ${res.status} ${await readResponseText(res)}`)
+  if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'listLiveRuns'))
   return parseJsonResponse<{ runs: LiveRunRecord[] }>(res, 'listLiveRuns')
 }
 

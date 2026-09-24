@@ -28,30 +28,54 @@ async function proxy(request: NextRequest) {
   headers.delete('content-length')
   headers.delete('authorization')
 
-  const decodedToken = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
-  const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken ? String((decodedToken as { sub?: unknown }).sub || '') : ''
   const secret = process.env.NEXTAUTH_SECRET
-
-  let backendToken: string | null = null
-  if (tokenSub && secret) {
-    backendToken = await new SignJWT({})
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setSubject(tokenSub)
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(new TextEncoder().encode(secret))
+  if (!secret) {
+    // Fail loudly: a missing server-side secret would otherwise surface as a
+    // generic upstream 401 with no way to diagnose it from the client.
+    console.error('[kulima-proxy] NEXTAUTH_SECRET is not set on the server — cannot mint backend token')
+    return NextResponse.json(
+      { error: true, code: 'FRONTEND_SECRET_MISSING', message: 'Server authentication is not configured (NEXTAUTH_SECRET missing on the deployment). Contact support.' },
+      { status: 401 },
+    )
   }
+
+  // Explicitly try the __Secure- prefixed cookie name first (always used on
+  // HTTPS deployments like Vercel), then fall back to the unprefixed name so
+  // local HTTP development still works. getToken() normally infers this from
+  // the request protocol, but behind some proxies it sees HTTP and misses the
+  // __Secure- cookie entirely — one cause of phantom 401s in production.
+  let decodedToken = await getToken({ req: request, secret, cookieName: '__Secure-next-auth.session-token' })
+  if (!decodedToken) {
+    decodedToken = await getToken({ req: request, secret, cookieName: 'next-auth.session-token' })
+  }
+  const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken ? String((decodedToken as { sub?: unknown }).sub || '') : ''
+
+  if (!decodedToken || !tokenSub) {
+    // No valid NextAuth session cookie on this request.
+    console.warn('[kulima-proxy] request without valid NextAuth session token', {
+      path: request.nextUrl.pathname,
+      hasCookieHeader: Boolean(request.headers.get('cookie')),
+    })
+    return NextResponse.json(
+      { error: true, code: 'SESSION_MISSING', message: 'Your session has expired. Please sign in again.' },
+      { status: 401 },
+    )
+  }
+
+  const backendToken = await new SignJWT({})
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(tokenSub)
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode(secret))
 
   console.info('[kulima-proxy]', {
     path: request.nextUrl.pathname,
-    tokenExists: Boolean(decodedToken),
     tokenSub: Boolean(tokenSub),
-    authorizationForwarded: Boolean(backendToken),
+    authorizationForwarded: true,
   })
 
-  if (backendToken) {
-    headers.set('authorization', `Bearer ${backendToken}`)
-  }
+  headers.set('authorization', `Bearer ${backendToken}`)
 
   const init: RequestInit = {
     method: request.method,

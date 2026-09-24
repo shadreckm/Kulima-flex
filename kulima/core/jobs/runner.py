@@ -118,10 +118,36 @@ class JobRunner:
             is_dead = job.attempts >= job.max_attempts
             self.job_repo.fail_job(job.id, str(exc), is_dead=is_dead)
 
+            # Propagate failure to the run / assessment that enqueued this job
+            # so they do not stay stuck in "running" forever.
             if is_dead:
+                self._propagate_failure(job, str(exc))
                 _log.error("JobRunner marked job as dead: id=%s", job.id)
                 # Transition case to DRAFT for manual intervention
                 await self._handle_dead_job(job.case_id)
+
+    def _propagate_failure(self, job: Job, error_message: str) -> None:
+        """Mark the originating run and assessment as failed for a dead job."""
+        run_id = job.payload.get("run_id")
+        assessment_id = job.payload.get("assessment_id")
+        try:
+            if run_id:
+                from backend.app.services.run_repository import RunRepository
+
+                RunRepository().update_run_failed(run_id, error_message)
+                _log.warning("Marked run %s failed due to dead job %s", run_id, job.id)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Could not mark run %s failed: %s", run_id, exc)
+        try:
+            if assessment_id:
+                from backend.app.services.orchestrator_adapter import (
+                    _mark_assessment_failed,
+                )
+
+                _mark_assessment_failed(assessment_id, error_message)
+                _log.warning("Marked assessment %s failed due to dead job %s", assessment_id, job.id)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Could not mark assessment %s failed: %s", assessment_id, exc)
 
     async def _execute_job(self, job: Job) -> dict[str, any]:
         """Execute the job based on its kind."""

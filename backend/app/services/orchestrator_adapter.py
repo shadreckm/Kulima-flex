@@ -149,8 +149,9 @@ def _enqueue_intelligence_job(
 
         ctx = AssessmentRepository().get(assessment_id, org_id=org_id)
         if ctx:
+            entity_name = ctx.extraction.display_entity() if ctx.extraction else ""
             subject = CaseSubject(
-                name=ctx.display_entity() or startup,
+                name=entity_name or startup,
                 secondary_name=founder,
                 sector=ctx.sector or sector_hint,
                 region=ctx.country,
