@@ -176,6 +176,7 @@ def manual_patch(
     organization_name: Optional[str] = None,
     sector: Optional[str] = None,
     country: Optional[str] = None,
+    website: Optional[str] = None,
 ) -> AssessmentContext:
     """Apply user-supplied corrections when extraction failed (Step 4 fallback)."""
     atype = coerce_assessment_type(ctx.assessment_type)
@@ -203,6 +204,8 @@ def manual_patch(
         ctx.extraction.sector = field_from_confidence(sector.strip(), 1.0, "user")
     if country is not None and country.strip():
         ctx.extraction.country = field_from_confidence(country.strip(), 1.0, "user")
+    if website is not None and website.strip():
+        ctx.extraction.website = field_from_confidence(website.strip(), 1.0, "user")
 
     # Recompute confidence with user-verified values included.
     from .extraction import score_extraction_confidence

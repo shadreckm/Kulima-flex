@@ -109,6 +109,7 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "organizationName": ctx.organization_name,
         "startupName": ctx.startup_name,
         "founderName": ctx.founder_name,
+        "keywords": list(ctx.keywords),
         "sector": ctx.sector,
         "country": ctx.country,
         "website": ctx.website,
@@ -146,6 +147,8 @@ def create_assessment(
     organization_name: Optional[str] = None,
     sector: Optional[str] = None,
     country: Optional[str] = None,
+    keywords: Optional[str] = None,
+    website: Optional[str] = None,
     org_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Ingest uploaded documents and build the shared Assessment Context.
@@ -220,7 +223,7 @@ def create_assessment(
     apply_extraction(ctx, extraction)
 
     # Optional intake hints typed on the landing page override weak extraction.
-    if any([entity_name, founder_name, organization_name, sector, country]):
+    if any([entity_name, founder_name, organization_name, sector, country, website]):
         manual_patch(
             ctx,
             entity_name=entity_name,
@@ -228,7 +231,16 @@ def create_assessment(
             organization_name=organization_name,
             sector=sector,
             country=country,
+            website=website,
         )
+
+    # Optional intake metadata: free-form research keywords (comma or
+    # semicolon separated). They are stored on the context and used to
+    # sharpen downstream research — never asked for again.
+    if keywords:
+        parsed = [k.strip() for k in str(keywords).replace(";", ",").split(",") if k.strip()]
+        if parsed:
+            ctx.keywords = parsed[:12]
 
     if trust_scores:
         ctx.trust_score = round(sum(trust_scores) / len(trust_scores), 1)
@@ -243,6 +255,7 @@ def create_assessment(
             "assessmentType": getattr(atype, "value", str(atype)),
             "documents": len(ctx.uploaded_documents),
             "organizationName": ctx.organization_name,
+            "keywords": ctx.keywords,
             "sector": ctx.sector,
             "country": ctx.country,
             "trustScore": ctx.trust_score,
@@ -325,6 +338,7 @@ def update_assessment(
         organization_name=patch.get("organizationName"),
         sector=patch.get("sector"),
         country=patch.get("country"),
+        website=patch.get("website"),
     )
     _repo.save(ctx)
     return serialize_context(ctx)
@@ -477,6 +491,113 @@ def purge_assessment(
         metadata=summary,
     )
     return summary
+
+
+# ── Attach additional evidence (Step 6: re-run the chain) ─────────────────
+
+
+def attach_documents(
+    assessment_id: str,
+    files: Sequence[UploadFile],
+    user_id: Optional[str],
+    *,
+    org_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Attach more documents to an existing Assessment Context and re-run.
+
+    Evidence page additional uploads land here: the new documents join the
+    existing context, merged extraction refreshes the entity, the previous
+    run link is released (a fresh run will be started), and the caller gets
+    the updated context + a started intelligence run in one call.
+    """
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+    if not files:
+        raise AssessmentError("no_documents", "At least one document is required.")
+
+    if org_id is not None:
+        assert_can_assess(org_id)
+
+    new_texts: list[tuple[str, str]] = []
+    trust_scores: list[float] = []
+    for upload in files:
+        payload = save_uploaded_file(
+            upload,
+            run_uuid=None,
+            user_id=user_id,
+            org_id=org_id,
+            assessment_id=ctx.assessment_id,
+        )
+        name = str(payload.get("name") or "uploaded_document")
+        extracted_text = str(payload.get("extractedText") or "")
+        new_texts.append((name, extracted_text))
+        if payload.get("trustScore") is not None:
+            trust_scores.append(float(payload["trustScore"]))
+
+        ctx.document_ids.append(str(payload.get("id") or ""))
+        ctx.uploaded_documents.append(
+            AssessmentDocument(
+                id=str(payload.get("id") or ""),
+                name=name,
+                url=str(payload.get("url") or ""),
+                file_type=str(payload.get("fileType") or ""),
+                trust_score=float(payload["trustScore"]) if payload.get("trustScore") is not None else None,
+                evidence_status=payload.get("evidenceStatus"),
+                signals=list(payload.get("signals") or []),
+                evidence_items=list(payload.get("evidenceItems") or []),
+                decision_impact=str(payload.get("decisionImpact") or ""),
+                raw_summary=str(payload.get("rawSummary") or ""),
+                trust_breakdown=dict(payload.get("trustBreakdown") or {}),
+                upload_date=str(payload.get("uploadDate") or ""),
+            )
+        )
+
+    # Re-extract across ALL documents (old + new) so entity fields can improve.
+    atype = ctx.assessment_type
+    old_text = str(ctx.extracted_text or "")
+    merged_old = [("previous_upload", old_text)] if old_text else []
+    extraction = merge_extractions(
+        extract_assessment_fields(text, atype, filename=name)
+        for name, text in [*merged_old, *new_texts]
+    )
+    ctx.extracted_text = (old_text + "\n\n" if old_text else "") + "\n\n".join(
+        text for _, text in new_texts
+    )
+    ctx.extracted_text = ctx.extracted_text[:MAX_STORED_TEXT_CHARS]
+    ctx.extracted_text_length = (ctx.extracted_text_length or 0) + sum(len(t) for _, t in new_texts)
+    apply_extraction(ctx, extraction)
+
+    if trust_scores:
+        existing = ctx.trust_score or 0.0
+        prev_count = max(len(ctx.uploaded_documents) - len(trust_scores), 1)
+        blended = (existing * prev_count + sum(trust_scores)) / (prev_count + len(trust_scores))
+        ctx.trust_score = round(blended, 1)
+
+    # Release the previous run so a fresh chain (research → signals → decision)
+    # is triggered for the enriched evidence base.
+    ctx.run_id = None
+    if ctx.status in (AssessmentStatus.RUNNING, AssessmentStatus.COMPLETE):
+        ctx.status = AssessmentStatus.READY
+    _repo.save(ctx, org_id=org_id)
+    record_event(
+        "assessment.evidence_attached",
+        org_id=org_id,
+        user_id=user_id,
+        assessment_id=ctx.assessment_id,
+        metadata={
+            "newDocuments": len(new_texts),
+            "totalDocuments": len(ctx.uploaded_documents),
+            "retriggeredRun": True,
+        },
+    )
+
+    # Auto-chain: start the new intelligence run immediately.
+    run = start_assessment_run(assessment_id, user_id, org_id=org_id)
+    return serialize_context(_repo.get(assessment_id, user_id=user_id, org_id=org_id) or ctx) | {
+        "runId": run.get("runId"),
+        "runStatus": run.get("status"),
+    }
 
 
 def _int_run_id(run_id: Optional[str]) -> Optional[int]:

@@ -32,11 +32,14 @@ type SidebarProps = {
 const PIPELINE_ITEMS = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Assessments', href: '/runs' },
-  { label: 'AI Analyst Workspace', href: '/flex' },
-  { label: 'Signals', href: '/signals' },
+  { label: 'Overview', href: '/flex' },
   { label: 'Evidence', href: '/evidence' },
+  { label: 'Research', href: '/research' },
+  { label: 'Signals', href: '/signals' },
   { label: 'Decision', href: '/decision' },
-  { label: 'Outcomes', href: '/outcomes' },
+  { label: 'Reports', href: '/reports' },
+  { label: 'Activity', href: '/activity' },
+  { label: 'Feedback', href: '/feedback' },
 ]
 
 const INSIGHTS_ITEMS = [

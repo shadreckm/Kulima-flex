@@ -72,6 +72,7 @@ export type AssessmentContext = {
   website?: string
   team?: string
   problemStatement?: string
+  keywords?: string[]
   /** Overall extraction confidence (0–1). */
   confidence?: number
   extraction?: ExtractionPayload
@@ -384,6 +385,9 @@ export function saveIntakeContext(payload: Record<string, any>): AssessmentConte
     website: String(payload.website || existing?.website || ''),
     team: String(payload.team || existing?.team || ''),
     problemStatement: String(payload.problemStatement || existing?.problemStatement || ''),
+    keywords: Array.isArray(payload.keywords)
+      ? payload.keywords.map(String)
+      : existing?.keywords ?? [],
     confidence: typeof payload.confidence === 'number' ? payload.confidence : existing?.confidence,
     extraction:
       payload.extraction && typeof payload.extraction === 'object'
@@ -487,6 +491,10 @@ const INTAKE_DB_KEY = 'draft'
 export type IntakeDraft = {
   assessmentType: EntityType
   files: File[]
+  /** Assessment metadata typed on the landing page (single intake). */
+  organization?: string
+  founder?: string
+  keywords?: string
   savedAt: string
 }
 
@@ -513,13 +521,17 @@ function openIntakeDb(): Promise<IDBDatabase | null> {
 }
 
 /** Persist the picked intake files so they survive the sign-in redirect. */
-export async function saveIntakeDraft(assessmentType: EntityType, files: File[]): Promise<boolean> {
+export async function saveIntakeDraft(
+  assessmentType: EntityType,
+  files: File[],
+  meta: { organization?: string; founder?: string; keywords?: string } = {},
+): Promise<boolean> {
   if (!files.length) return false
   const db = await openIntakeDb()
   if (!db) return false
   return new Promise<boolean>((resolve) => {
     try {
-      const draft: IntakeDraft = { assessmentType, files, savedAt: new Date().toISOString() }
+      const draft: IntakeDraft = { assessmentType, files, ...meta, savedAt: new Date().toISOString() }
       const tx = db.transaction(INTAKE_DB_STORE, 'readwrite')
       tx.objectStore(INTAKE_DB_STORE).put(draft, INTAKE_DB_KEY)
       tx.oncomplete = () => { db.close(); resolve(true) }

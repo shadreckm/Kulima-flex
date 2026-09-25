@@ -1,4 +1,18 @@
-from . import intelligence, ask_ic, ask_signals, documents, outcomes, assessments, cases, tasks, auth_diagnostics
+from . import (
+    intelligence,
+    ask_ic,
+    ask_signals,
+    documents,
+    outcomes,
+    assessments,
+    assessment_workspace,
+    orgs,
+    billing,
+    governance,
+    cases,
+    tasks,
+    auth_diagnostics,
+)
 
 __all__ = [
     "intelligence",
@@ -7,6 +21,10 @@ __all__ = [
     "documents",
     "outcomes",
     "assessments",
+    "assessment_workspace",
+    "orgs",
+    "billing",
+    "governance",
     "cases",
     "tasks",
     "auth_diagnostics",

@@ -19,6 +19,7 @@ from .routers import (
     documents,
     outcomes,
     assessments,
+    assessment_workspace,
     orgs,
     billing,
     governance,
@@ -91,6 +92,7 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 
 # Mount routers at API prefixes
+app.include_router(assessment_workspace.router, prefix="/api/v1/assessment-workspace", tags=["assessment_workspace"])
 app.include_router(assessments.router, prefix="/api/v1/assessments", tags=["assessments"])
 app.include_router(intelligence.router, prefix="/api/v1/intelligence", tags=["intelligence"])
 app.include_router(ask_ic.router, prefix="/api/v1/ask", tags=["ask_ic"])

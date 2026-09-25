@@ -82,6 +82,8 @@ async def create_assessment(
     organizationName: Optional[str] = Form(None),
     sector: Optional[str] = Form(None),
     country: Optional[str] = Form(None),
+    keywords: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
     current: OrgContext = Depends(require_permission(Permission.ASSESS)),
 ):
     """Create the shared Assessment Context from uploaded documents.
@@ -100,6 +102,8 @@ async def create_assessment(
             organization_name=organizationName,
             sector=sector,
             country=country,
+            keywords=keywords,
+            website=website,
             org_id=current.org_id,
         )
     except Exception as exc:  # noqa: BLE001
@@ -165,6 +169,27 @@ async def start_assessment_run(
     check_rate_limit(current.user_id, "assessments:start")
     try:
         return assessment_adapter.start_assessment_run(assessment_id, current.user_id, org_id=current.org_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.post("/{assessment_id}/documents")
+async def attach_assessment_documents(
+    assessment_id: str,
+    files: List[UploadFile] = File(...),
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Attach additional evidence to an existing context and re-run the chain.
+
+    Used by the Evidence workspace tab: new documents re-trigger
+    Extraction → Research → Signals → Decision automatically (no second
+    upload flow, no manual launch button).
+    """
+    check_rate_limit(current.user_id, "assessments:create")
+    try:
+        return assessment_adapter.attach_documents(
+            assessment_id, files, current.user_id, org_id=current.org_id
+        )
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
 

@@ -179,6 +179,10 @@ class AssessmentContext(BaseModel):
     signals: List[str] = Field(default_factory=list)
     decision: Dict[str, Any] = Field(default_factory=dict)
 
+    # Optional intake metadata — free-form research keywords typed on the
+    # landing page. They sharpen Tavily market queries without re-entry.
+    keywords: List[str] = Field(default_factory=list)
+
     # ── Lifecycle ─────────────────────────────────────────────────────────
     status: AssessmentStatus = AssessmentStatus.INTAKE
     requires_confirmation: bool = False

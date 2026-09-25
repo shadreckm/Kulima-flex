@@ -217,6 +217,8 @@ export type AssessmentIntakeHints = {
   organizationName?: string
   sector?: string
   country?: string
+  keywords?: string
+  website?: string
 }
 
 /**
@@ -237,6 +239,8 @@ export async function createAssessment(
   if (hints.organizationName) form.append('organizationName', hints.organizationName)
   if (hints.sector) form.append('sector', hints.sector)
   if (hints.country) form.append('country', hints.country)
+  if (hints.keywords) form.append('keywords', hints.keywords)
+  if (hints.website) form.append('website', hints.website)
   const res = await fetch(`${API_BASE}/api/v1/assessments/`, {
     method: 'POST',
     headers: withAuth(),
@@ -244,6 +248,29 @@ export async function createAssessment(
   })
   if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'createAssessment'))
   return parseJsonResponse<AssessmentContextPayload>(res, 'createAssessment')
+}
+
+/**
+ * Single-source-of-truth read for the whole Assessment workspace.
+ * Every tab (Overview, Evidence, Research, Signals, Decision, Reports,
+ * Activity, Feedback) consumes this instead of re-deriving state locally.
+ */
+export type AssessmentWorkspacePayload = AssessmentContextPayload
+
+export async function getActiveAssessment(): Promise<AssessmentWorkspacePayload> {
+  const res = await fetch(`${API_BASE}/api/v1/assessment-workspace/active`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getActiveAssessment failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentWorkspacePayload>(res, 'getActiveAssessment')
+}
+
+export async function getAssessmentWorkspace(assessmentId: string): Promise<AssessmentWorkspacePayload> {
+  const res = await fetch(`${API_BASE}/api/v1/assessment-workspace/${encodeURIComponent(assessmentId)}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getAssessmentWorkspace failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<AssessmentWorkspacePayload>(res, 'getAssessmentWorkspace')
 }
 
 // ── Auth chain diagnostic (release engineering) ─────────────────────────

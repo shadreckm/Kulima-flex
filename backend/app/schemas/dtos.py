@@ -46,6 +46,7 @@ class AssessmentPatchRequest(BaseModel):
     organizationName: Optional[str] = None
     sector: Optional[str] = None
     country: Optional[str] = None
+    website: Optional[str] = None
 
 
 class AskResponse(BaseModel):
