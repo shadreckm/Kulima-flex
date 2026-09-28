@@ -93,7 +93,7 @@ export default function EvidencePage() {
       // Upload all files
       const uploadPromises = Array.from(files).map(file => uploadDocument(file, selectedRunId || null))
       const results = await Promise.all(uploadPromises)
-      
+
       const trustMsg = results[0].trustScore != null ? `${results[0].trustScore}/100` : '—'
       setUploadSuccess(
         `Successfully ingested ${results.length} document(s) into Evidence Pipeline. Trust Score: ${trustMsg} · Status: ${results[0].evidenceStatus ?? 'PROCESSED'}`
@@ -107,11 +107,11 @@ export default function EvidencePage() {
           hasEvidence: true,
           pipelineStatus: 'ready',
           lastUpload: {
-            id: res.id,
-            name: res.name,
-            trustScore: res.trustScore ?? 0,
-            evidenceStatus: res.evidenceStatus ?? 'PROCESSED',
-            signals: res.signals ?? [],
+            id: results[0].id,
+            name: results[0].name,
+            trustScore: results[0].trustScore ?? 0,
+            evidenceStatus: results[0].evidenceStatus ?? 'PROCESSED',
+            signals: results[0].signals ?? [],
           },
           briefSnapshot: updatedBrief,
         })
