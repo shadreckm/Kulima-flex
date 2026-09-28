@@ -97,6 +97,77 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         if (payload := _field_payload(getattr(ctx.extraction, name, None))) is not None
     }
     atype_value = getattr(ctx.assessment_type, "value", str(ctx.assessment_type))
+    # Resolve brief data if runId is linked
+    brief = None
+    if ctx.run_id:
+        try:
+            from kulima.db import IntelligenceRepository
+            from .run_repository import RunRepository
+            run_info = RunRepository().get_run(str(ctx.run_id))
+            db_id = run_info.get("db_id") if run_info else None
+            if not db_id and str(ctx.run_id).isdigit():
+                db_id = int(ctx.run_id)
+            if db_id:
+                brief = IntelligenceRepository().load_brief(int(db_id))
+        except Exception:
+            pass
+
+    # Build research payload
+    research_payload = dict(ctx.research or {})
+    if not research_payload.get("sources") and brief:
+        research_sources = [
+            {"title": s.title, "url": s.url, "snippet": s.snippet, "source_type": getattr(s, "source_type", "research")}
+            for s in getattr(brief, "sources", []) or []
+        ]
+        research_payload = {
+            "status": "completed" if ctx.status == AssessmentStatus.COMPLETE else ("running" if ctx.status == AssessmentStatus.RUNNING else "pending"),
+            "sources": research_sources,
+            "tavily_findings": [s.snippet for s in getattr(brief, "sources", []) if getattr(s, "snippet", None)],
+            "summary": getattr(brief, "thesis", "") or "",
+            "entities": [{"name": display_entity(ctx) or ctx.organization_name or ctx.startup_name, "label": atype_value}],
+            "progress": 100 if ctx.status == AssessmentStatus.COMPLETE else (50 if ctx.status == AssessmentStatus.RUNNING else 0),
+        }
+    elif not research_payload:
+        research_payload = {
+            "status": getattr(ctx.status, "value", str(ctx.status)),
+            "sources": [
+                {"title": doc.name, "url": doc.url, "snippet": doc.raw_summary, "source_type": "document"}
+                for doc in ctx.uploaded_documents
+            ],
+            "tavily_findings": [doc.raw_summary for doc in ctx.uploaded_documents if doc.raw_summary],
+            "summary": ctx.problem_statement or "",
+            "entities": [{"name": display_entity(ctx) or ctx.organization_name or ctx.startup_name, "label": atype_value}],
+            "progress": 100 if ctx.status == AssessmentStatus.COMPLETE else (50 if ctx.status == AssessmentStatus.RUNNING else 0),
+        }
+
+    # Build reports payload
+    reports_payload = dict(ctx.reports or {})
+    if not reports_payload:
+        reports_payload = {
+            "status": "ready" if (ctx.status == AssessmentStatus.COMPLETE or brief) else "pending",
+            "runId": ctx.run_id,
+            "memoUrl": f"/api/v1/intelligence/export/{ctx.run_id}/memo" if ctx.run_id else None,
+            "fullReportUrl": f"/api/v1/intelligence/export/{ctx.run_id}/report" if ctx.run_id else None,
+            "signalsUrl": f"/api/v1/intelligence/export/{ctx.run_id}/signals" if ctx.run_id else None,
+            "dueDiligenceUrl": f"/api/v1/intelligence/export/{ctx.run_id}/due-diligence" if ctx.run_id else None,
+            "onePagerUrl": f"/api/v1/intelligence/export/{ctx.run_id}/one-pager" if ctx.run_id else None,
+        }
+
+    # If decision or signals were populated in brief but not in ctx, sync them
+    decision_payload = dict(ctx.decision or {})
+    if not decision_payload and brief:
+        decision_payload = {
+            "recommendation": getattr(brief.recommendation, "value", str(brief.recommendation)),
+            "overallScore": brief.overall_score,
+            "riskScore": brief.risk_score,
+            "confidence": brief.confidence,
+        }
+
+    signals_list = list(ctx.signals or [])
+    if not signals_list:
+        for doc in ctx.uploaded_documents:
+            signals_list.extend(doc.signals or [])
+
     return {
         "assessmentId": ctx.assessment_id,
         "assessmentType": atype_value,
@@ -126,9 +197,11 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "documentCount": len(ctx.uploaded_documents),
         "extractedTextPreview": (ctx.extracted_text or "")[:PREVIEW_CHARS],
         "extractedTextLength": ctx.extracted_text_length or len(ctx.extracted_text or ""),
-        "trustScore": ctx.trust_score,
-        "signals": list(ctx.signals),
-        "decision": dict(ctx.decision),
+        "trustScore": ctx.trust_score or (brief.trust_score if brief else None),
+        "signals": signals_list,
+        "decision": decision_payload,
+        "research": research_payload,
+        "reports": reports_payload,
         "createdAt": ctx.created_at,
         "updatedAt": ctx.updated_at,
     }

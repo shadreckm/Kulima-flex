@@ -5,9 +5,10 @@ import * as api from '../lib/api'
 import {
   contextNeedsConfirmation,
   loadAssessmentContext,
+  saveIntakeContext,
   type AssessmentContext,
 } from '../lib/assessment-store'
-import type { CurrentRunState } from '../lib/current-run'
+import { loadCurrentRun, type CurrentRunState } from '../lib/current-run'
 import { saveRecentRun } from '../lib/run-history'
 
 export type AssessmentBootState =
@@ -41,36 +42,52 @@ export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, ro
 
   useEffect(() => {
     if (!ready) return
-    const ctx = loadAssessmentContext()
-    setAssessmentContext(ctx)
-    if (!ctx?.assessmentId) {
-      setBootState('none')
-      return
-    }
-    if (hasCurrentRun) return
-    if (contextNeedsConfirmation(ctx)) {
-      setBootState('needs_confirmation')
-      return
-    }
-    if (startedRef.current === ctx.assessmentId) return
-    startedRef.current = ctx.assessmentId
-
     let cancelled = false
-    setBootState('starting')
-    api
-      .startAssessmentRun(ctx.assessmentId)
-      .then((res) => {
+    let ctx = loadAssessmentContext()
+
+    async function syncAndStart() {
+      if (!ctx?.assessmentId) {
+        try {
+          const active = await api.getActiveAssessment()
+          if (active?.assessmentId) {
+            ctx = saveIntakeContext(active)
+          }
+        } catch {
+          // ignore if no active assessment on server
+        }
+      }
+      if (cancelled) return
+      setAssessmentContext(ctx)
+      if (!ctx?.assessmentId) {
+        setBootState('none')
+        return
+      }
+
+      const currentStored = loadCurrentRun()
+      if (ctx.runId && currentStored?.runId === ctx.runId) {
+        setBootState('started')
+        return
+      }
+
+      if (contextNeedsConfirmation(ctx)) {
+        setBootState('needs_confirmation')
+        return
+      }
+      if (startedRef.current === ctx.assessmentId) return
+      startedRef.current = ctx.assessmentId
+
+      setBootState('starting')
+      try {
+        const res = await api.startAssessmentRun(ctx.assessmentId)
         if (cancelled) return
-        setCurrentRun(
-          {
-            runId: res.runId,
-            startupName: ctx.entityName || ctx.displayEntity || 'Assessment',
-            founderName: ctx.founderOrLead || '',
-            entityType: ctx.entityType,
-            status: res.status || 'running',
-          },
-          { syncUrl: false },
-        )
+        const activeRun: CurrentRunState = {
+          runId: res.runId,
+          startupName: ctx.entityName || ctx.displayEntity || 'Assessment',
+          founderName: ctx.founderOrLead || '',
+          entityType: ctx.entityType,
+          status: res.status || 'running',
+        }
+        setCurrentRun(activeRun, { syncUrl: false })
         saveRecentRun({
           runId: res.runId,
           founder: ctx.founderOrLead || '',
@@ -80,12 +97,14 @@ export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, ro
           route,
         })
         setBootState('started')
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return
         startedRef.current = null
         setBootState('error')
-      })
+      }
+    }
+
+    syncAndStart()
     return () => {
       cancelled = true
     }

@@ -80,7 +80,6 @@ export default function EvidencePage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
-    const file = files[0]
     setUploading(true)
     setError(null)
     setUploadSuccess(null)
@@ -91,10 +90,13 @@ export default function EvidencePage() {
     }
 
     try {
-      const res = await uploadDocument(file, selectedRunId || null)
-      const trustMsg = res.trustScore != null ? `${res.trustScore}/100` : '—'
+      // Upload all files
+      const uploadPromises = Array.from(files).map(file => uploadDocument(file, selectedRunId || null))
+      const results = await Promise.all(uploadPromises)
+      
+      const trustMsg = results[0].trustScore != null ? `${results[0].trustScore}/100` : '—'
       setUploadSuccess(
-        `Successfully ingested "${res.name}" into Evidence Pipeline. Trust Score: ${trustMsg} · Status: ${res.evidenceStatus ?? 'PROCESSED'}`
+        `Successfully ingested ${results.length} document(s) into Evidence Pipeline. Trust Score: ${trustMsg} · Status: ${results[0].evidenceStatus ?? 'PROCESSED'}`
       )
 
       // Refresh brief and broadcast to all tabs

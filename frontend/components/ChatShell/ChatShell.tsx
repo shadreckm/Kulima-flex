@@ -8,7 +8,6 @@ import { Badge } from '../shadcn/Badge'
 interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: string }
 
 import * as api from '../../lib/api'
-import { buildDemoModeResponse } from '../../lib/demo-chat'
 import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
 
 export default function ChatShell({ personaName, initialMessages, recommendationCard, runId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null }) {
@@ -25,7 +24,7 @@ export default function ChatShell({ personaName, initialMessages, recommendation
   const endRef = useRef<HTMLDivElement | null>(null)
 
   // Build use-case context hint to send as the first system message
-  // This removes the need for Ask IC to ask the user what they're evaluating.
+  // This removes the need for AI Analyst to ask the user what they're evaluating.
   const useCaseCtx = useCaseContextHint(loadUseCase())
   const contextHistory: Array<{ role: string; content: string }> = useCaseCtx
     ? [{ role: 'system', content: useCaseCtx }]
@@ -174,7 +173,7 @@ export default function ChatShell({ personaName, initialMessages, recommendation
           try { stream.close() } catch (e) {}
           if (!receivedText) {
             setMessages((cur) => cur.filter(m => m.id !== assistantId))
-            const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+            const fallbackResponse = "The AI Analyst is currently unavailable. Please try again later."
             simulateSSEStreaming(fallbackResponse)
           } else {
             setIsStreaming(false)
@@ -187,18 +186,18 @@ export default function ChatShell({ personaName, initialMessages, recommendation
         return
       }
 
-      // Fallback: non-streaming API or offline demo mode
+      // Fallback: non-streaming API
       try {
         const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, contextHistory) : await api.askIC(runId, text, contextHistory)
         if (res?.answer) {
           simulateSSEStreaming(res.answer)
         } else {
-          const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+          const fallbackResponse = "The AI Analyst is currently unavailable. Please try again later."
           simulateSSEStreaming(fallbackResponse)
         }
       } catch (err) {
         console.error('Ask failed', err)
-        const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+        const fallbackResponse = "The AI Analyst is currently unavailable. Please try again later."
         simulateSSEStreaming(fallbackResponse)
       } finally {
         setIsStreaming(false)
@@ -207,8 +206,8 @@ export default function ChatShell({ personaName, initialMessages, recommendation
       return
     }
 
-    // No runId: generate demo mode response
-    const fallbackResponse = buildDemoModeResponse(personaName, text, runId)
+    // No runId: inform user
+    const fallbackResponse = "No active assessment selected. Please create or start an assessment to consult the analyst."
     simulateSSEStreaming(fallbackResponse)
   }
 
@@ -227,7 +226,7 @@ export default function ChatShell({ personaName, initialMessages, recommendation
           <p className="text-xs text-slate-500">
             {runId
               ? `Evaluation context loaded${useCaseCtx ? ` · ${loadUseCase()?.label ?? ''}` : ''}`
-              : 'No evaluation selected — demo mode active'}
+              : 'No evaluation selected'}
           </p>
         </div>
         {recommendationCard ? (

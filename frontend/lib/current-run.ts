@@ -18,64 +18,13 @@ export type CurrentRunState = {
 
 const STORAGE_KEY = 'kulima_current_run'
 
-export const OSTX_CASES = [
-  {
-    startupName: 'AgriNova Malawi',
-    founderName: 'Dr. Chimwemwe Phiri',
-    liveRunId: 'ostx-agrinova-malawi',
-    recommendation: 'Invest',
-    trustScore: 88,
-    outcome: 'INVEST',
-    summary: 'Strong market, founder, and Grade-A evidence integrity.',
-  },
-  {
-    startupName: 'GreenLink Foods',
-    founderName: 'Kondwani Banda',
-    liveRunId: 'ostx-greenlink-foods',
-    recommendation: 'Observe',
-    trustScore: 64,
-    outcome: 'OBSERVE',
-    summary: 'Mixed evidence with contract conflict and power-grid risk.',
-  },
-  {
-    startupName: 'SolarHarvest Cooperative',
-    founderName: 'Blessings Mtonga',
-    liveRunId: 'ostx-solarharvest-cooperative',
-    recommendation: 'Pass',
-    trustScore: 32,
-    outcome: 'PASS',
-    summary: 'Grade-F integrity with unverified concession claims.',
-  },
-  {
-    startupName: 'HealthBridge Lagos',
-    founderName: 'Dr. Adaeze Okonkwo',
-    liveRunId: 'pilot-healthbridge-lagos',
-    recommendation: 'Review Required',
-    trustScore: 71,
-    outcome: 'REVIEW',
-    summary: 'Outcome claims are promising, but beneficiary and baseline evidence need verification.',
-  },
-  {
-    startupName: 'FarmStack Kenya Program Review',
-    founderName: 'James Kariuki',
-    liveRunId: 'pilot-farmstack-kenya',
-    recommendation: 'Observe',
-    trustScore: 58,
-    outcome: 'OBSERVE',
-    summary: 'Government program with coverage and operating evidence — verification gaps remain.',
-  },
-] as const
-
 export function findOstxCase(runId: string) {
-  return OSTX_CASES.find(c => c.liveRunId === runId || String(c.liveRunId) === String(runId))
+  return null
 }
 
 export function isDemoRunRecord(run: { runId: number | string; startupName?: string; userId?: string | null }): boolean {
   if (run.userId === null || run.userId === undefined) return true
-  const runId = String(run.runId).toLowerCase()
-  if (runId.startsWith('ostx-') || runId.startsWith('pilot-')) return true
-  const name = String(run.startupName || '').toLowerCase()
-  return ['agrinova malawi', 'greenlink foods', 'solarharvest cooperative', 'nilepay logistics', 'farmstack kenya', 'healthbridge lagos'].includes(name)
+  return false
 }
 
 export function loadCurrentRun(): CurrentRunState | null {
@@ -85,18 +34,6 @@ export function loadCurrentRun(): CurrentRunState | null {
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.runId) return null
-
-    const ostxMatch = findOstxCase(parsed.runId)
-    if (ostxMatch) {
-      return {
-        ...parsed,
-        startupName: parsed.startupName || ostxMatch.startupName,
-        founderName: parsed.founderName || ostxMatch.founderName,
-        recommendation: parsed.recommendation || ostxMatch.recommendation,
-        trustScore: parsed.trustScore ?? ostxMatch.trustScore,
-        status: parsed.status || 'completed',
-      }
-    }
     return parsed as CurrentRunState
   } catch {
     return null
@@ -105,20 +42,10 @@ export function loadCurrentRun(): CurrentRunState | null {
 
 export function saveCurrentRun(run: CurrentRunState) {
   if (typeof window === 'undefined') return
-  const ostxMatch = findOstxCase(run.runId)
-  const fullRun: CurrentRunState = ostxMatch ? {
-    ...run,
-    startupName: run.startupName || ostxMatch.startupName,
-    founderName: run.founderName || ostxMatch.founderName,
-    recommendation: run.recommendation || ostxMatch.recommendation,
-    trustScore: run.trustScore ?? ostxMatch.trustScore,
-    status: run.status || 'completed',
-  } : run
-
-  const jsonStr = JSON.stringify(fullRun)
+  const jsonStr = JSON.stringify(run)
   try { window.localStorage.setItem(STORAGE_KEY, jsonStr) } catch {}
   try { window.sessionStorage.setItem(STORAGE_KEY, jsonStr) } catch {}
-  window.dispatchEvent(new CustomEvent('kulima-current-run-changed', { detail: fullRun }))
+  window.dispatchEvent(new CustomEvent('kulima-current-run-changed', { detail: run }))
 }
 
 export function clearCurrentRun() {
@@ -149,17 +76,10 @@ export function resolveStoredRunId<T extends { runId: number | string; startupNa
     return requestedRunId
   }
 
-  const demoCase = findOstxCase(requestedRunId)
-  const expectedName = storedRun?.startupName || demoCase?.startupName
+  const expectedName = storedRun?.startupName
   const matchingRecord = expectedName
     ? records.find(record => String(record.startupName || '').toLowerCase() === expectedName.toLowerCase())
     : undefined
-
-  // If a known demo case but no matching DB record, keep the canonical demo run ID
-  // so backend can resolve it via the pilot/ostx live-run registry.
-  if (demoCase && !matchingRecord) {
-    return requestedRunId
-  }
 
   return String(matchingRecord?.runId || storedRun?.storedRunId || records[0]?.runId || '')
 }

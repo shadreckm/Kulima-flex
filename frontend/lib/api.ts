@@ -207,6 +207,8 @@ export type AssessmentContextPayload = {
   trustScore?: number | null
   signals: string[]
   decision: Record<string, any>
+  research?: Record<string, any>
+  reports?: Record<string, any>
   createdAt: string
   updatedAt: string
 }
@@ -271,6 +273,21 @@ export async function getAssessmentWorkspace(assessmentId: string): Promise<Asse
   })
   if (!res.ok) throw new Error(`getAssessmentWorkspace failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<AssessmentWorkspacePayload>(res, 'getAssessmentWorkspace')
+}
+
+export async function attachAssessmentDocuments(
+  assessmentId: string,
+  files: File[],
+): Promise<AssessmentWorkspacePayload> {
+  const form = new FormData()
+  files.forEach(f => form.append('files', f))
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}/documents`, {
+    method: 'POST',
+    headers: withAuth(),
+    body: form,
+  })
+  if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'attachAssessmentDocuments'))
+  return parseJsonResponse<AssessmentWorkspacePayload>(res, 'attachAssessmentDocuments')
 }
 
 // ── Auth chain diagnostic (release engineering) ─────────────────────────

@@ -10,13 +10,15 @@ export default function Composer({ onSend, runId }: { onSend?: (text: string, at
 
   async function onAttach(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
-    if (!files) return
-    const file = files[0]
+    if (!files || files.length === 0) return
     setUploading(true)
     try {
-      const res = await uploadDocument(file, runId)
+      // Upload all files
+      const uploadPromises = Array.from(files).map(file => uploadDocument(file, runId))
+      const results = await Promise.all(uploadPromises)
       // res: {id, name, url}
-      setAttachments(prev => [...prev, { id: res.id, name: res.name, url: res.url }])
+      const newAttachments = results.map(res => ({ id: res.id, name: res.name, url: res.url }))
+      setAttachments(prev => [...prev, ...newAttachments])
     } catch (err) {
       console.error('Upload failed', err)
       alert('File upload failed: ' + String(err))

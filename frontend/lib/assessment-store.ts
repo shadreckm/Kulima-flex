@@ -236,57 +236,23 @@ export function deriveAssessmentContext(
   let founderOrLead = ''
   let runId = ''
 
-  const lowerFile = fileName.toLowerCase()
-
-  if (lowerFile.includes('agrinova')) {
-    entityName = 'AgriNova Malawi'
-    founderOrLead = 'Dr. Chimwemwe Phiri'
-    runId = 'ostx-agrinova-malawi'
-  } else if (lowerFile.includes('greenlink')) {
-    entityName = 'GreenLink Foods'
-    founderOrLead = 'Kondwani Banda'
-    runId = 'ostx-greenlink-foods'
-  } else if (lowerFile.includes('solarharvest')) {
-    entityName = 'SolarHarvest Cooperative'
-    founderOrLead = 'Blessings Mtonga'
-    runId = 'ostx-solarharvest-cooperative'
-  } else if (lowerFile.includes('healthbridge')) {
-    entityName = 'HealthBridge Lagos'
-    founderOrLead = 'Dr. Adaeze Okonkwo'
-    runId = 'pilot-healthbridge-lagos'
-  } else if (lowerFile.includes('farmstack')) {
-    entityName = 'FarmStack Kenya Program Review'
-    founderOrLead = 'James Kariuki'
-    runId = 'pilot-farmstack-kenya'
-  } else if (fileName) {
+  if (fileName) {
     const cleanBase = fileName
       .replace(/\.[^/.]+$/, '')
       .replace(/[_\-]+/g, ' ')
-      .replace(/\b(pdf|docx|xlsx|csv|txt|pitch|deck|report|model|final|v\d+)\b/gi, '')
+      .replace(/\b(pdf|docx|pptx|xlsx|csv|txt|pitch|deck|report|model|final|v\d+)\b/gi, '')
       .trim()
-    entityName = cleanBase.length >= 3
+    entityName = cleanBase.length >= 2
       ? cleanBase.charAt(0).toUpperCase() + cleanBase.slice(1)
-      : (entityType === 'ngo' ? 'Community Health Initiative' : entityType === 'government_program' ? 'Agricultural Support Program' : 'Venture Portfolio Co')
-    founderOrLead = entityType === 'ngo' ? 'Country Director' : entityType === 'government_program' ? 'Program Coordinator' : 'Founding Team'
-    runId = `run-${Date.now().toString(36)}`
+      : (entityType === 'ngo' ? 'NGO Initiative' : entityType === 'government_program' ? 'Public Sector Program' : 'Assessment Entity')
+    founderOrLead = ''
+    runId = ''
   } else {
-    if (entityType === 'ngo') {
-      entityName = 'HealthBridge Lagos'
-      founderOrLead = 'Dr. Adaeze Okonkwo'
-      runId = 'pilot-healthbridge-lagos'
-      fileName = 'HealthBridge_ME_Report.pdf'
-    } else if (entityType === 'government_program') {
-      entityName = 'FarmStack Kenya Program Review'
-      founderOrLead = 'James Kariuki'
-      runId = 'pilot-farmstack-kenya'
-      fileName = 'FarmStack_Survey_Data.csv'
-    } else {
-      entityName = 'AgriNova Malawi'
-      founderOrLead = 'Dr. Chimwemwe Phiri'
-      runId = 'ostx-agrinova-malawi'
-      fileName = 'AgriNova_PitchDeck.pdf'
-    }
+    entityName = 'New Assessment'
+    founderOrLead = ''
+    runId = ''
   }
+
 
   return {
     entityType,

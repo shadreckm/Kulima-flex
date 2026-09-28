@@ -178,6 +178,8 @@ class AssessmentContext(BaseModel):
     trust_score: Optional[float] = None
     signals: List[str] = Field(default_factory=list)
     decision: Dict[str, Any] = Field(default_factory=dict)
+    research: Dict[str, Any] = Field(default_factory=dict)
+    reports: Dict[str, Any] = Field(default_factory=dict)
 
     # Optional intake metadata — free-form research keywords typed on the
     # landing page. They sharpen Tavily market queries without re-entry.

@@ -8,6 +8,7 @@ import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
 import { saveUseCase } from '../lib/use-case-store'
 import { INTAKE_ENTITY_TYPES, entityToAssessmentType, getEntityConfig, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
+import { clearCurrentRun, saveCurrentRun } from '../lib/current-run'
 import * as api from '../lib/api'
 import UploadGuidance from '../components/UploadGuidance/UploadGuidance'
 
@@ -47,12 +48,37 @@ function HomeInner() {
     setBusy(true); setMessage(null)
     try {
       const payload = await api.createAssessment(selectedFiles, entityToAssessmentType(type))
-      setContext(saveIntakeContext(payload)); await clearIntakeDraft(); setFiles([])
-      setMessage('Documents uploaded. Your decision workspace is ready.')
+      clearCurrentRun()
+      const saved = saveIntakeContext(payload)
+      setContext(saved)
+      await clearIntakeDraft()
+      setFiles([])
+
+      // Start run immediately
+      let activeRunId = payload.runId
+      if (!activeRunId && payload.assessmentId) {
+        try {
+          const started = await api.startAssessmentRun(payload.assessmentId)
+          if (started?.runId) activeRunId = started.runId
+        } catch (runErr) {
+          console.warn('Auto-start run notice:', runErr)
+        }
+      }
+
+      saveCurrentRun({
+        runId: activeRunId || `assessment-${payload.assessmentId}`,
+        startupName: payload.displayEntity || payload.organizationName || payload.startupName || 'Active Assessment',
+        founderName: payload.founderName || '',
+        entityType: type,
+        status: 'running',
+      })
+
+      setMessage('Assessment created. Opening your workspace…')
+      router.push('/flex')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Upload failed. Please try again.')
     } finally { setBusy(false) }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     if (resumeHandled.current || searchParams.get('resume') !== 'intake' || authStatus !== 'authenticated') return
@@ -101,7 +127,7 @@ function HomeInner() {
 
       <section id="pricing" className="border-t border-[#EAECF0] bg-[#101828] text-white"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7BE0A9]">Simple plans</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Decision intelligence that scales with you.</h2></div><div className="mt-10 grid gap-4 md:grid-cols-3">{[['Starter','Limited assessments'],['Professional','Advanced signals · Reports · Ask AI Analyst'],['Enterprise','Organizations · RBAC · Audit logs · Private workspace']].map(([name, detail], index) => <div key={name} className={`rounded-xl border p-6 ${index === 1 ? 'border-[#159A62] bg-[#143B2B]' : 'border-[#344054] bg-[#182230]'}`}><h3 className="text-lg font-bold">{name}</h3><p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{detail}</p><a href="#intake" className="mt-8 inline-block text-sm font-bold text-[#7BE0A9]">Get started →</a></div>)}</div></div></section>
 
-      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10"><div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div><div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex?run=ostx-agrinova-malawi">Case study</Link></div></footer>
+      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10"><div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div><div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex">Workspace</Link></div></footer>
     </main>
   )
 }

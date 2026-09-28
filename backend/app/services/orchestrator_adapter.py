@@ -247,10 +247,61 @@ def _sync_assessment(
     try:
         from kulima.core.assessment.models import AssessmentStatus
         from kulima.core.assessment.repository import AssessmentRepository
+        from kulima.models import UploadedEvidenceRecord, TrustScoreBreakdown, SourceAttribution
+        from datetime import datetime, timezone
+
+        ctx = AssessmentRepository().get(assessment_id, org_id=org_id)
 
         trust_score: float | None = None
         decision: dict = {}
         signals: list[str] = []
+
+        if ctx and brief is not None:
+            existing_doc_ids = {r.id for r in getattr(brief, "uploaded_evidence", []) or []}
+            brief_updated = False
+            for doc in ctx.uploaded_documents:
+                # Add signals from document
+                if doc.signals:
+                    signals.extend(doc.signals)
+                # Bridge to brief.uploaded_evidence
+                if doc.id not in existing_doc_ids:
+                    tb = TrustScoreBreakdown()
+                    if doc.trust_breakdown:
+                        try:
+                            tb = TrustScoreBreakdown.model_validate(doc.trust_breakdown)
+                        except Exception:
+                            pass
+                    evidence_record = UploadedEvidenceRecord(
+                        id=doc.id,
+                        filename=doc.name,
+                        source=f"Document Ingestion Pipeline ({doc.name})",
+                        upload_date=doc.upload_date or datetime.now(timezone.utc).isoformat(),
+                        file_type=doc.file_type or "DOCUMENT",
+                        uploader=ctx.created_by or "Assessment Reviewer",
+                        trust_breakdown=tb,
+                        evidence_status=doc.evidence_status or "CORROBORATED",
+                        evidence_items=list(doc.evidence_items or []),
+                        signals_generated=list(doc.signals or []),
+                        decision_impact=doc.decision_impact or "Supporting Evidence Attribution",
+                        audit_trail=[f"Document attached to run: {doc.name}"],
+                        raw_summary=doc.raw_summary or "",
+                    )
+                    brief.uploaded_evidence.append(evidence_record)
+                    brief.sources.append(SourceAttribution(
+                        title=f"Uploaded Document: {doc.name}",
+                        url=doc.url or f"/uploads/{doc.id}",
+                        snippet=doc.raw_summary[:250] if doc.raw_summary else f"Uploaded dossier component {doc.name}",
+                        relevance=0.95,
+                        source_type="document",
+                        confidence_score=round((doc.trust_score or 75.0) / 100.0, 2),
+                    ))
+                    brief_updated = True
+            if brief_updated:
+                try:
+                    _repo.update_brief(db_id, brief)
+                except Exception as b_err:
+                    _log.warning("Could not persist bridged evidence to brief: %s", b_err)
+
         if brief is not None:
             trust_score = float(brief.trust_score or 0.0) or None
             decision = {
@@ -262,10 +313,18 @@ def _sync_assessment(
             for record in getattr(brief, "uploaded_evidence", []) or []:
                 signals.extend(getattr(record, "signals_generated", []) or [])
 
+        # Deduplicate signals
+        seen_sig = set()
+        dedup_signals = []
+        for s in signals:
+            if s and s not in seen_sig:
+                seen_sig.add(s)
+                dedup_signals.append(s)
+
         AssessmentRepository().update_outputs(
             assessment_id,
             trust_score=trust_score,
-            signals=signals or None,
+            signals=dedup_signals or None,
             decision=decision or None,
             status=AssessmentStatus.COMPLETE,
         )

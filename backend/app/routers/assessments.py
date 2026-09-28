@@ -138,6 +138,38 @@ async def get_assessment(
         raise _handle_error(exc)
 
 
+@router.get("/{assessment_id}/workspace")
+async def get_assessment_workspace_alias(
+    assessment_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Direct alias for /api/v1/assessment-workspace/{assessment_id}."""
+    try:
+        return assessment_adapter.get_assessment(assessment_id, current.user_id, org_id=current.org_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.get("/{assessment_id}/activity")
+async def get_assessment_activity_alias(
+    assessment_id: str,
+    limit: int = 50,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Activity timeline scoped to this assessment."""
+    from kulima.core.audit.repository import AuditRepository
+    events = AuditRepository().list(
+        org_id=current.org_id,
+        assessment_id=assessment_id,
+        limit=min(max(1, limit), 200),
+    )
+    return {
+        "events": events,
+        "count": len(events),
+        "assessmentId": assessment_id,
+    }
+
+
 @router.patch("/{assessment_id}")
 async def update_assessment(
     assessment_id: str,
