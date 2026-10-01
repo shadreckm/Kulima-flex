@@ -5,10 +5,10 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { getDecisionSnapshot, getFullBrief, listStoredRuns, reportDownloadHref, type DecisionSnapshot, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { getDecisionSnapshot, getFullBrief, reportDownloadHref, type DecisionSnapshot } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
-import { loadAssessment, onAssessmentChanged } from '../../lib/assessment-store'
+import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import Link from 'next/link'
 
 type FullBrief = Record<string, any>
 
@@ -26,9 +26,7 @@ function domainScoreBar(score: number): string {
 
 export default function DecisionWorkspacePage() {
   const { status: authStatus } = useSession()
-  const searchParams = useSearchParams()
-  const [runs, setRuns] = useState<StoredRunRecord[]>([])
-  const [selectedRunId, setSelectedRunId] = useState<string>('')
+  const { data: ctx, runId, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
   const [brief, setBrief] = useState<FullBrief | null>(null)
   const [snapshot, setSnapshot] = useState<DecisionSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
@@ -36,51 +34,26 @@ export default function DecisionWorkspacePage() {
 
   useEffect(() => {
     let cancelled = false
-    async function loadRuns() {
-      const res = await listStoredRuns(50, true)
-      if (cancelled) return
-      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
-      setRuns(userRuns)
-      const fromQuery = searchParams.get('run')
-      const stored = loadCurrentRun()
-      const nextSelected = resolveStoredRunId(userRuns, fromQuery || stored?.runId || '', stored)
-      setSelectedRunId(nextSelected)
-    }
-    if (authStatus === 'authenticated') {
-      loadRuns().catch(err => setError(String(err)))
-    }
-    return () => { cancelled = true }
-  }, [authStatus, searchParams])
-
-  useEffect(() => {
-    let cancelled = false
     async function loadBrief() {
-      if (!selectedRunId) {
+      if (!runId) {
         setBrief(null)
         setSnapshot(null)
         return
       }
-      // Check shared assessment store first — avoids redundant API call after upload
-      const cached = loadAssessment()
-      if (cached?.runId === selectedRunId && cached.briefSnapshot) {
-        if (!cancelled) setBrief(cached.briefSnapshot)
-        setLoading(false)
-        // Still fetch fresh in background to ensure latest state
-      }
       setLoading(true)
       setError(null)
       try {
-        const data = await getFullBrief(selectedRunId)
+        const data = await getFullBrief(runId)
         if (!cancelled) setBrief(data)
       } catch (err) {
         if (!cancelled) setError(String(err))
       } finally {
         if (!cancelled) setLoading(false)
       }
-      // Expanded Decision Engine snapshot (Step 7) — best-effort; legacy runs
-      // may predate domain scores, in which case the scorecard stays hidden.
+      // Expanded Decision Engine snapshot — best-effort; contexts without a
+      // completed run keep the scorecard hidden.
       try {
-        const snap = await getDecisionSnapshot(selectedRunId)
+        const snap = await getDecisionSnapshot(runId)
         if (!cancelled) setSnapshot(snap)
       } catch {
         if (!cancelled) setSnapshot(null)
@@ -90,23 +63,16 @@ export default function DecisionWorkspacePage() {
       loadBrief()
     }
     return () => { cancelled = true }
-  }, [authStatus, selectedRunId])
+  }, [authStatus, runId])
 
-  // Listen for assessment updates from Evidence page (cross-tab/same-tab sync)
-  useEffect(() => {
-    const unsub = onAssessmentChanged((state) => {
-      if (!state || state.runId !== selectedRunId) return
-      if (state.briefSnapshot) setBrief(state.briefSnapshot)
-    })
-    return unsub
-  }, [selectedRunId])
+  const displayEntity = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || ''
+  const founderName = ctx?.founderName || ''
 
-  const selectedRun = useMemo(() => runs.find(run => String(run.runId) === String(selectedRunId)), [runs, selectedRunId])
-
-  // Extraction of Decision Dossier components
-  const recommendation = brief?.recommendation || 'OBSERVE'
+  // Extraction of Decision Dossier components — all derived from the
+  // Assessment Context (single source of truth), never from stored runs.
+  const recommendation = (ctx?.decision?.recommendation as string) || brief?.recommendation || 'OBSERVE'
   const confidence = brief?.confidence ?? (brief?.trust_score ? Math.min(95, brief.trust_score + 5) : 50)
-  const trustScore = brief?.trust_score ?? selectedRun?.trustScore ?? 0
+  const trustScore = brief?.trust_score ?? ctx?.trustScore ?? 0
   const isEvidenceWeak = trustScore < 55
 
   const sources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
@@ -131,11 +97,8 @@ export default function DecisionWorkspacePage() {
     signalsGenerated.push(`High Confidence Evidence: ${sources.length} independent attribution sources verified`)
   }
 
-  // Opportunity synthesis
-  const opportunities = [
-    brief?.market_assessment || 'Market expansion in under-penetrated regional agricultural supply chain.',
-    brief?.startup_assessment || 'Proprietary distribution model with strong operational traction.',
-  ].filter(Boolean)
+  // Opportunity synthesis — grounded in the brief only (no hardcoded domain copy)
+  const opportunities = [brief?.market_assessment, brief?.startup_assessment].filter(Boolean)
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
@@ -157,36 +120,40 @@ export default function DecisionWorkspacePage() {
       workspace="Decision"
       title="Decision Workspace"
       description="Review, analyze, and approve evaluations. The definitive evidence-backed decision layer: Information → Evidence → Trust → Signals → Decision."
-      runId={selectedRunId || null}
-      status={selectedRun?.archivedAt ? 'archived' : 'active'}
-      startupName={selectedRun?.startupName}
-      recommendation={selectedRun?.recommendation}
-      trustScore={selectedRun?.trustScore}
+      runId={runId}
+      status={ctx?.status === 'complete' ? 'active' : (ctx?.status || 'active')}
+      startupName={displayEntity || undefined}
+      recommendation={recommendation}
+      trustScore={trustScore || undefined}
     >
-      {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
-
-      {/* Target Run Selector & Export Action Bar */}
-      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Active Decision Target</label>
-          <select
-            className="mt-1.5 w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-bold focus:outline-none focus:border-[#0B5D3B]"
-            value={selectedRunId}
-            onChange={(e) => setSelectedRunId(e.target.value)}
-          >
-            <option value="">Select Evaluation Target…</option>
-            {runs.map(run => (
-              <option key={run.runId} value={run.runId}>
-                #{run.runId} · {run.startupName} ({run.founderName}) — Verdict: {run.recommendation || 'OBSERVE'}
-              </option>
-            ))}
-          </select>
+      {ctxError ? (
+        <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm font-medium">
+          {ctxError}{' '}
+          <Link href="/" className="underline font-bold ml-2">Create assessment</Link>
         </div>
+      ) : null}
+      {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
+      {ctxLoading || loading ? (
+        <div className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] text-sm text-slate-500 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#0B5D3B] animate-pulse" />
+          Loading decision dossier from the Assessment Context…
+        </div>
+      ) : null}
 
-        <div className="flex items-center gap-3">
-          {selectedRunId ? (
-            <a
-              href={reportDownloadHref(selectedRunId, 'memo', 'pdf')}
+      {/* Assessment Context & Export Action Bar — no run selector */}
+      {runId ? (
+        <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Assessment Context</label>
+            <div className="mt-1.5 text-sm text-slate-900 font-bold truncate">
+              {displayEntity || 'Assessment'}{founderName ? ` · Lead: ${founderName}` : ''}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {runId ? (
+              <a
+                href={reportDownloadHref(runId, 'memo', 'pdf')}
               download
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0B5D3B] hover:bg-[#08482E] text-white text-xs font-extrabold uppercase tracking-wider transition shadow-sm"
             >
@@ -215,7 +182,7 @@ export default function DecisionWorkspacePage() {
                   <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">
                     Decision Dossier
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">Evaluation #{selectedRunId}</span>
+                  <span className="text-xs text-slate-500 font-mono">Context {ctx?.assessmentId ? ctx.assessmentId.slice(0, 8) : '—'}</span>
                 </div>
 
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
@@ -230,7 +197,7 @@ export default function DecisionWorkspacePage() {
                 </h1>
 
                 <div className="text-xs text-slate-600 mt-1">
-                  Lead: <strong className="text-slate-900">{brief.founder_name}</strong> · Sector: <strong className="text-slate-900">{brief.sector || 'AgTech'}</strong> · Region: <strong className="text-slate-900">{brief.geography || 'Pan-Africa'}</strong>
+                  Lead: <strong className="text-slate-900">{brief.founder_name || founderName || '—'}</strong> · Sector: <strong className="text-slate-900">{brief.sector || ctx?.sector || 'AgTech'}</strong> · Region: <strong className="text-slate-900">{brief.geography || ctx?.country || 'Pan-Africa'}</strong>
                 </div>
               </div>
 
@@ -363,8 +330,8 @@ export default function DecisionWorkspacePage() {
                     {uploadedEvidence.map((doc, idx) => (
                       <div key={doc.id || idx} className="p-2.5 bg-[#EAF3FF] border border-[#D6E8FF] rounded-lg text-slate-800">
                         <div className="font-bold text-[#004085] flex items-center justify-between">
-                          <span>Primary Dossier: {doc.filename}</span>
-                          <span className="font-mono text-[10px]">{doc.trust_breakdown?.final_trust_score ?? 80}/100</span>
+                          <span>Primary Dossier: {doc.filename || doc.name}</span>
+                          <span className="font-mono text-[10px]">{doc.trust_breakdown?.final_trust_score ?? doc.trust_score ?? 80}/100</span>
                         </div>
                         <div className="text-[11px] text-slate-600 mt-1">{doc.raw_summary || 'Primary documentation ingested.'}</div>
                       </div>
@@ -502,7 +469,9 @@ export default function DecisionWorkspacePage() {
                 <span className="text-[10px] font-bold text-[#027A48]">Key Thesis Drivers</span>
               </div>
               <div className="space-y-2 text-xs">
-                {opportunities.map((opp, idx) => (
+                {opportunities.length === 0 ? (
+                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">No opportunity synthesis available yet.</div>
+                ) : opportunities.map((opp, idx) => (
                   <div key={idx} className="p-3 bg-[#ECFDF3] border border-[#A6F4C5] rounded-lg">
                     <div className="font-bold text-[#027A48]">Growth Driver #{idx + 1}</div>
                     <p className="text-slate-700 mt-1 text-[11px] leading-relaxed">{opp}</p>
@@ -512,7 +481,17 @@ export default function DecisionWorkspacePage() {
             </div>
           </section>
         </div>
-      ) : null}
+      ) : (!ctxLoading && !ctxError ? (
+        <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-center">
+          <div className="text-sm font-bold text-slate-700">No decision dossier generated yet</div>
+          <div className="text-xs text-slate-500 mt-1">
+            The intelligence run is either still processing or has not completed. Check the Research tab for pipeline status.
+          </div>
+          <Link href="/research" className="mt-4 inline-block px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition">
+            View Research Status
+          </Link>
+        </div>
+      ) : null)}
     </PilotWorkspaceShell>
   )
 }

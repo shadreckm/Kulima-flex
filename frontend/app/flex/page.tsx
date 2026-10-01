@@ -7,11 +7,8 @@ import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
 import CurrentRunBanner from '../../components/CurrentRunBanner/CurrentRunBanner'
-import EntityIntakeForm from '../../components/EntityIntakeForm/EntityIntakeForm'
 import AssessmentSummaryBar from '../../components/AssessmentSummaryBar/AssessmentSummaryBar'
 import * as api from '../../lib/api'
-import { entityToRunParams } from '../../lib/entity-types'
-import { saveRecentRun, updateRecentRunStatus } from '../../lib/run-history'
 import { useCurrentRun } from '../../hooks/useCurrentRun'
 import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
@@ -23,7 +20,6 @@ function FlexPageInner() {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
-  const [showCreateForm, setShowCreateForm] = useState(false)
 
   // Single intake: the shared Assessment Context drives the run identity —
   // no founder / startup / entity-type re-entry on this page.
@@ -103,35 +99,6 @@ function FlexPageInner() {
     )
   }
 
-  async function handleCreateRun(params: ReturnType<typeof entityToRunParams>) {
-    setError(null)
-    const res = await api.createRun(params.founder, params.startup, {
-      entityType: params.entityType,
-      entityMeta: params.entityMeta,
-    })
-    setRunId(res.runId)
-    setStatus(res.status)
-    setPolling(true)
-    setShowCreateForm(false)
-    const nextRun = {
-      runId: res.runId,
-      startupName: params.startup || params.founder,
-      founderName: params.founder,
-      entityType: params.entityType,
-      programName: params.entityMeta?.programName || '',
-      status: res.status,
-    }
-    setCurrentRun(nextRun)
-    saveRecentRun({
-      runId: res.runId,
-      founder: params.founder,
-      startup: params.startup || params.founder,
-      status: res.status,
-      createdAt: new Date().toISOString(),
-      route: 'flex',
-    })
-  }
-
   const activeRun = currentRun && runId ? currentRun : null
 
   return (
@@ -146,7 +113,7 @@ function FlexPageInner() {
       />
       <main className="flex flex-col gap-4">
         {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
-        {hasCurrentRun && activeRun && !showCreateForm ? (
+        {hasCurrentRun && activeRun ? (
           <>
             <CurrentRunBanner
               run={activeRun}
@@ -154,7 +121,6 @@ function FlexPageInner() {
                 clearRun()
                 setRunId(null)
                 setStatus(null)
-                setShowCreateForm(true)
               }}
             />
             {status === 'failed' ? (

@@ -35,6 +35,7 @@ from backend.app.core.auth import (  # noqa: E402
     OrgContext,
     require_permission,
 )
+from backend.app.routers.assessments import _assessment_create_error  # noqa: E402
 from kulima.core.audit.repository import (  # noqa: E402
     EVENT_TYPES,
     AuditRepository,
@@ -618,3 +619,16 @@ def test_require_permission_boundary_enforced():
         with pytest.raises(HTTPException) as exc:
             _check(denied, viewer)
         assert exc.value.status_code == 403
+
+
+def test_assessment_create_error_has_specific_code_and_preserves_cause():
+    error = HTTPException(
+        status_code=403,
+        detail={"error": True, "code": "BILLING_BLOCKED", "message": "Workspace is suspended."},
+    )
+
+    response = _assessment_create_error(error)
+
+    assert response.status_code == 403
+    assert response.detail["code"] == "ASSESSMENT_CREATE_BLOCKED"
+    assert response.detail["causeCode"] == "BILLING_BLOCKED"

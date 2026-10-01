@@ -1,6 +1,6 @@
 const API_BASE = typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_URL || '' : ''
 
-function withAuth(headers: HeadersInit = {}): HeadersInit {
+export function withAuth(headers: HeadersInit = {}): HeadersInit {
   const base: Record<string, string> = {}
   if (headers instanceof Headers) {
     headers.forEach((value, key) => {

@@ -42,12 +42,25 @@ function HomeInner() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [context, setContext] = useState<AssessmentContext | null>(null)
+  const [organization, setOrganization] = useState('')
+  const [founderOrLead, setFounderOrLead] = useState('')
+  const [website, setWebsite] = useState('')
+  const [keywords, setKeywords] = useState('')
   const resumeHandled = useRef(false)
 
-  const runIntake = useCallback(async (type: EntityType, selectedFiles: File[]) => {
+  const runIntake = useCallback(async (
+    type: EntityType,
+    selectedFiles: File[],
+    meta: { organization?: string; founderOrLead?: string; website?: string; keywords?: string } = {},
+  ) => {
     setBusy(true); setMessage(null)
     try {
-      const payload = await api.createAssessment(selectedFiles, entityToAssessmentType(type))
+      const payload = await api.createAssessment(selectedFiles, entityToAssessmentType(type), {
+        organizationName: meta.organization || undefined,
+        founderName: meta.founderOrLead || undefined,
+        website: meta.website || undefined,
+        keywords: meta.keywords || undefined,
+      })
       clearCurrentRun()
       const saved = saveIntakeContext(payload)
       setContext(saved)
@@ -85,7 +98,13 @@ function HomeInner() {
     resumeHandled.current = true
     void (async () => {
       const draft = await loadIntakeDraft()
-      if (draft?.files.length) await runIntake(draft.assessmentType, draft.files)
+      if (draft?.files.length) {
+        await runIntake(draft.assessmentType, draft.files, {
+          organization: draft.organization,
+          founderOrLead: draft.founder,
+          keywords: draft.keywords,
+        })
+      }
       else setMessage('Your previous upload session expired. Please select your documents again.')
       router.replace('/')
     })()
@@ -100,8 +119,17 @@ function HomeInner() {
   async function handleUpload() {
     if (!files.length || busy) return
     saveUseCase(assessmentType)
-    if (authStatus === 'authenticated') await runIntake(assessmentType, files)
-    else { await saveIntakeDraft(assessmentType, files); router.push(`/api/auth/signin?callbackUrl=${encodeURIComponent('/?resume=intake')}`) }
+    const meta = { organization, founderOrLead, website, keywords }
+    if (authStatus === 'authenticated') {
+      await runIntake(assessmentType, files, meta)
+    } else {
+      await saveIntakeDraft(assessmentType, files, {
+        organization,
+        founder: founderOrLead,
+        keywords,
+      })
+      router.push(`/api/auth/signin?callbackUrl=${encodeURIComponent('/?resume=intake')}`)
+    }
   }
 
   return (
@@ -115,7 +143,7 @@ function HomeInner() {
       <section id="intake" className="border-b border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]">
         <div className="mx-auto grid max-w-7xl gap-14 px-6 pb-20 pt-14 lg:grid-cols-[1fr_0.86fr] lg:items-center lg:px-10 lg:pb-28 lg:pt-24">
           <div><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Evidence and Decision Intelligence</div><h1 className="max-w-3xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn documents into <span className="text-[#159A62]">defensible decisions.</span></h1><p className="mt-7 max-w-2xl text-lg leading-8 text-[#667085]">Upload reports, proposals, business plans, financial statements, or programme documents. Kulima FLEX combines document intelligence, external research, trust scoring, climate signals, tourism intelligence, and AI analysis to generate decision-ready insights.</p><div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[#344054]"><span>✓ Evidence Intelligence</span><span>✓ Research Intelligence</span><span>✓ Decision Intelligence</span></div><div className="mt-9 flex flex-wrap gap-3"><a href="#intake" className="rounded-lg bg-[#159A62] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#117A4B]">Get Started <span aria-hidden="true">→</span></a><a href="#how-it-works" className="rounded-lg border border-[#D0D5DD] px-5 py-3 text-sm font-bold text-[#344054] transition hover:bg-[#F9FAFB]">Watch Demo <span aria-hidden="true">▷</span></a></div></div>
-          <div className="rounded-2xl border border-[#D0D5DD] bg-white p-3 shadow-[0_24px_70px_-28px_rgba(16,24,40,0.3)]"><div className="rounded-xl bg-[#F8FAFC] p-5 sm:p-7"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Start an assessment</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Bring the evidence.</h2></div><div className="rounded-lg border border-[#B7E6CC] bg-white px-2.5 py-1 text-[10px] font-bold text-[#117A4B]">SECURE INTAKE</div></div><label onDrop={event => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files) }} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} className={`mt-6 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-5 text-center transition ${dragging ? 'border-[#159A62] bg-[#EAF8F0]' : 'border-[#98A2B3] bg-white hover:border-[#159A62]'}`}><span className="flex size-10 items-center justify-center rounded-full bg-[#EAF8F0] text-xl text-[#159A62]" aria-hidden="true">↑</span><span className="mt-3 text-sm font-bold text-[#344054]">Drop documents here or browse</span><span className="mt-1 text-xs text-[#98A2B3]">PDF · DOCX · PPTX · XLSX</span><input type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.json" className="hidden" onChange={event => { addFiles(event.target.files); event.target.value = '' }} /></label>{files.length > 0 && <div className="mt-3 flex flex-col gap-2">{files.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-xs"><span className="truncate font-semibold">{file.name}</span><button type="button" onClick={() => setFiles(previous => previous.filter((_, item) => item !== index))} className="ml-3 font-bold text-[#98A2B3] hover:text-[#D92D20]" aria-label={`Remove ${file.name}`}>×</button></div>)}</div>}<button type="button" onClick={handleUpload} disabled={!files.length || busy} className="mt-4 w-full rounded-lg bg-[#101828] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1D2939] disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Analyzing documents…' : files.length ? 'Analyze documents →' : 'Select documents to begin'}</button>{message && <p className="mt-3 text-center text-xs font-semibold text-[#117A4B]">{message}</p>}<div className="mt-7 grid grid-cols-5 gap-1 text-center">{['Uploaded','Extracted','Researched','Signals','Decision'].map((label, index) => <div key={label}><div className={`mx-auto flex size-7 items-center justify-center rounded-full text-xs font-bold ${index === 0 && files.length ? 'bg-[#159A62] text-white' : 'bg-[#E4E7EC] text-[#667085]'}`}>{index + 1}</div><p className="mt-2 text-[10px] font-semibold text-[#667085]">{label}</p></div>)}</div></div></div>
+          <div className="rounded-2xl border border-[#D0D5DD] bg-white p-3 shadow-[0_24px_70px_-28px_rgba(16,24,40,0.3)]"><div className="rounded-xl bg-[#F8FAFC] p-5 sm:p-7"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Start an assessment</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Bring the evidence.</h2></div><div className="rounded-lg border border-[#B7E6CC] bg-white px-2.5 py-1 text-[10px] font-bold text-[#117A4B]">SECURE INTAKE</div></div><label onDrop={event => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files) }} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} className={`mt-6 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-5 text-center transition ${dragging ? 'border-[#159A62] bg-[#EAF8F0]' : 'border-[#98A2B3] bg-white hover:border-[#159A62]'}`}><span className="flex size-10 items-center justify-center rounded-full bg-[#EAF8F0] text-xl text-[#159A62]" aria-hidden="true">↑</span><span className="mt-3 text-sm font-bold text-[#344054]">Drop documents here or browse</span><span className="mt-1 text-xs text-[#98A2B3]">PDF · DOCX · PPTX · XLSX</span><input type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.json" className="hidden" onChange={event => { addFiles(event.target.files); event.target.value = '' }} /></label><div className="mt-4 grid gap-3"><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="block text-xs font-bold text-[#344054]">Organization Name</span><input type="text" value={organization} onChange={e => setOrganization(e.target.value)} placeholder="e.g. AgriNova Malawi" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label><label className="block"><span className="block text-xs font-bold text-[#344054]">Founder or Project Lead</span><input type="text" value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder="e.g. Dr. Chimwemwe Phiri" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="block text-xs font-bold text-[#344054]">Website <span className="font-medium text-[#98A2B3]">(optional)</span></span><input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label><label className="block"><span className="block text-xs font-bold text-[#344054]">Research Keywords <span className="font-medium text-[#98A2B3]">(optional)</span></span><input type="text" value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="climate resilience, irrigation, donor funding" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label></div></div>{files.length > 0 && <div className="mt-3 flex flex-col gap-2">{files.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-xs"><span className="truncate font-semibold">{file.name}</span><button type="button" onClick={() => setFiles(previous => previous.filter((_, item) => item !== index))} className="ml-3 font-bold text-[#98A2B3] hover:text-[#D92D20]" aria-label={`Remove ${file.name}`}>×</button></div>)}</div>}<button type="button" onClick={handleUpload} disabled={!files.length || busy} className="mt-4 w-full rounded-lg bg-[#101828] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1D2939] disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Analyzing documents…' : files.length ? 'Analyze documents →' : 'Select documents to begin'}</button>{message && <p className="mt-3 text-center text-xs font-semibold text-[#117A4B]">{message}</p>}<div className="mt-7 grid grid-cols-5 gap-1 text-center">{['Uploaded','Extracted','Researched','Signals','Decision'].map((label, index) => <div key={label}><div className={`mx-auto flex size-7 items-center justify-center rounded-full text-xs font-bold ${index === 0 && files.length ? 'bg-[#159A62] text-white' : 'bg-[#E4E7EC] text-[#667085]'}`}>{index + 1}</div><p className="mt-2 text-[10px] font-semibold text-[#667085]">{label}</p></div>)}</div></div></div>
         </div>
       </section>
 

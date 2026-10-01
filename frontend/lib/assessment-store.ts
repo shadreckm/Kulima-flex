@@ -285,16 +285,19 @@ export function saveAssessmentContext(context: AssessmentContext): void {
   // Synchronize with use-case store
   saveUseCase(context.entityType)
 
-  // Synchronize with assessment store
+  // Synchronize with assessment store — trust score comes from the real
+  // payload, never a hardcoded demo value.
   patchAssessment(context.runId, {
-    hasEvidence: true,
-    lastUpload: {
-      id: context.runId,
-      name: context.documentName || 'Primary Evidence Document',
-      trustScore: 88,
-      evidenceStatus: 'VERIFIED',
-      signals: ['Assessment context initialized from document and entity selection'],
-    },
+    hasEvidence: context.hasDocument,
+    lastUpload: context.documentName
+      ? {
+          id: context.assessmentId || context.runId,
+          name: context.documentName,
+          trustScore: context.trustScore ?? 0,
+          evidenceStatus: 'VERIFIED',
+          signals: context.signals ?? [],
+        }
+      : undefined,
   })
 }
 
@@ -407,16 +410,17 @@ export function loadAssessmentContext(): AssessmentContext | null {
     }
   } catch {}
 
-  // Fallback: build from existing run state if available
+  // Fallback: build from existing run state if available (no demo defaults in
+  // production — an empty store means the user has no assessment yet).
   const existingRun = loadCurrentRun()
   if (existingRun && existingRun.runId) {
     const entType = normalizeEntityType(existingRun.entityType)
     return {
       entityType: entType,
       entityLabel: USE_CASE_LABELS[entType] || 'Startup / Investor',
-      entityName: existingRun.startupName || 'AgriNova Malawi',
-      founderOrLead: existingRun.founderName || 'Dr. Chimwemwe Phiri',
-      documentName: 'Primary Evidence Document',
+      entityName: existingRun.startupName || 'Assessment Entity',
+      founderOrLead: existingRun.founderName || '',
+      documentName: existingRun.documentName || 'Primary Evidence Document',
       runId: existingRun.runId,
       createdAt: new Date().toISOString(),
       hasDocument: true,

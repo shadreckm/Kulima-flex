@@ -13,6 +13,7 @@ Enterprise Trust additions:
   while existing results stay readable.
 """
 
+import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from typing import List, Optional
 
@@ -28,6 +29,7 @@ from ..services.assessment_adapter import AssessmentError
 from ..services.document_adapter import InvalidUploadError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _assessment_repo_cache: AssessmentRepository | None = None
 
@@ -57,6 +59,34 @@ def _handle_error(exc: Exception) -> HTTPException:
             detail="Unsupported file type. Accepted: PDF, DOCX, PPTX, XLSX, CSV, TXT.",
         )
     return HTTPException(status_code=500, detail=str(exc))
+
+
+def _assessment_create_error(exc: Exception) -> HTTPException:
+    if not isinstance((exc), (BillingBlocked, AssessmentError, InvalidUploadError, HTTPException)):
+        logger.error("Assessment creation failed", exc_info=(type(exc), exc, exc.__traceback__))
+        return HTTPException(
+            status_code=500,
+            detail={
+                "error": True,
+                "code": "ASSESSMENT_CREATE_BLOCKED",
+                "message": "Assessment creation could not be completed.",
+            },
+        )
+
+    response = exc if isinstance(exc, HTTPException) else _handle_error(exc)
+    detail = response.detail
+    if isinstance(detail, dict):
+        cause_code = detail.get("code")
+        detail = {**detail, "code": "ASSESSMENT_CREATE_BLOCKED"}
+        if cause_code and cause_code != "ASSESSMENT_CREATE_BLOCKED":
+            detail["causeCode"] = cause_code
+    else:
+        detail = {
+            "error": True,
+            "code": "ASSESSMENT_CREATE_BLOCKED",
+            "message": str(detail),
+        }
+    return HTTPException(status_code=response.status_code, detail=detail, headers=response.headers)
 
 
 @router.get("/")
@@ -91,8 +121,8 @@ async def create_assessment(
     Extracts organisation / founder / sector / country / website / team /
     problem statement automatically so no downstream form asks for them again.
     """
-    check_rate_limit(current.user_id, "assessments:create")
     try:
+        check_rate_limit(current.user_id, "assessments:create")
         return assessment_adapter.create_assessment(
             files,
             assessmentType,
@@ -107,7 +137,7 @@ async def create_assessment(
             org_id=current.org_id,
         )
     except Exception as exc:  # noqa: BLE001
-        raise _handle_error(exc)
+        raise _assessment_create_error(exc)
 
 
 @router.get("/by-run/{run_id}")

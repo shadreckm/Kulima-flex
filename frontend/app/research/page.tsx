@@ -86,6 +86,11 @@ function ResearchPageInner() {
                 {String(status)}
               </span>
             </div>
+            <div className="flex items-center gap-4 text-xs font-bold text-slate-600 mb-1">
+              <span>Sources: {sources.length}</span>
+              <span>Findings: {findings.length}</span>
+              <span>Entities: {entities.length}</span>
+            </div>
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full bg-[#0B5D3B] transition-all duration-500 rounded-full"

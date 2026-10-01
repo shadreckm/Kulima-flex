@@ -5,18 +5,15 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
-import { getFullBrief, listStoredRuns, uploadDocument, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { getFullBrief, attachAssessmentDocuments, type AssessmentWorkspacePayload } from '../../lib/api'
+import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
-import { patchAssessment, onAssessmentChanged } from '../../lib/assessment-store'
 
 type FullBrief = Record<string, any>
 
 export default function EvidencePage() {
   const { status: authStatus } = useSession()
-  const searchParams = useSearchParams()
-  const [runs, setRuns] = useState<StoredRunRecord[]>([])
-  const [selectedRunId, setSelectedRunId] = useState<string>('')
+  const { data: ctx, assessmentId, runId, reload: reloadContext, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
   const [brief, setBrief] = useState<FullBrief | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,45 +21,15 @@ export default function EvidencePage() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
   const [pipelineReady, setPipelineReady] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadRuns() {
-      const res = await listStoredRuns(50, true)
-      if (cancelled) return
-      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
-      setRuns(userRuns)
-      const fromQuery = searchParams.get('run')
-      const stored = loadCurrentRun()
-      const nextSelected = resolveStoredRunId(userRuns, fromQuery || stored?.runId || '', stored)
-      setSelectedRunId(nextSelected)
-    }
-    if (authStatus === 'authenticated') {
-      loadRuns().catch(err => setError(String(err)))
-    }
-    return () => { cancelled = true }
-  }, [authStatus, searchParams])
-
-  // Listen for cross-tab assessment updates (e.g. upload on another tab)
-  useEffect(() => {
-    const unsub = onAssessmentChanged((state) => {
-      if (!state || state.runId !== selectedRunId) return
-      if (state.pipelineStatus === 'ready' && state.briefSnapshot) {
-        setBrief(state.briefSnapshot)
-        setPipelineReady(true)
-      }
-    })
-    return unsub
-  }, [selectedRunId])
-
   async function refreshBrief() {
-    if (!selectedRunId) {
+    if (!runId) {
       setBrief(null)
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const data = await getFullBrief(selectedRunId)
+      const data = await getFullBrief(runId)
       setBrief(data)
     } catch (err) {
       setError(String(err))
@@ -75,64 +42,48 @@ export default function EvidencePage() {
     if (authStatus === 'authenticated') {
       refreshBrief()
     }
-  }, [authStatus, selectedRunId])
+  }, [authStatus, runId])
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
+    if (!assessmentId) {
+      setError('No active assessment context — create an assessment first.')
+      return
+    }
     setUploading(true)
     setError(null)
     setUploadSuccess(null)
 
-    // Mark pipeline as uploading in the shared assessment store
-    if (selectedRunId) {
-      patchAssessment(selectedRunId, { pipelineStatus: 'uploading' })
-    }
-
     try {
-      // Upload all files
-      const uploadPromises = Array.from(files).map(file => uploadDocument(file, selectedRunId || null))
-      const results = await Promise.all(uploadPromises)
+      // Document Bridge: all files attach to the Assessment Context in ONE
+      // call. The backend re-runs the evidence chain (extraction → research →
+      // signals → decision) automatically — no duplicate ingestion, no
+      // second pipeline, no manual syncing.
+      const updated = await attachAssessmentDocuments(assessmentId, Array.from(files))
 
-      const trustMsg = results[0].trustScore != null ? `${results[0].trustScore}/100` : '—'
+      const docs = Array.isArray(updated.uploadedDocuments) ? updated.uploadedDocuments : []
+      const firstTrust = docs.length ? docs[docs.length - 1]?.trust_score : null
       setUploadSuccess(
-        `Successfully ingested ${results.length} document(s) into Evidence Pipeline. Trust Score: ${trustMsg} · Status: ${results[0].evidenceStatus ?? 'PROCESSED'}`
+        `Successfully ingested ${files.length} document(s) into the Assessment Context. ` +
+        `Trust Score: ${firstTrust != null ? `${firstTrust}/100` : '—'} · Status: ${updated.status ?? 'PROCESSING'} · ` +
+        `Evidence chain re-triggered automatically.`
       )
 
-      // Refresh brief and broadcast to all tabs
-      const updatedBrief = selectedRunId ? await getFullBrief(selectedRunId).catch(() => null) : null
-
-      if (selectedRunId) {
-        patchAssessment(selectedRunId, {
-          hasEvidence: true,
-          pipelineStatus: 'ready',
-          lastUpload: {
-            id: results[0].id,
-            name: results[0].name,
-            trustScore: results[0].trustScore ?? 0,
-            evidenceStatus: results[0].evidenceStatus ?? 'PROCESSED',
-            signals: results[0].signals ?? [],
-          },
-          briefSnapshot: updatedBrief,
-        })
-      }
-
-      if (updatedBrief) setBrief(updatedBrief)
-      else await refreshBrief()
+      // Refresh the shared context and the derived brief
+      await reloadContext()
+      if (runId) await refreshBrief().catch(() => null)
       setPipelineReady(true)
     } catch (err: any) {
       const msg = err.message || String(err)
       setError(`Document upload failed: ${msg}`)
-      if (selectedRunId) {
-        patchAssessment(selectedRunId, { pipelineStatus: 'error', pipelineError: msg })
-      }
     } finally {
       setUploading(false)
       e.target.value = ''
     }
   }
 
-  const selectedRun = useMemo(() => runs.find(run => String(run.runId) === String(selectedRunId)), [runs, selectedRunId])
+  const displayEntity = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || ''
   const ei = brief?.evidence_integrity || null
   /** Tavily / web research sources — Source A */
   const researchSources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
@@ -167,14 +118,15 @@ export default function EvidencePage() {
       workspace="Evidence"
       title="Evidence Integrity & Ingestion Workspace"
       description="Deterministic claim verification, primary document ingestion, source attribution, and transparent Trust Engine breakdown."
-      runId={selectedRunId || null}
-      status={selectedRun?.archivedAt ? 'archived' : 'active'}
-      startupName={selectedRun?.startupName}
-      recommendation={selectedRun?.recommendation}
-      trustScore={selectedRun?.trustScore}
+      runId={runId || null}
+      status={ctx?.status || 'active'}
+      startupName={displayEntity}
+      recommendation={(ctx?.decision?.recommendation as string) || undefined}
+      trustScore={ctx?.trustScore ?? undefined}
     >
+      {ctxError ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{ctxError}</div> : null}
       {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
-      {runs.length === 0 ? (
+      {ctx && (ctx.documentCount ?? ctx.uploadedDocuments?.length ?? 0) === 0 ? (
         <div className="rounded-[12px] border border-[#DDE6F0] bg-white p-5 text-sm text-slate-600 shadow-saas">
           <div className="font-bold text-slate-800">No documents uploaded yet</div>
           <div className="mt-1 text-xs text-slate-500">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
@@ -188,7 +140,7 @@ export default function EvidencePage() {
       ) : null}
 
       {/* Auto-flow: pipeline ready — direct user to next steps */}
-      {pipelineReady && selectedRunId ? (
+      {pipelineReady && runId ? (
         <section className="p-4 bg-[#ECFDF3] border border-[#A6F4C5] rounded-[12px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="text-sm font-extrabold text-[#027A48]">✓ Evidence Pipeline Complete</div>
@@ -198,19 +150,19 @@ export default function EvidencePage() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <a
-              href={`/decision?run=${encodeURIComponent(selectedRunId)}`}
+              href={`/decision?id=${encodeURIComponent(assessmentId || '')}`}
               className="px-3 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-extrabold uppercase tracking-wider hover:bg-[#08482E] transition"
             >
               Decision →
             </a>
             <a
-              href={`/signals?run=${encodeURIComponent(selectedRunId)}`}
+              href={`/signals?id=${encodeURIComponent(assessmentId || '')}`}
               className="px-3 py-2 rounded-lg border border-[#0B5D3B] text-[#0B5D3B] text-xs font-extrabold uppercase tracking-wider hover:bg-[#ECFDF3] transition"
             >
               Signals →
             </a>
             <a
-              href={`/reports?run=${encodeURIComponent(selectedRunId)}`}
+              href={`/reports?id=${encodeURIComponent(assessmentId || '')}`}
               className="px-3 py-2 rounded-lg border border-[#DDE6F0] text-slate-700 text-xs font-extrabold uppercase tracking-wider hover:border-[#0B5D3B] transition"
             >
               Reports →
@@ -220,7 +172,7 @@ export default function EvidencePage() {
       ) : null}
 
       {/* Evidence Corroboration Status Banner */}
-      {selectedRunId ? (
+      {runId ? (
         <section className={`p-4 rounded-[12px] border flex items-center gap-3 text-xs font-semibold ${
           isCorroborated
             ? 'bg-[#ECFDF3] border-[#A6F4C5] text-[#027A48]'
@@ -252,27 +204,21 @@ export default function EvidencePage() {
         </section>
       ) : null}
 
-      {/* Control Bar: Run Selector & Ingestion Upload Trigger */}
+      {/* Control Bar: Assessment Context identity + Ingestion Upload Trigger */}
       <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Active Evaluation Target</label>
-          <select
-            className="mt-1.5 w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-bold focus:outline-none focus:border-[#0B5D3B]"
-            value={selectedRunId}
-            onChange={(e) => setSelectedRunId(e.target.value)}
-          >
-            <option value="">Select Evaluation Target…</option>
-            {runs.map(run => (
-              <option key={run.runId} value={run.runId}>
-                #{run.runId} · {run.startupName} ({run.founderName}) — Trust: {run.trustScore ?? '—'}
-              </option>
-            ))}
-          </select>
+          <div className="mt-1.5 w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-bold truncate">
+            {displayEntity || 'Assessment'} · {ctx?.assessmentTypeLabel || 'Assessment'}{ctx?.founderName ? ` · ${ctx.founderName}` : ''}
+          </div>
+          {assessmentId ? (
+            <div className="mt-1 text-[10px] font-mono text-slate-400 truncate">Context: {assessmentId}</div>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3">
           {/* Document Intelligence Mode badge — shown when no AI run is attached */}
-          {!brief?.executive_summary && selectedRunId ? (
+          {!brief?.executive_summary && runId ? (
             <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EAF3FF] border border-[#D6E8FF] text-[10px] font-extrabold uppercase tracking-wider text-[#004085]">
               📄 Document Intelligence Mode
             </span>
@@ -300,10 +246,10 @@ export default function EvidencePage() {
       </section>
 
       {/* Governance Activity Timeline — per-assessment audit trail (Phase 4) */}
-      {selectedRunId ? <ActivityTimeline runId={selectedRunId} limit={50} /> : null}
+      {runId ? <ActivityTimeline runId={runId} limit={50} /> : null}
 
       {/* Decision Intelligence Summary Block */}
-      {brief ? (
+      {ctx ? (
         <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
           <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#DDE6F0]">
             <div>
@@ -311,11 +257,11 @@ export default function EvidencePage() {
               <h2 className="text-base font-extrabold text-slate-900">Decision Intelligence Summary</h2>
             </div>
             <span className={`text-xs px-3 py-1 rounded-full font-black uppercase tracking-wider ${
-              brief.recommendation === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-              brief.recommendation === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+              (brief?.recommendation || ctx?.decision?.recommendation) === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
+              (brief?.recommendation || ctx?.decision?.recommendation) === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
               'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
             }`}>
-              {brief.recommendation || 'OBSERVE'}
+              {brief?.recommendation || (ctx?.decision?.recommendation as string) || 'OBSERVE'}
             </span>
           </div>
 
@@ -323,7 +269,7 @@ export default function EvidencePage() {
             <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Recommendation Rationale</span>
               <p className="text-slate-800 font-medium leading-relaxed">
-                {brief.executive_summary || 'INSUFFICIENT EVIDENCE: No executive briefing generated yet.'}
+                {brief?.executive_summary || 'INSUFFICIENT EVIDENCE: No executive briefing generated yet.'}
               </p>
             </div>
 
