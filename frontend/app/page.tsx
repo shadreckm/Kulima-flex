@@ -135,13 +135,17 @@ function HomeInner() {
     void (async () => {
       const draft = await loadIntakeDraft()
       if (draft?.files.length) {
+        // runIntake pushes /flex itself — do NOT fall through to replace('/')
+        // afterwards, or the user is yanked back to the landing page after
+        // the assessment is created.
         await runIntake(draft.assessmentType, draft.files, {
           organization: draft.organization,
           founderOrLead: draft.founder,
           keywords: draft.keywords,
         })
+        return
       }
-      else setMessage('Your previous upload session expired. Please select your documents again.')
+      setMessage('Your previous upload session expired. Please select your documents again.')
       router.replace('/')
     })()
   }, [authStatus, searchParams, router, runIntake])
