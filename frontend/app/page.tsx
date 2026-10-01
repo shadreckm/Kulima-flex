@@ -8,7 +8,6 @@ import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
 import { saveUseCase } from '../lib/use-case-store'
 import { INTAKE_ENTITY_TYPES, entityToAssessmentType, getEntityConfig, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
-import { clearCurrentRun, saveCurrentRun } from '../lib/current-run'
 import * as api from '../lib/api'
 import UploadGuidance from '../components/UploadGuidance/UploadGuidance'
 
@@ -61,7 +60,6 @@ function HomeInner() {
         website: meta.website || undefined,
         keywords: meta.keywords || undefined,
       })
-      clearCurrentRun()
       const saved = saveIntakeContext(payload)
       setContext(saved)
       await clearIntakeDraft()
@@ -78,13 +76,9 @@ function HomeInner() {
         }
       }
 
-      saveCurrentRun({
-        runId: activeRunId || `assessment-${payload.assessmentId}`,
-        startupName: payload.displayEntity || payload.organizationName || payload.startupName || 'Active Assessment',
-        founderName: payload.founderName || '',
-        entityType: type,
-        status: 'running',
-      })
+      // Persist the run identity straight into the Assessment Context —
+      // no legacy current-run store.
+      saveIntakeContext({ ...payload, runId: activeRunId || payload.runId || '' })
 
       setMessage('Assessment created. Opening your workspace…')
       router.push('/flex')
@@ -112,7 +106,8 @@ function HomeInner() {
 
   function addFiles(incoming: FileList | null) {
     if (!incoming?.length) return
-    setFiles(previous => [...previous, ...Array.from(incoming).filter(file => !previous.some(item => item.name === file.name && item.size === file.size))])
+    const selectedFiles = Array.from(incoming)
+    setFiles(previous => [...previous, ...selectedFiles.filter(file => !previous.some(item => item.name === file.name && item.size === file.size))])
     setMessage(null)
   }
 

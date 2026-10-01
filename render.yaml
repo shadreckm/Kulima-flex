@@ -4,6 +4,12 @@
 # After connecting the GitHub repo, apply this blueprint or mirror these
 # settings in the Render dashboard.
 
+envVarGroups:
+  - name: kulima-auth
+    envVars:
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+
 services:
   - type: web
     name: kulima-os-api
@@ -19,14 +25,16 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: NEXTAUTH_SECRET
-        sync: false
+      - fromGroup: kulima-auth
       - key: OPENAI_API_KEY
         sync: false
       - key: TAVILY_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        sync: false
+        fromService:
+          type: web
+          name: kulima-flex-web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: KULIMA_DB_PATH
         value: /data/kulima.db
       - key: OPENAI_MODEL
@@ -92,3 +100,37 @@ services:
         value: "10"
       - key: KULIMA_ADMIN_EMAILS
         sync: false
+
+  - type: web
+    name: kulima-flex-web
+    runtime: node
+    region: oregon
+    rootDir: frontend
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start -- -p $PORT
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: NEXTAUTH_URL
+        fromService:
+          type: web
+          name: kulima-flex-web
+          envVarKey: RENDER_EXTERNAL_URL
+      - fromGroup: kulima-auth
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AZURE_AD_CLIENT_ID
+        sync: false
+      - key: AZURE_AD_CLIENT_SECRET
+        sync: false
+      - key: AZURE_AD_TENANT_ID
+        sync: false
+      - key: KULIMA_BACKEND_HOSTPORT
+        fromService:
+          type: web
+          name: kulima-os-api
+          property: hostport

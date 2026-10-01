@@ -6,78 +6,50 @@ import { useSession, signIn } from 'next-auth/react'
 import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
-import CurrentRunBanner from '../../components/CurrentRunBanner/CurrentRunBanner'
 import AssessmentSummaryBar from '../../components/AssessmentSummaryBar/AssessmentSummaryBar'
 import * as api from '../../lib/api'
-import { useCurrentRun } from '../../hooks/useCurrentRun'
 import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
-  const { currentRun, ready, setCurrentRun, clearRun, hasCurrentRun } = useCurrentRun()
-
-  const [runId, setRunId] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [polling, setPolling] = useState(false)
-
-  // Single intake: the shared Assessment Context drives the run identity —
-  // no founder / startup / entity-type re-entry on this page.
+  // Assessment Context drives everything — no legacy current-run store.
   const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
-    ready,
-    hasCurrentRun,
-    setCurrentRun,
     route: 'flex',
   })
 
+  const runId = assessmentContext?.runId || null
+  const [statusOverride, setStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [polling, setPolling] = useState(false)
+  const status = statusOverride ?? assessmentContext?.status ?? null
+
   useEffect(() => {
-    if (bootState === 'started') setPolling(true)
+    setPolling(bootState === 'started')
   }, [bootState])
 
   useEffect(() => {
-    if (!ready || !currentRun?.runId) return
-    setRunId(currentRun.runId)
-    setStatus(currentRun.status || 'completed')
-    api.getRunStatus(currentRun.runId)
-      .then((s) => {
+    if (!runId || !polling) return
+    let cancelled = false
+    const interval = setInterval(async () => {
+      try {
+        const s = await api.getRunStatus(runId)
+        if (cancelled) return
         setStatus(s.status)
-        setCurrentRun(
-          { ...currentRun, status: s.status, storedRunId: currentRun.storedRunId || (s.dbId ? String(s.dbId) : currentRun.storedRunId) },
-          { syncUrl: false },
-        )
-      })
-      .catch(() => setStatus(currentRun.status || 'completed'))
-  }, [ready, currentRun?.runId])
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined
-    if (runId && polling) {
-      interval = setInterval(async () => {
-        try {
-          const s = await api.getRunStatus(runId)
-          setStatus(s.status)
-          updateRecentRunStatus(runId, s.status)
-          if (currentRun) {
-            setCurrentRun(
-              { ...currentRun, runId, status: s.status, storedRunId: s.dbId ? String(s.dbId) : currentRun.storedRunId },
-              { syncUrl: false },
-            )
-          }
-          if (s.status === 'completed' || s.status === 'failed') {
-            setPolling(false)
-            clearInterval(interval)
-          }
-        } catch (err) {
-          setError(String(err))
+        if (s.status === 'completed' || s.status === 'failed') {
           setPolling(false)
-          clearInterval(interval)
         }
-      }, 3000)
+      } catch (err) {
+        if (!cancelled) setError(String(err))
+        setPolling(false)
+      }
+    }, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
     }
-    return () => clearInterval(interval)
-  }, [runId, polling, currentRun, setCurrentRun])
+  }, [runId, polling])
 
-  if (authStatus === 'loading' || !ready) {
+  if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
         Checking session…
@@ -99,30 +71,20 @@ function FlexPageInner() {
     )
   }
 
-  const activeRun = currentRun && runId ? currentRun : null
-
   return (
     <div className="min-h-screen bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
       <NavigationSidebar
         workspace="AI Analyst Workspace"
         runId={runId}
         status={status}
-        startupName={activeRun?.startupName}
-        recommendation={activeRun?.recommendation}
-        trustScore={activeRun?.trustScore}
+        startupName={assessmentContext?.displayEntity || assessmentContext?.entityName}
+        recommendation={assessmentContext?.decision?.recommendation}
+        trustScore={assessmentContext?.trustScore}
       />
       <main className="flex flex-col gap-4">
         {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
-        {hasCurrentRun && activeRun ? (
+        {runId ? (
           <>
-            <CurrentRunBanner
-              run={activeRun}
-              onClear={() => {
-                clearRun()
-                setRunId(null)
-                setStatus(null)
-              }}
-            />
             {status === 'failed' ? (
               <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
                 This evaluation run encountered an error. Start a new evaluation or contact support.
@@ -184,13 +146,18 @@ function FlexPageInner() {
             )}
           </section>
         ) : (
-          <EntityIntakeForm
-            onSubmit={handleCreateRun}
-            error={error}
-            title="Start AI Analyst Evaluation"
-            subtitle="No shared assessment context found — create one to skip these fields next time. Enter the entity details once to begin an evidence-backed analysis."
-            submitLabel="Start Evaluation"
-          />
+          <section className="rounded-xl border border-[#DDE6F0] bg-white p-5 shadow-saas sm:p-6">
+            <h1 className="text-lg font-bold text-slate-900">No assessment context found</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Create an assessment from your documents to open the AI Analyst workspace.
+            </p>
+            <Link
+              href="/"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#08482E] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B5D3B]"
+            >
+              Start an assessment
+            </Link>
+          </section>
         )}
       </main>
       <ContextPanel type="flex" runId={runId} status={status} />

@@ -8,8 +8,15 @@ from urllib.parse import urlparse
 from tavily import TavilyClient
 
 from kulima.config import get_settings
-from kulima.core.security.tavily_guard import guard
 from kulima.models import SourceAttribution
+
+
+def _tavily_guard():
+    """Lazy import to avoid a circular import: kulima.core re-exports
+    ResearchEngine from this module, and tavily_guard lives under kulima.core."""
+    from kulima.core.security.tavily_guard import guard
+
+    return guard
 
 _HIGH_AUTHORITY_DOMAINS = (
     "crunchbase.com",
@@ -54,7 +61,7 @@ class ResearchEngine:
         # contact details and other sensitive strings never leave the platform.
         # Only public entity metadata (org name, founder, sector, country)
         # is ever forwarded to the third-party research provider.
-        safe_query = guard.sanitize_query(f"{query}{africa_boost}".strip())
+        safe_query = _tavily_guard().sanitize_query(f"{query}{africa_boost}".strip())
         response = self.client.search(
             query=safe_query,
             search_depth=depth,

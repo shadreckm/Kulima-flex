@@ -4,7 +4,12 @@
 // trust dashboard) and Billing (plans, checkout, PayChangu status).
 // All requests go through the authenticated Next.js proxy at /api/v1.
 
-const API_BASE = typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_URL || '' : ''
+const API_BASE = typeof window === 'undefined'
+  ? process.env.KULIMA_BACKEND_URL
+    || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
+    || process.env.NEXT_PUBLIC_API_URL
+    || ''
+  : ''
 
 async function readText(res: Response): Promise<string> {
   try {

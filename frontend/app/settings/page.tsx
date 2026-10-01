@@ -4,12 +4,11 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { listStoredRuns, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord } from '../../lib/current-run'
+import { listAssessments, type AssessmentWorkspacePayload } from '../../lib/api'
 
 export default function SettingsPage() {
   const { status: authStatus, data: session } = useSession()
-  const [runs, setRuns] = useState<StoredRunRecord[]>([])
+  const [assessments, setAssessments] = useState<AssessmentWorkspacePayload[]>([])
   const [error, setError] = useState<string | null>(null)
   const [origin, setOrigin] = useState<string>('')
 
@@ -19,12 +18,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     let cancelled = false
-    async function loadRuns() {
-      const res = await listStoredRuns(20, true)
-      if (!cancelled) setRuns(res.runs.filter(run => !isDemoRunRecord(run)))
+    async function loadAssessments() {
+      const res = await listAssessments(50)
+      if (!cancelled) setAssessments(res.assessments)
     }
     if (authStatus === 'authenticated') {
-      loadRuns().catch(err => setError(String(err)))
+      loadAssessments().catch(err => setError(String(err)))
     }
     return () => { cancelled = true }
   }, [authStatus])
@@ -86,16 +85,16 @@ export default function SettingsPage() {
           <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider pb-2.5 border-b border-[#DDE6F0]">Platform Summary</h2>
           <div className="space-y-2 text-sm text-slate-700">
             <div className="flex justify-between">
-              <span className="text-slate-400">Stored evaluations:</span>
-              <span className="font-semibold text-slate-900">{runs.length}</span>
+              <span className="text-slate-400">Assessments:</span>
+              <span className="font-semibold text-slate-900">{assessments.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Active:</span>
-              <span className="font-semibold text-slate-900">{runs.filter(run => !run.archivedAt).length}</span>
+              <span className="font-semibold text-slate-900">{assessments.filter(a => !a.status || a.status !== 'archived').length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Archived:</span>
-              <span className="font-semibold text-slate-900">{runs.filter(run => run.archivedAt).length}</span>
+              <span className="font-semibold text-slate-900">{assessments.filter(a => a.status === 'archived').length}</span>
             </div>
           </div>
           <p className="text-xs text-slate-400 pt-1">Report downloads and feedback use the authenticated proxy route.</p>
@@ -107,7 +106,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           {[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: 'Runs', href: '/runs' },
+            { label: 'Assessments', href: '/assessments' },
             { label: 'AI Analyst Workspace', href: '/flex' },
             { label: 'Signals', href: '/signals' },
             { label: 'Evidence', href: '/evidence' },

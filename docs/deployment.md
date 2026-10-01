@@ -1,5 +1,7 @@
 # Kulima OS Web — Deployment Guide (Closed Beta / Public Demo)
 
+This guide describes the current Vercel + Render deployment. The staged Render frontend and Supabase migration analysis is in [render-supabase-migration.md](render-supabase-migration.md); do not cut over until its auth, database, storage, and workflow gates pass.
+
 This document describes how to deploy **Kulima OS Web** with:
 
 - **Frontend:** Next.js app on Vercel (`frontend/`)

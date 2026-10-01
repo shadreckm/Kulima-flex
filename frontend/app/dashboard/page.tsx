@@ -4,42 +4,27 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { getPilotAnalytics, listLiveRuns, listStoredRuns, type LiveRunRecord, type PilotAnalyticsMetrics, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord } from '../../lib/current-run'
+import { listAssessments, type AssessmentWorkspacePayload } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
-function metric(metrics: PilotAnalyticsMetrics | null, key: string): string {
-  if (!metrics) return '—'
-  const value = metrics[key]
-  if (typeof value === 'number') {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1)
-  }
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (typeof value === 'string') return value
-  return '—'
-}
-
 export default function DashboardPage() {
   const { status: authStatus } = useSession()
-  const [metrics, setMetrics] = useState<PilotAnalyticsMetrics | null>(null)
-  const [liveRuns, setLiveRuns] = useState<LiveRunRecord[]>([])
-  const [storedRuns, setStoredRuns] = useState<StoredRunRecord[]>([])
+  const [assessments, setAssessments] = useState<AssessmentWorkspacePayload[]>([])
+  const [activeAssessment, setActiveAssessment] = useState<AssessmentWorkspacePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       try {
-        const [analyticsRes, liveRes, storedRes] = await Promise.all([
-          getPilotAnalytics(),
-          listLiveRuns(20),
-          listStoredRuns(20, true),
-        ])
+        const assessmentsRes = await listAssessments(50)
         if (cancelled) return
-        setMetrics(analyticsRes)
-        setLiveRuns(liveRes.runs.filter(run => run.userId != null))
-        setStoredRuns(storedRes.runs.filter(run => !isDemoRunRecord(run)))
+        setAssessments(assessmentsRes.assessments || [])
+        // Set the most recent assessment as active
+        if (assessmentsRes.assessments && assessmentsRes.assessments.length > 0) {
+          setActiveAssessment(assessmentsRes.assessments[0])
+        }
       } catch (err) {
         if (!cancelled) setError(String(err))
       }
@@ -72,16 +57,14 @@ export default function DashboardPage() {
     )
   }
 
-  const archivedRuns = storedRuns.filter(run => run.archivedAt)
-  const activeStoredRuns = storedRuns.filter(run => !run.archivedAt)
-  const latestRuns = [...storedRuns].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 5)
-  const activeEvaluations = activeStoredRuns.length + liveRuns.length
+  const activeAssessments = assessments.filter(a => a.status !== 'archived')
+  const completedAssessments = assessments.filter(a => a.status === 'complete' || a.status === 'completed')
 
   return (
     <PilotWorkspaceShell
       workspace="Dashboard"
-      title="Executive Dashboard"
-      description="Active evaluations, trust distribution, and outcome performance at a glance."
+      title="Assessment Inventory"
+      description="View all assessments, their status, trust scores, and decisions."
     >
       {error ? (
         <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
@@ -104,7 +87,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="px-3 py-1.5 rounded-lg bg-[#ECFDF3] border border-[#A6F4C5] text-[11px] font-bold text-[#027A48] uppercase tracking-wider">
-            Pipeline Active
+            Assessment Context Active
           </div>
           <div className="px-3 py-1.5 rounded-lg bg-[#EAF3FF] border border-[#D6E8FF] text-[11px] font-bold text-[#004085] uppercase tracking-wider">
             v2.0
@@ -116,34 +99,34 @@ export default function DashboardPage() {
       <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           {
-            label: 'Active Evaluations',
-            value: String(activeEvaluations),
-            accent: activeEvaluations > 0 ? 'text-[#12B76A]' : 'text-slate-900',
-            sub: `${liveRuns.length} live · ${activeStoredRuns.length} stored`,
+            label: 'Total Assessments',
+            value: String(assessments.length),
+            accent: assessments.length > 0 ? 'text-[#12B76A]' : 'text-slate-900',
+            sub: `${activeAssessments.length} active · ${completedAssessments.length} complete`,
           },
           {
-            label: 'Average Trust Score',
-            value: metric(metrics, 'average_trust'),
+            label: 'Active Assessment',
+            value: activeAssessment?.displayEntity || activeAssessment?.organizationName || '—',
             accent: 'text-slate-900',
-            sub: 'across all evaluations',
+            sub: activeAssessment?.status || 'No active assessment',
           },
           {
-            label: 'Decision Accuracy',
-            value: metric(metrics, 'average_score'),
+            label: 'Status',
+            value: activeAssessment?.status || '—',
             accent: 'text-slate-900',
-            sub: 'pipeline average score',
+            sub: 'of active assessment',
           },
           {
-            label: 'Evidence Coverage',
-            value: `${metric(metrics, 'evidence_coverage')}%`,
+            label: 'Trust Score',
+            value: activeAssessment?.trustScore ? String(activeAssessment.trustScore) : '—',
             accent: 'text-slate-900',
-            sub: 'of evaluations with evidence',
+            sub: 'of active assessment',
           },
           {
-            label: 'Outcome Success Rate',
-            value: metric(metrics, 'average_score') !== '—' ? `${metric(metrics, 'average_score')}%` : '—',
+            label: 'Documents',
+            value: String(activeAssessment?.uploadedDocuments?.length || 0),
             accent: 'text-slate-900',
-            sub: 'successful completed outcomes',
+            sub: 'uploaded to assessment',
           },
         ].map(({ label, value, accent, sub }) => (
           <div key={label} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex flex-col gap-1">
@@ -154,85 +137,38 @@ export default function DashboardPage() {
         ))}
       </section>
 
-      {/* Secondary Metrics Grid */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          ['Stored Runs', metric(metrics, 'total_runs')],
-          ['Live Runs', String(liveRuns.length)],
-          ['Archived Runs', String(archivedRuns.length)],
-          ['Average Confidence', metric(metrics, 'average_confidence')],
-        ].map(([label, value]) => (
-          <div key={label} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500">{label}</div>
-            <div className="mt-1.5 text-2xl font-black text-slate-900 tracking-tight">{value}</div>
-          </div>
-        ))}
-      </section>
-
-      {/* Live Runs and Recent Stored Runs */}
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-          <div className="flex items-center justify-between mb-4 pb-2.5 border-b border-[#DDE6F0]">
-            <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Active Evaluations</h2>
-            <span className="text-xs text-slate-500 font-semibold">{liveRuns.length} Live</span>
-          </div>
-          <div className="space-y-3">
-            {liveRuns.length === 0 ? (
-              <div className="py-6 text-center">
-                <div className="text-xs font-semibold text-slate-500">No active evaluations.</div>
-                <div className="text-[11px] text-slate-400 mt-1">Upload documents or create a new evaluation in the Runs workspace.</div>
-                <Link href="/runs" className="mt-3 inline-block text-xs font-bold text-[#0B5D3B] hover:underline">
-                  Go to Runs →
-                </Link>
-              </div>
-            ) : liveRuns.map(run => (
-              <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-xs font-bold text-slate-900 break-all">{run.runId}</div>
-                  <div className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white text-slate-700 border border-[#DDE6F0]">
-                    {run.status}
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Created: {run.createdAt || '—'}{run.completedAt ? ` · Completed: ${run.completedAt}` : ''}
-                </div>
-                {run.error ? <div className="text-xs text-red-600 font-semibold mt-1">{run.error}</div> : null}
-              </div>
-            ))}
-          </div>
+      {/* Assessment List */}
+      <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+        <div className="flex items-center justify-between mb-4 pb-2.5 border-b border-[#DDE6F0]">
+          <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">All Assessments</h2>
+          <span className="text-xs text-slate-500 font-semibold">{assessments.length}</span>
         </div>
-
-        <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-          <div className="flex items-center justify-between mb-4 pb-2.5 border-b border-[#DDE6F0]">
-            <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Recent Evaluations</h2>
-            <span className="text-xs text-slate-500 font-semibold">{latestRuns.length} Loaded</span>
-          </div>
-          <div className="space-y-3">
-            {latestRuns.length === 0 ? (
-              <div className="py-6 text-center">
-                <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
-                <div className="text-[11px] text-slate-400 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
-                <Link href="/runs" className="mt-3 inline-block text-xs font-bold text-[#0B5D3B] hover:underline">
-                  Go to Runs →
+        <div className="space-y-3">
+          {assessments.length === 0 ? (
+            <div className="py-6 text-center">
+              <div className="text-sm font-bold text-slate-700">No assessments yet</div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                Create your first assessment by uploading documents from the{' '}
+                <Link href="/" className="text-[#0B5D3B] font-bold hover:underline">landing page</Link>.
+              </div>
+            </div>
+          ) : assessments.map(assessment => (
+            <div key={assessment.assessmentId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-900 truncate">{assessment.displayEntity || assessment.organizationName || assessment.startupName}</div>
+                  <div className="text-[11px] text-slate-500">{assessment.founderName}</div>
+                  <div className="text-[10px] text-slate-400 mt-1.5">Status: {assessment.status}</div>
+                </div>
+                <Link
+                  href={`/flex?assessmentId=${assessment.assessmentId}`}
+                  className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white text-slate-700 border border-[#DDE6F0] hover:bg-slate-50 shrink-0"
+                >
+                  View
                 </Link>
               </div>
-            ) : latestRuns.map(run => (
-              <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-900 truncate">{run.startupName}</div>
-                  <div className="text-[11px] text-slate-500">{run.founderName}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    Score: {run.overallScore ?? '—'} · Grade: {run.integrityGrade ?? '—'}
-                  </div>
-                </div>
-                {run.trustScore != null ? (
-                  <TrustGauge score={run.trustScore} size="sm" showLabel={false} />
-                ) : (
-                  <span className="text-xs text-slate-400 italic">No score</span>
-                )}
-              </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </section>
     </PilotWorkspaceShell>

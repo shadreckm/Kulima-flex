@@ -4,15 +4,15 @@ GET /api/v1/auth/diagnostic exercises the EXACT same dependency chain as the
 protected endpoints (get_current_user → get_current_org) and returns either:
 
     {"ok": true,  "auth": ..., "org": {...}}          — full chain works
-    {"ok": false, "code": "SESSION_MISSING"|"SESSION_INVALID"|"SESSION_EXPIRED"|"BACKEND_AUTH_FAILED"|"ORG_CONTEXT_MISSING", ...}
+    {"ok": false, "code": "SESSION_MISSING"|"SESSION_INVALID"|"TOKEN_VERIFICATION_FAILED"|"ORG_CONTEXT_MISSING"|"RBAC_DENIED", ...}
 
 because FastAPI exception handlers (see main.http_exception_handler) now
 surface the top-level `code`, the response tells the release engineer exactly
 where the chain broke:
   - SESSION_MISSING          → proxy did not forward an Authorization header
                                (Vercel NEXTAUTH_SECRET missing / no session cookie)
-  - SESSION_INVALID          → backend rejected the minted token →
-                               **NEXTAUTH_SECRET mismatch between Vercel and Render**
+    - SESSION_INVALID          → frontend/backend signing-secret fingerprints differ
+    - TOKEN_VERIFICATION_FAILED → signature, expiry, claims or algorithm validation failed
   - ORG_CONTEXT_MISSING      → token valid but workspace provisioning failed
 """
 from __future__ import annotations

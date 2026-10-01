@@ -143,6 +143,7 @@ class AssessmentRepository:
         trust_score: Optional[float] = None,
         signals: Optional[list[str]] = None,
         decision: Optional[dict] = None,
+        research: Optional[dict] = None,
         status: Optional[AssessmentStatus] = None,
     ) -> Optional[AssessmentContext]:
         """Record pipeline outputs (trust, signals, decision) back onto the context."""
@@ -155,6 +156,8 @@ class AssessmentRepository:
             ctx.signals = list(signals)
         if decision is not None:
             ctx.decision = dict(decision)
+        if research is not None:
+            ctx.research = dict(research)
         if status is not None:
             ctx.status = status
         return self.save(ctx)

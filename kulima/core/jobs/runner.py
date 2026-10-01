@@ -167,31 +167,96 @@ class JobRunner:
             raise ValueError(f"Unknown job kind: {job.kind}")
 
     async def _execute_research_job(self, job: Job) -> dict[str, any]:
-        """Execute a research job (Tavily OSINT)."""
-        # Import here to avoid circular dependencies
-        from kulima.research import ResearchEngine
+        """Run the intelligence pipeline from a durable research job."""
+        from backend.app.services import orchestrator_adapter
 
         _log.info("Executing research job for case %s", job.case_id)
-        research_engine = ResearchEngine()
-
-        # Extract query parameters from job payload
-        queries = job.payload.get("queries", [])
         founder = job.payload.get("founder", "")
         startup = job.payload.get("startup", "")
+        sector_hint = job.payload.get("sector_hint", "")
+        user_id = job.payload.get("user_id")
+        assessment_id = job.payload.get("assessment_id")
+        document_ids = job.payload.get("document_ids", [])
+        run_id = job.payload.get("run_id")
+        case = self.case_service.get_case(job.case_id)
+        org_id = job.payload.get("org_id") or (case.org_id if case else None)
 
-        # Execute research
-        results = await asyncio.to_thread(
-            research_engine.research_bundle,
-            queries,
-            founder_name=founder,
-            startup_name=startup,
+        try:
+            research_engine = orchestrator_adapter.get_orchestrator().research
+            research_bundle = await asyncio.to_thread(
+                research_engine.research_bundle,
+                founder,
+                startup,
+                sector_hint,
+            )
+        except Exception as research_exc:  # noqa: BLE001 — documents remain usable without Tavily
+            _log.warning("External research unavailable; continuing with assessment documents: %s", research_exc)
+            research_bundle = {"founder": [], "startup": [], "market": [], "risks": []}
+
+        fallback_used = False
+        research_payload = None
+        fallback_signal_titles: list[str] = []
+        try:
+            orchestrator = orchestrator_adapter.get_orchestrator()
+            brief = await asyncio.to_thread(
+                orchestrator.analyze,
+                founder,
+                startup,
+                user_id=user_id,
+                sector_hint=sector_hint,
+                research_results=research_bundle,
+            )
+        except Exception as exc:  # noqa: BLE001 — only OpenAI outages use document intelligence fallback
+            if not orchestrator_adapter.is_openai_unavailable(exc):
+                raise
+            _log.warning(
+                "OpenAI unavailable for run %s; using Document Intelligence Mode: %s",
+                run_id,
+                exc,
+            )
+            brief, research_payload, fallback_signal_titles = orchestrator_adapter.build_document_intelligence_fallback(
+                founder,
+                startup,
+                user_id=user_id,
+                org_id=org_id,
+                assessment_id=assessment_id,
+                sector_hint=sector_hint,
+                research_bundle=research_bundle,
+                failure=exc,
+            )
+            fallback_used = True
+        db_id = await asyncio.to_thread(
+            orchestrator_adapter._repo.save_brief,
+            brief,
+            user_id,
+            org_id,
+        )
+        if run_id:
+            await asyncio.to_thread(
+                orchestrator_adapter._run_repo.update_run_completed,
+                run_id,
+                db_id=db_id,
+            )
+        await asyncio.to_thread(
+            orchestrator_adapter._sync_assessment,
+            assessment_id,
+            document_ids,
+            db_id,
+            brief,
+            org_id=org_id,
+            research=research_payload,
+            generated_signal_titles=fallback_signal_titles,
         )
 
         return {
-            "sources_count": len(results.get("sources", [])),
-            "queries_executed": len(queries),
+            "sources_count": len(brief.sources),
+            "db_id": db_id,
+            "run_id": run_id,
+            "assessment_id": assessment_id,
+            "mode": "document_intelligence" if fallback_used else "ai_assisted",
             "founder": founder,
             "startup": startup,
+            "sector_hint": sector_hint,
         }
 
     async def _execute_extraction_job(self, job: Job) -> dict[str, any]:

@@ -7,10 +7,10 @@ import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import {
   getDecisionHistory,
   getOutcomeIntelligence,
+  isDemoRunRecord,
   saveOutcome,
   type OutcomeUpdatePayload,
 } from '../../lib/api'
-import { isDemoRunRecord } from '../../lib/current-run'
 
 type Tab = 'history' | 'intelligence' | 'calibration' | 'meal' | 'timeline'
 

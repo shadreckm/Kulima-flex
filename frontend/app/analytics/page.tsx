@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { getPilotAnalytics, listStoredRuns, type PilotAnalyticsMetrics, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord } from '../../lib/current-run'
+import { getPilotAnalytics, listStoredRuns, isDemoRunRecord, type PilotAnalyticsMetrics, type StoredRunRecord } from '../../lib/api'
 
 function metric(metrics: PilotAnalyticsMetrics | null, key: string): string {
   if (!metrics) return '—'

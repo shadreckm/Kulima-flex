@@ -153,7 +153,12 @@ def demo_ask_signals_answer(case: Case, signals: list[Signal], question: str) ->
     return _banner() + body
 
 
-def doc_intelligence_ask_ic_answer(brief: InvestmentBrief, question: str) -> str:
+def doc_intelligence_ask_ic_answer(
+    brief: InvestmentBrief,
+    question: str,
+    *,
+    assessment_context: dict | None = None,
+) -> str:
     """Production fallback: answers from stored evaluation data when OpenAI is unavailable.
 
     Uses: uploaded documents, evidence store, evidence/trust/risk/completeness scores,
@@ -202,6 +207,38 @@ def doc_intelligence_ask_ic_answer(brief: InvestmentBrief, question: str) -> str
         f"- Document Trust (avg): {avg_doc_trust}\n"
         + (f"- Completeness: {ei.completeness_score:.0f}/100\n" if (ei and hasattr(ei, 'completeness_score') and ei.completeness_score is not None) else "")
     )
+
+    context_section = ""
+    if assessment_context:
+        research = assessment_context.get("research") or {}
+        decision = assessment_context.get("decision") or {}
+        context_signals = assessment_context.get("signals") or []
+        sources = research.get("sources") or []
+        context_lines = [
+            f"Assessment type: {assessment_context.get('assessmentTypeLabel') or 'Assessment'}",
+            f"Research status: {research.get('status') or 'not available'}",
+        ]
+        if research.get("message"):
+            context_lines.append(f"Research mode: {research['message']}")
+        if research.get("summary"):
+            context_lines.append(f"Research summary: {' '.join(str(research['summary']).split())[:700]}")
+        if sources:
+            context_lines.append("Research sources: " + "; ".join(
+                str(source.get("title") or source.get("url") or "Source")
+                for source in sources[:6]
+            ))
+        if context_signals:
+            context_lines.append("Generated signals:\n" + "\n".join(
+                f"- {' '.join(str(signal).split())[:300]}" for signal in context_signals[:8]
+            ))
+        if decision:
+            recommendation = decision.get("recommendation")
+            overall = decision.get("overallScore")
+            if recommendation:
+                context_lines.append(f"Assessment decision: {recommendation}")
+            if isinstance(overall, (int, float)):
+                context_lines.append(f"Assessment score: {overall:.0f}/100")
+        context_section = "\n\n**Shared Assessment Context:**\n" + "\n".join(context_lines)
 
     if any(k in q for k in ("invest", "recommend", "should i", "verdict", "decision")):
         body = (
@@ -268,7 +305,7 @@ def doc_intelligence_ask_ic_answer(brief: InvestmentBrief, question: str) -> str
             f"**Next Step:** {brief.next_steps[0] if brief.next_steps else 'Open Evidence and Decision workspaces.'}"
         )
 
-    return _doc_intelligence_banner(brief) + body
+    return _doc_intelligence_banner(brief) + body + context_section
 
 
 def doc_intelligence_ask_signals_answer(case: Case, signals: list[Signal], question: str) -> str:

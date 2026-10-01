@@ -8,8 +8,6 @@ import {
   saveIntakeContext,
   type AssessmentContext,
 } from '../lib/assessment-store'
-import { loadCurrentRun, type CurrentRunState } from '../lib/current-run'
-import { saveRecentRun } from '../lib/run-history'
 
 export type AssessmentBootState =
   | 'idle'
@@ -20,28 +18,29 @@ export type AssessmentBootState =
   | 'error'
 
 type Options = {
-  /** True once the current-run store has hydrated. */
-  ready: boolean
-  /** True when a run is already active (auto-start is skipped). */
-  hasCurrentRun: boolean
-  setCurrentRun: (run: CurrentRunState, options?: { syncUrl?: boolean }) => void
-  route: 'flex' | 'signals'
+  /** Deprecated legacy param — ignored. The Assessment Context is the only gate. */
+  ready?: boolean
+  /** Deprecated legacy param — ignored. */
+  hasCurrentRun?: boolean
+  /** Deprecated legacy param — ignored. Run state lives in the context. */
+  setCurrentRun?: (run: unknown, options?: unknown) => void
+  route?: string
 }
 
 /**
- * Single-intake bootstrap: when the shared Assessment Context exists but no
- * run has started yet, start (or reuse) the intelligence run automatically —
- * Tavily research is driven by the extracted entity, so the user is never
- * asked for the founder or organisation again (Steps 5 & 8).
+ * Single-intake bootstrap, Assessment-Context-only.
+ *
+ * When the shared Assessment Context exists but no run has started yet, start
+ * (or reuse) the intelligence run automatically. Run identity is resolved from
+ * the context, never from a legacy localStorage current-run store.
  */
-export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, route }: Options) {
+export function useAssessmentBootstrap(options: Options = {}) {
   const [assessmentContext, setAssessmentContext] = useState<AssessmentContext | null>(null)
   const [bootState, setBootState] = useState<AssessmentBootState>('idle')
   const [attempt, setAttempt] = useState(0)
   const startedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!ready) return
     let cancelled = false
     let ctx = loadAssessmentContext()
 
@@ -63,8 +62,8 @@ export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, ro
         return
       }
 
-      const currentStored = loadCurrentRun()
-      if (ctx.runId && currentStored?.runId === ctx.runId) {
+      // A run is already attached to this assessment — reuse it.
+      if (ctx.runId) {
         setBootState('started')
         return
       }
@@ -80,22 +79,15 @@ export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, ro
       try {
         const res = await api.startAssessmentRun(ctx.assessmentId)
         if (cancelled) return
-        const activeRun: CurrentRunState = {
+        // Persist the runId straight into the Assessment Context — no
+        // legacy current-run store, no recent-run history.
+        ctx = {
+          ...ctx,
           runId: res.runId,
-          startupName: ctx.entityName || ctx.displayEntity || 'Assessment',
-          founderName: ctx.founderOrLead || '',
-          entityType: ctx.entityType,
-          status: res.status || 'running',
+          status: (res.status as AssessmentContext['status']) || 'running',
         }
-        setCurrentRun(activeRun, { syncUrl: false })
-        saveRecentRun({
-          runId: res.runId,
-          founder: ctx.founderOrLead || '',
-          startup: ctx.entityName || ctx.displayEntity || 'Assessment',
-          status: res.status || 'running',
-          createdAt: new Date().toISOString(),
-          route,
-        })
+        saveIntakeContext(ctx)
+        setAssessmentContext(ctx)
         setBootState('started')
       } catch {
         if (cancelled) return
@@ -108,7 +100,7 @@ export function useAssessmentBootstrap({ ready, hasCurrentRun, setCurrentRun, ro
     return () => {
       cancelled = true
     }
-  }, [ready, hasCurrentRun, setCurrentRun, route, attempt])
+  }, [attempt])
 
   /** Re-attempt the automatic run start after a failure. */
   const retry = useCallback(() => {

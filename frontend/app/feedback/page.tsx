@@ -2,21 +2,23 @@
 
 import React, { useEffect, useState, Suspense } from 'react'
 import { useSession, signIn } from 'next-auth/react'
-import { useSearchParams } from 'next/navigation'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import {
-  listStoredRuns,
   submitRunFeedback,
   getRunFeedback,
   listAllFeedback,
-  type StoredRunRecord,
   type FeedbackRecord,
 } from '../../lib/api'
-import { isDemoRunRecord, loadCurrentRun, resolveStoredRunId } from '../../lib/current-run'
+import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import Link from 'next/link'
 
 type Tab = 'submit' | 'review' | 'dashboard'
+
+/**
+ * Feedback is bound DIRECTLY to the Assessment Context (assessmentId).
+ * No run selection — run identity comes from the shared Assessment Context.
+ */
 
 function StarDisplay({ rating }: { rating: number }) {
   return (
@@ -45,12 +47,13 @@ function RatingBar({ value, total }: { value: number; total: number }) {
 
 function FeedbackPageInner() {
   const { status: authStatus } = useSession()
-  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<Tab>('submit')
 
+  // Single source of truth: the shared Assessment Context. Feedback binds to
+  // the active assessment (assessmentId) — run identity comes from the context.
+  const { data: ctx, assessmentId, runId, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
+
   // Submit tab state
-  const [runs, setRuns] = useState<StoredRunRecord[]>([])
-  const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [userName, setUserName] = useState('')
   const [rating, setRating] = useState(4)
   const [comment, setComment] = useState('')
@@ -68,36 +71,21 @@ function FeedbackPageInner() {
   const [dashLoading, setDashLoading] = useState(false)
   const [dashError, setDashError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadRuns() {
-      const res = await listStoredRuns(50, true)
-      if (cancelled) return
-      const userRuns = res.runs.filter(run => !isDemoRunRecord(run))
-      setRuns(userRuns)
-      const paramRun = searchParams.get('run')
-      const stored = loadCurrentRun()
-      const nextSelected = resolveStoredRunId(userRuns, paramRun || stored?.runId || '', stored)
-      setSelectedRunId(nextSelected)
-    }
-    if (authStatus === 'authenticated') {
-      loadRuns().catch(err => setSubmitError(String(err)))
-    }
-    return () => { cancelled = true }
-  }, [authStatus, searchParams])
+  const displayEntity = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || ''
+  const trustScore = ctx?.trustScore ?? null
 
-  // Load review data when switching to Review tab or when selectedRunId changes
+  // Load review data when switching to Review tab — bound to the context run
   useEffect(() => {
-    if (activeTab !== 'review' || !selectedRunId || authStatus !== 'authenticated') return
+    if (activeTab !== 'review' || !runId || authStatus !== 'authenticated') return
     let cancelled = false
     setReviewLoading(true)
     setReviewError(null)
-    getRunFeedback(selectedRunId)
+    getRunFeedback(runId)
       .then(res => { if (!cancelled) setRunFeedback(res.feedback) })
       .catch(err => { if (!cancelled) setReviewError(String(err)) })
       .finally(() => { if (!cancelled) setReviewLoading(false) })
     return () => { cancelled = true }
-  }, [activeTab, selectedRunId, authStatus])
+  }, [activeTab, runId, authStatus])
 
   // Load dashboard data when switching to Dashboard tab
   useEffect(() => {
@@ -136,18 +124,21 @@ function FeedbackPageInner() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!runId) {
+      setSubmitError('No active assessment run — create an assessment first.')
+      return
+    }
     setSubmitting(true)
     setSubmitError(null)
     setSubmitMessage(null)
     try {
-      await submitRunFeedback(selectedRunId, { userName, rating, comment })
-      setSubmitMessage('Feedback recorded successfully.')
+      // Feedback binds to the Assessment Context run identity (assessmentId → runId)
+      await submitRunFeedback(runId, { userName, rating, comment })
+      setSubmitMessage('Feedback recorded against the active assessment.')
       setComment('')
       setRating(4)
       // Refresh review and dashboard data silently
-      if (selectedRunId) {
-        getRunFeedback(selectedRunId).then(res => setRunFeedback(res.feedback)).catch(() => {})
-      }
+      getRunFeedback(runId).then(res => setRunFeedback(res.feedback)).catch(() => {})
       listAllFeedback(200).then(res => setAllFeedback(res.feedback)).catch(() => {})
     } catch (err) {
       setSubmitError(String(err))
@@ -155,8 +146,6 @@ function FeedbackPageInner() {
       setSubmitting(false)
     }
   }
-
-  const selectedRun = runs.find(run => String(run.runId) === String(selectedRunId))
 
   // Dashboard aggregates
   const totalFeedback = allFeedback.length
@@ -175,12 +164,21 @@ function FeedbackPageInner() {
       workspace="Feedback"
       title="Evaluation Feedback"
       description="Submit reviewer feedback, review per-evaluation history, and monitor the feedback dashboard."
-      runId={selectedRunId || null}
-      status={selectedRun?.archivedAt ? 'archived' : 'active'}
-      startupName={selectedRun?.startupName}
-      recommendation={selectedRun?.recommendation}
-      trustScore={selectedRun?.trustScore}
+      runId={runId || null}
+      status={ctx?.status || 'active'}
+      startupName={displayEntity}
+      recommendation={(ctx?.decision?.recommendation as string) || undefined}
+      trustScore={trustScore ?? undefined}
     >
+      {ctxError ? (
+        <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm font-medium">
+          {ctxError} — <Link href="/" className="underline font-bold">create an assessment</Link> to submit feedback.
+        </div>
+      ) : null}
+      {assessmentId ? (
+        <div className="text-[10px] font-mono text-slate-400">Bound to assessment: {assessmentId}</div>
+      ) : null}
+
       {/* Tab Bar */}
       <div className="flex gap-1 p-1 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0]">
         {TABS.map(tab => (
@@ -219,12 +217,12 @@ function FeedbackPageInner() {
             </div>
           )}
 
-          {runs.length === 0 ? (
+          {!ctx && !ctxLoading ? (
             <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-center">
-              <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
-              <div className="text-xs text-slate-500 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
-              <Link href="/runs" className="mt-4 inline-block px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition">
-                Go to Runs
+              <div className="text-sm font-bold text-slate-700">No active assessment</div>
+              <div className="text-xs text-slate-500 mt-1">Create an assessment from your documents to record feedback against it.</div>
+              <Link href="/" className="mt-4 inline-block px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition">
+                Create Assessment
               </Link>
             </div>
           ) : (
@@ -233,23 +231,9 @@ function FeedbackPageInner() {
                 <form onSubmit={handleSubmit} className="p-6 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas space-y-5">
                   <div className="pb-3 border-b border-[#DDE6F0]">
                     <h2 className="text-base font-extrabold text-slate-900">Submit Evaluation Feedback</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Captures decision committee input for institutional review tracking.</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">Select Evaluation Target</label>
-                    <select
-                      className="mt-1.5 w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-medium focus:outline-none focus:border-[#0B5D3B]"
-                      value={selectedRunId}
-                      onChange={(e) => setSelectedRunId(e.target.value)}
-                    >
-                      <option value="">Select Evaluation Target…</option>
-                      {runs.map(run => (
-                        <option key={run.runId} value={run.runId}>
-                          #{run.runId} · {run.startupName} · {run.founderName} (Trust: {run.trustScore ?? '—'})
-                        </option>
-                      ))}
-                    </select>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Bound to the active Assessment Context — <strong className="text-slate-700">{displayEntity || 'Assessment'}</strong>.
+                    </p>
                   </div>
 
                   <div>
@@ -294,7 +278,7 @@ function FeedbackPageInner() {
 
                   <button
                     type="submit"
-                    disabled={submitting || !selectedRunId}
+                    disabled={submitting || !runId}
                     className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-[#0B5D3B] text-white text-xs font-extrabold uppercase tracking-wider hover:bg-[#08482E] transition disabled:opacity-50 shadow-sm"
                   >
                     {submitting ? 'Recording Feedback…' : 'Submit Review Feedback'}
@@ -307,27 +291,27 @@ function FeedbackPageInner() {
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-3 pb-2 border-b border-[#DDE6F0]">
                     Trust Assessment
                   </h3>
-                  {selectedRun ? (
+                  {ctx ? (
                     <div className="space-y-4">
-                      <TrustGauge score={selectedRun.trustScore} size="lg" showLabel={true} />
+                      <TrustGauge score={trustScore} size="lg" showLabel={true} />
                       <div className="pt-3 border-t border-[#DDE6F0] text-xs text-slate-600 space-y-1.5">
                         <div className="flex justify-between">
                           <span className="text-slate-400">Entity:</span>
-                          <span className="font-bold text-slate-900">{selectedRun.startupName}</span>
+                          <span className="font-bold text-slate-900">{displayEntity}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Recommendation:</span>
-                          <span className="font-bold text-slate-900">{selectedRun.recommendation || '—'}</span>
+                          <span className="font-bold text-slate-900">{(ctx.decision?.recommendation as string) || '—'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Integrity Grade:</span>
-                          <span className="font-bold text-slate-900">{selectedRun.integrityGrade || '—'}</span>
+                          <span className="text-slate-400">Status:</span>
+                          <span className="font-bold text-slate-900">{ctx.status || '—'}</span>
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div className="text-xs text-slate-500 italic py-4">
-                      Select an evaluation target to view trust score and verification telemetry.
+                      Trust telemetry comes from the active Assessment Context.
                     </div>
                   )}
                 </div>
@@ -340,31 +324,12 @@ function FeedbackPageInner() {
       {/* ── TAB: REVIEW ── */}
       {activeTab === 'review' && (
         <div className="space-y-4">
-          {/* Run selector for review */}
-          <div className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex items-center gap-4">
-            <div className="flex-1">
-              <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
-                Select Evaluation to Review Feedback
-              </label>
-              <select
-                className="w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 font-medium focus:outline-none focus:border-[#0B5D3B]"
-                value={selectedRunId}
-                onChange={(e) => setSelectedRunId(e.target.value)}
-              >
-                <option value="">Select Evaluation…</option>
-                {runs.map(run => (
-                  <option key={run.runId} value={run.runId}>
-                    #{run.runId} · {run.startupName} (Trust: {run.trustScore ?? '—'})
-                  </option>
-                ))}
-              </select>
+          {/* Assessment header — bound to the active Assessment Context */}
+          <div className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas flex items-center justify-between gap-4">
+            <div className="text-xs text-slate-500">
+              Feedback for the active assessment — <span className="font-bold text-slate-900">{displayEntity || 'Assessment'}</span>
+              {ctx?.assessmentTypeLabel ? ` · ${ctx.assessmentTypeLabel}` : ''}
             </div>
-            {selectedRun && (
-              <div className="shrink-0 text-right text-xs">
-                <div className="font-extrabold text-slate-900">{selectedRun.startupName}</div>
-                <div className="text-slate-500">{selectedRun.recommendation || '—'} · Grade {selectedRun.integrityGrade || '—'}</div>
-              </div>
-            )}
           </div>
 
           {reviewError && (
@@ -373,13 +338,13 @@ function FeedbackPageInner() {
 
           {reviewLoading ? (
             <div className="p-8 text-center text-sm text-slate-400">Loading feedback…</div>
-          ) : !selectedRunId ? (
+          ) : !runId ? (
             <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] text-center text-sm text-slate-500">
-              Select an evaluation to view its feedback history.
+              No assessment run attached to the active context yet.
             </div>
           ) : runFeedback.length === 0 ? (
             <div className="p-8 bg-white rounded-[12px] border border-[#DDE6F0] text-center">
-              <div className="text-sm font-bold text-slate-700">No feedback recorded for this evaluation.</div>
+              <div className="text-sm font-bold text-slate-700">No feedback recorded for this assessment.</div>
               <div className="text-xs text-slate-400 mt-1">Submit feedback using the Submit Feedback tab.</div>
               <button
                 onClick={() => setActiveTab('submit')}
@@ -392,7 +357,7 @@ function FeedbackPageInner() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-extrabold text-slate-900">
-                  {runFeedback.length} Feedback {runFeedback.length === 1 ? 'Record' : 'Records'} — {selectedRun?.startupName}
+                  {runFeedback.length} Feedback {runFeedback.length === 1 ? 'Record' : 'Records'} — {displayEntity}
                 </h3>
                 <div className="text-xs text-slate-500">
                   Avg: {(runFeedback.reduce((s, f) => s + f.rating, 0) / runFeedback.length).toFixed(1)}/5

@@ -1,5 +1,4 @@
-import { saveCurrentRun, loadCurrentRun } from './current-run'
-import { saveUseCase, loadUseCase, USE_CASE_LABELS, type UseCaseSelection } from './use-case-store'
+import { USE_CASE_LABELS, saveUseCase } from './use-case-store'
 import type { EntityType } from './entity-types'
 
 export type AssessmentContextStatus =
@@ -85,6 +84,20 @@ export type AssessmentContext = {
   signals?: string[]
   decision?: Record<string, any> | null
   updatedAt?: string
+
+  // ── Phase 6: full workspace state hangs off the Assessment Context ──────
+  /** Web research intelligence (Tavily sources, OSINT) for this assessment. */
+  research?: Record<string, any> | null
+  /** Structured signal domain summary (scores, risks, opportunities). */
+  signalsSummary?: Record<string, any> | null
+  /** Latest decision snapshot (recommendation, rationale, confidence). */
+  decisionSnapshot?: Record<string, any> | null
+  /** Generated reports metadata (memo, report, due-diligence, one-pager). */
+  reports?: Record<string, any> | null
+  /** Governance activity timeline entries for this assessment. */
+  activity?: Array<Record<string, any>>
+  /** Reviewer feedback records bound to this assessmentId. */
+  feedback?: Array<Record<string, any>>
 }
 
 /** Mirrors kulima.core.assessment.service.CONFIRMATION_THRESHOLD. */
@@ -268,19 +281,10 @@ export function deriveAssessmentContext(
   }
 }
 
-/** Persist assessment context once, updating current-run and use-case stores */
+/** Persist assessment context once, updating the use-case store */
 export function saveAssessmentContext(context: AssessmentContext): void {
   if (typeof window === 'undefined') return
   persistContext(context)
-
-  // Synchronize with current run store so every workspace reuses this context
-  saveCurrentRun({
-    runId: context.runId,
-    startupName: context.entityName,
-    founderName: context.founderOrLead,
-    entityType: context.entityType,
-    status: 'completed',
-  })
 
   // Synchronize with use-case store
   saveUseCase(context.entityType)
@@ -381,19 +385,29 @@ export function saveIntakeContext(payload: Record<string, any>): AssessmentConte
         ? (payload.decision as Record<string, any>)
         : existing?.decision ?? null,
     updatedAt: String(payload.updatedAt || new Date().toISOString()),
+    // ── Phase 6: workspace state fields ────────────────────────────────────
+    research: payload.research && typeof payload.research === 'object'
+      ? (payload.research as Record<string, any>)
+      : existing?.research ?? null,
+    signalsSummary: payload.signalsSummary && typeof payload.signalsSummary === 'object'
+      ? (payload.signalsSummary as Record<string, any>)
+      : existing?.signalsSummary ?? null,
+    decisionSnapshot: payload.decisionSnapshot && typeof payload.decisionSnapshot === 'object'
+      ? (payload.decisionSnapshot as Record<string, any>)
+      : existing?.decisionSnapshot ?? null,
+    reports: payload.reports && typeof payload.reports === 'object'
+      ? (payload.reports as Record<string, any>)
+      : existing?.reports ?? null,
+    activity: Array.isArray(payload.activity)
+      ? (payload.activity as Array<Record<string, any>>)
+      : existing?.activity ?? [],
+    feedback: Array.isArray(payload.feedback)
+      ? (payload.feedback as Array<Record<string, any>>)
+      : existing?.feedback ?? [],
   }
 
   persistContext(ctx)
   saveUseCase(entityType)
-  if (ctx.runId) {
-    saveCurrentRun({
-      runId: ctx.runId,
-      startupName: ctx.entityName || undefined,
-      founderName: ctx.founderOrLead || undefined,
-      entityType: ctx.entityType,
-      status: ctx.status === 'complete' ? 'completed' : ctx.status || 'running',
-    })
-  }
   return ctx
 }
 
@@ -409,24 +423,6 @@ export function loadAssessmentContext(): AssessmentContext | null {
       }
     }
   } catch {}
-
-  // Fallback: build from existing run state if available (no demo defaults in
-  // production — an empty store means the user has no assessment yet).
-  const existingRun = loadCurrentRun()
-  if (existingRun && existingRun.runId) {
-    const entType = normalizeEntityType(existingRun.entityType)
-    return {
-      entityType: entType,
-      entityLabel: USE_CASE_LABELS[entType] || 'Startup / Investor',
-      entityName: existingRun.startupName || 'Assessment Entity',
-      founderOrLead: existingRun.founderName || '',
-      documentName: existingRun.documentName || 'Primary Evidence Document',
-      runId: existingRun.runId,
-      createdAt: new Date().toISOString(),
-      hasDocument: true,
-      autoInitialized: true,
-    }
-  }
 
   return null
 }

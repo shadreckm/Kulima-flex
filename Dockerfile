@@ -25,8 +25,10 @@ COPY backend /app/backend
 ENV PYTHONPATH=/app
 ENV KULIMA_DB_PATH=/data/kulima.db
 
-# Persist SQLite + uploads on mounted volume in production
-RUN mkdir -p /data /app/backend/uploads
+# Persist SQLite and the current filesystem-backed uploads on Render's disk.
+RUN mkdir -p /data/uploads \
+    && rm -rf /app/backend/uploads \
+    && ln -s /data/uploads /app/backend/uploads
 
 EXPOSE 8000
 

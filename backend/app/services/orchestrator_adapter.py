@@ -45,6 +45,268 @@ def get_orchestrator() -> IntelligenceOrchestrator:
     return _orchestrator
 
 
+def is_openai_unavailable(exc: BaseException) -> bool:
+    """Identify unavailable OpenAI requests through wrapped pipeline errors."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    unavailable_statuses = {401, 408, 429, 500, 502, 503, 504}
+    unavailable_names = {
+        "apiconnectionerror",
+        "apiauthenticationerror",
+        "authenticationerror",
+        "ratelimiterror",
+        "apitimeouterror",
+        "internalservererror",
+    }
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        error_name = type(current).__name__.lower()
+        error_module = type(current).__module__.lower()
+        status_code = getattr(current, "status_code", None)
+        error_code = str(getattr(current, "code", "") or "").lower()
+        message = str(current).lower()
+        if (
+            error_name in unavailable_names
+            or (error_module.startswith("openai") and status_code in unavailable_statuses)
+            or status_code in unavailable_statuses
+            or error_code in {"insufficient_quota", "rate_limit_exceeded"}
+            or "insufficient_quota" in message
+        ):
+            return True
+        current = current.__cause__ or current.__context__ or getattr(current, "cause", None)
+    return False
+
+
+def build_document_intelligence_fallback(
+    founder: str,
+    startup: str,
+    *,
+    user_id: str | None,
+    org_id: str | None,
+    assessment_id: str | None,
+    sector_hint: str,
+    research_bundle: dict[str, list] | None,
+    failure: BaseException,
+) -> tuple[InvestmentBrief, dict[str, Any], list[str]]:
+    """Build a cautious brief only from this assessment's documents and research."""
+    from statistics import mean
+
+    from kulima.core.assessment.repository import AssessmentRepository
+    from kulima.core.cases.adapters import from_investment_brief
+    from kulima.core.cases.service import ASSESSMENT_TO_WORKSPACE
+    from kulima.core.documents.models import Document
+    from kulima.models import (
+        ConfidenceLevel,
+        Recommendation,
+        SourceAttribution,
+        TrustEdge,
+        TrustGraph,
+        TrustNode,
+        TrustScoreBreakdown,
+        UploadedEvidenceRecord,
+    )
+    from kulima.research import ResearchEngine
+    from kulima.scoring import clamp
+
+    bundle = research_bundle or {}
+    external_sources = [
+        source
+        for group in bundle.values()
+        if isinstance(group, list)
+        for source in group
+        if isinstance(source, SourceAttribution)
+    ]
+    context = (
+        AssessmentRepository().get(assessment_id, user_id=user_id, org_id=org_id)
+        if assessment_id
+        else None
+    )
+    documents = list(context.uploaded_documents) if context else []
+    document_sources = [
+        SourceAttribution(
+            title=document.name,
+            url=document.url or f"document://{document.id}",
+            snippet=document.raw_summary or " ".join(document.evidence_items),
+            relevance=1.0,
+            source_type="document",
+            confidence_score=clamp((document.trust_score or 50.0) / 100, 0.05, 0.95),
+        )
+        for document in documents
+    ]
+    sources = ResearchEngine._dedupe(document_sources + external_sources, limit=100)
+    document_scores = [float(doc.trust_score) for doc in documents if doc.trust_score is not None]
+    trust_score = round(mean(document_scores), 1) if document_scores else 0.0
+    extracted_text = context.extracted_text if context else ""
+    evidence_text = " ".join(
+        [extracted_text]
+        + [doc.raw_summary for doc in documents]
+        + [snippet for snippet in (source.snippet for source in external_sources)]
+    ).lower()
+    risk_terms = ("fraud", "lawsuit", "litigation", "sanction", "misconduct", "breach", "non-compliance")
+    risk_markers = [term for term in risk_terms if term in evidence_text]
+    risk_score = clamp(42 + len(risk_markers) * 8 + max(0, 50 - trust_score) * 0.35, 0, 85)
+    evidence_coverage = min(len(documents), 5) * 10 + min(len(external_sources), 10) * 2
+    startup_score = clamp(trust_score, 0, 100)
+    founder_score = clamp(25 + min(len(bundle.get("founder", [])), 5) * 4, 0, 45)
+    market_score = clamp(25 + min(len(bundle.get("market", [])), 8) * 4, 0, 57)
+    investment_readiness = clamp(evidence_coverage, 0, 50)
+    overall_score = round(clamp(
+        founder_score * 0.20
+        + startup_score * 0.25
+        + market_score * 0.20
+        + trust_score * 0.20
+        + investment_readiness * 0.15,
+        0,
+        100,
+    ), 1)
+    entity_name = (
+        (context.organization_name or context.startup_name) if context else startup
+    ) or startup or "Assessment"
+    assessment_type = (
+        getattr(context.assessment_type, "value", str(context.assessment_type))
+        if context
+        else "assessment"
+    )
+    evidence_gaps = []
+    if not documents:
+        evidence_gaps.append("No uploaded documents were available to the fallback analysis.")
+    if not external_sources:
+        evidence_gaps.append("No external research sources were returned; independent validation is still required.")
+    if not document_scores:
+        evidence_gaps.append("No document trust scores were available.")
+    if risk_markers:
+        evidence_gaps.append("Potential risk language requires human verification: " + ", ".join(risk_markers) + ".")
+
+    uploaded_evidence = []
+    for document in documents:
+        breakdown = TrustScoreBreakdown.model_validate(document.trust_breakdown or {})
+        uploaded_evidence.append(UploadedEvidenceRecord(
+            id=document.id,
+            filename=document.name,
+            source=f"Document Ingestion Pipeline ({document.name})",
+            upload_date=document.upload_date,
+            file_type=document.file_type or "DOCUMENT",
+            uploader=user_id or "Assessment Reviewer",
+            trust_breakdown=breakdown,
+            evidence_status=document.evidence_status or "INSUFFICIENT_EVIDENCE",
+            evidence_items=list(document.evidence_items),
+            signals_generated=list(document.signals),
+            decision_impact=document.decision_impact or "Supporting evidence; manual review required.",
+            audit_trail=["Extracted and scored by the local document intelligence pipeline."],
+            raw_summary=document.raw_summary,
+        ))
+
+    source_lines = [f"{source.title}: {source.snippet[:220]}" for source in sources[:8]]
+    research_summary = (
+        f"Document Intelligence Mode completed for {entity_name}: "
+        f"{len(documents)} uploaded document(s), {len(external_sources)} external research source(s)."
+    )
+    if source_lines:
+        research_summary += " Research: " + " | ".join(source_lines)
+    if evidence_gaps:
+        research_summary += " Evidence gaps: " + " ".join(evidence_gaps)
+
+    graph_nodes = [
+        TrustNode(id="founder", label=founder or "Founder / lead not provided", node_type="founder", weight=1.0),
+        TrustNode(id="startup", label=entity_name, node_type="company", weight=1.0),
+    ]
+    graph_edges = [TrustEdge(source="founder", target="startup", relation="assessment_subject")]
+    brief = InvestmentBrief(
+        founder_name=founder or (context.founder_name if context else "Not provided"),
+        startup_name=entity_name,
+        sector=(context.sector if context else "") or sector_hint,
+        geography=context.country if context else "",
+        stage="Not assessed",
+        executive_summary=(
+            "OpenAI is unavailable. Document Intelligence Mode used uploaded-document extraction, "
+            "document trust scores, available Tavily sources, and deterministic signals. "
+            "This is a preliminary evidence summary, not an AI-validated investment recommendation."
+        ),
+        founder_assessment=(
+            "Founder identity came from the Assessment Context. OpenAI-based founder credibility "
+            "analysis was unavailable; verify identity and track record independently."
+        ),
+        startup_assessment=(
+            f"Rule-based intake includes {len(documents)} document(s) for the {assessment_type} assessment. "
+            "Claims are limited to extracted document text and recorded metadata."
+        ),
+        market_assessment=(
+            f"{len(external_sources)} external research source(s) were available. "
+            "Market sizing and competitive claims require analyst verification."
+        ),
+        risk_assessment=(
+            f"Rule-based risk score: {risk_score:.0f}/100. "
+            + ("Potential risk terms found in evidence: " + ", ".join(risk_markers) + ". " if risk_markers else "No explicit high-risk terms were detected in the available text. ")
+            + "This does not replace a full diligence review."
+        ),
+        investment_recommendation="Review Required — OpenAI was unavailable; do not make an investment decision from this fallback alone.",
+        next_steps=[
+            "Verify primary operating and financial claims with the organization.",
+            "Review every uploaded document and source citation.",
+            "Repeat the full AI-assisted assessment when OpenAI is available.",
+        ],
+        recommendation=Recommendation.REVIEW_REQUIRED,
+        overall_score=overall_score,
+        founder_score=founder_score,
+        startup_score=startup_score,
+        market_score=market_score,
+        trust_score=trust_score,
+        risk_score=risk_score,
+        growth_potential=0.0,
+        investment_readiness=investment_readiness,
+        confidence=0.30,
+        confidence_level=ConfidenceLevel.LOW,
+        red_flags=[],
+        trust_graph=TrustGraph(
+            nodes=graph_nodes,
+            edges=graph_edges,
+            trust_score=trust_score,
+            explanation="Rule-based document trust aggregate; AI relationship inference was not run.",
+        ),
+        sources=sources,
+        explainability=[
+            "OpenAI unavailable; deterministic Document Intelligence Mode was used.",
+            f"Trust score is the mean of {len(document_scores)} stored document trust score(s).",
+            f"Research sources: {len(external_sources)}; uploaded documents: {len(documents)}.",
+            "Recommendation is Review Required until an analyst verifies the evidence.",
+        ],
+        uploaded_evidence=uploaded_evidence,
+    )
+    workspace_type = (
+        ASSESSMENT_TO_WORKSPACE.get(context.assessment_type)
+        if context
+        else None
+    )
+    case = from_investment_brief(
+        brief,
+        case_id=assessment_id or f"fallback-{user_id or 'local'}",
+        workspace_type=workspace_type,
+    )
+    generated_signals = _signals_orchestrator.generate(case, sort=True)
+    signal_titles = [
+        f"{signal.category.value}: {signal.title} ({signal.direction})"
+        for signal in generated_signals
+    ]
+    brief.explainability.append(f"Deterministic rule engine generated {len(signal_titles)} domain signal(s).")
+
+    research_payload = {
+        "status": "completed",
+        "mode": "document_intelligence",
+        "openaiStatus": "unavailable",
+        "message": "OpenAI unavailable — Document Intelligence Mode active.",
+        "summary": research_summary,
+        "progress": 100,
+        "sourceCount": len(external_sources),
+        "documentCount": len(documents),
+        "sources": [source.model_dump(mode="json") for source in sources],
+        "tavily_findings": [source.snippet for source in external_sources if source.snippet],
+        "entities": [{"name": entity_name, "label": assessment_type}],
+        "evidenceGaps": evidence_gaps,
+        "failureType": type(failure).__name__,
+    }
+    return brief, research_payload, signal_titles
+
+
 def start_intelligence_run(
     founder: str,
     startup: str,
@@ -205,6 +467,7 @@ def _enqueue_intelligence_job(
             "startup": startup,
             "sector_hint": sector_hint,
             "user_id": user_id,
+            "org_id": org_id,
             "assessment_id": assessment_id,
             "document_ids": document_ids,
             "run_id": run_id,
@@ -226,6 +489,8 @@ def _sync_assessment(
     brief: InvestmentBrief | None,
     *,
     org_id: str | None = None,
+    research: dict[str, Any] | None = None,
+    generated_signal_titles: list[str] | None = None,
 ) -> None:
     """Bind intake documents + pipeline outputs back to the Assessment Context.
 
@@ -312,6 +577,7 @@ def _sync_assessment(
             }
             for record in getattr(brief, "uploaded_evidence", []) or []:
                 signals.extend(getattr(record, "signals_generated", []) or [])
+        signals.extend(generated_signal_titles or [])
 
         # Deduplicate signals
         seen_sig = set()
@@ -327,6 +593,28 @@ def _sync_assessment(
             signals=dedup_signals or None,
             decision=decision or None,
             status=AssessmentStatus.COMPLETE,
+            research=research or {
+                "status": "completed",
+                "mode": "ai_assisted",
+                "sourceCount": len(brief.sources) if brief else 0,
+                "documentCount": len(documents) if ctx else 0,
+                "sources": [source.model_dump(mode="json") for source in brief.sources] if brief else [],
+                "tavily_findings": [source.snippet for source in brief.sources if source.snippet] if brief else [],
+                "entities": [{"name": ctx.organization_name or ctx.startup_name, "label": ctx.type_label()}] if ctx else [],
+                "summary": brief.executive_summary if brief else "Research completed.",
+                "progress": 100,
+            },
+        )
+
+        record_event(
+            "research.completed",
+            org_id=org_id,
+            run_id=db_id,
+            assessment_id=assessment_id,
+            metadata={
+                "mode": (research or {}).get("mode", "ai_assisted"),
+                "sources": len((research or {}).get("sources", brief.sources if brief else [])),
+            },
         )
 
         # Audit (Phase 4): signals + decision generation per assessment.
@@ -515,10 +803,14 @@ def ask_ic(
             domain_overviews=domain_overviews,
         )
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Ask IC live failed (%s) — returning demo mode response.", exc)
-        from .demo_chat import demo_ask_ic_answer
+        _log.warning("Ask IC live failed (%s) — answering from stored assessment data.", exc)
+        from .demo_chat import doc_intelligence_ask_ic_answer
 
-        return demo_ask_ic_answer(brief, question)
+        return doc_intelligence_ask_ic_answer(
+            brief,
+            question,
+            assessment_context=assessment_context,
+        )
 
 
 def ask_signals(

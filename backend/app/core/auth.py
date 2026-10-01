@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
+import logging
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import jwt
-from jwt import ExpiredSignatureError, InvalidTokenError
+from jwt import ExpiredSignatureError, InvalidSignatureError, InvalidTokenError
 from fastapi import Depends, HTTPException, Request, status
 
 from kulima.core.orgs.models import (
@@ -28,6 +31,11 @@ def _load_nextauth_secret() -> str:
 
 JWT_SECRET = _load_nextauth_secret()
 JWT_ALG = "HS256"
+_log = logging.getLogger(__name__)
+
+
+def _secret_fingerprint(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
 
 
 class AuthenticatedUser:
@@ -50,30 +58,55 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
             detail={"error": True, "code": "SESSION_MISSING", "message": "Missing bearer token — the frontend proxy did not forward an Authorization header."},
         )
     token = auth.split(" ", 1)[1].strip()
+    frontend_fingerprint = request.headers.get("X-Kulima-Auth-Secret-Fingerprint", "")
+    backend_fingerprint = _secret_fingerprint(JWT_SECRET)
     try:
-        # Ensure `exp` is honoured so expired tokens are rejected with 401.
+        # Pin the algorithm and honor exp; iss/aud are intentionally not required.
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG], options={"verify_exp": True})
+    except InvalidSignatureError as exc:
+        fingerprints_match = bool(frontend_fingerprint) and hmac.compare_digest(
+            frontend_fingerprint, backend_fingerprint
+        )
+        if frontend_fingerprint and not fingerprints_match:
+            _log.error(
+                "NEXTAUTH_SECRET mismatch: frontend fingerprint=%s backend fingerprint=%s",
+                frontend_fingerprint,
+                backend_fingerprint,
+            )
+            code = "SESSION_INVALID"
+            message = "Frontend and backend NEXTAUTH_SECRET values do not match."
+        else:
+            _log.error(
+                "JWT signature verification failed; frontend/backend fingerprints %s",
+                "match" if fingerprints_match else "were not both available",
+            )
+            code = "TOKEN_VERIFICATION_FAILED"
+            message = "The bearer token signature is invalid; verify token integrity and signing configuration."
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": True, "code": code, "message": message},
+        ) from exc
     except ExpiredSignatureError:
         # Explicit path for expired tokens
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "code": "SESSION_EXPIRED", "message": "Session token has expired — sign in again."},
+            detail={"error": True, "code": "TOKEN_VERIFICATION_FAILED", "message": "Session token has expired — sign in again."},
         )
     except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "code": "SESSION_INVALID", "message": "Session token could not be verified — check that NEXTAUTH_SECRET matches between frontend and backend."},
+            detail={"error": True, "code": "TOKEN_VERIFICATION_FAILED", "message": "Session token claims or signing algorithm could not be verified."},
         )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "code": "BACKEND_AUTH_FAILED", "message": "Token validation failed unexpectedly."},
+            detail={"error": True, "code": "TOKEN_VERIFICATION_FAILED", "message": "Token validation failed unexpectedly."},
         )
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": True, "code": "SESSION_INVALID", "message": "Session token contains no subject (sub) claim."},
+            detail={"error": True, "code": "TOKEN_VERIFICATION_FAILED", "message": "Session token contains no subject (sub) claim."},
         )
     return AuthenticatedUser(user_id=user_id)
 

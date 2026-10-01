@@ -58,6 +58,7 @@ class IntelligenceOrchestrator:
         *,
         user_id: str | None = None,
         sector_hint: str = "",
+        research_results: dict[str, list[SourceAttribution]] | None = None,
     ) -> InvestmentBrief:
         """Run the full intelligence pipeline.
 
@@ -74,7 +75,7 @@ class IntelligenceOrchestrator:
 
         progress(0.05, "Initializing Investment Intelligence OS…")
         progress(0.12, "Parallel OSINT sweep — founder · startup · market · risks…")
-        bundle = self.research.research_bundle(founder, startup, sector_hint)
+        bundle = research_results or self.research.research_bundle(founder, startup, sector_hint)
         founder_sources = bundle["founder"]
         startup_sources = ResearchEngine._dedupe(bundle["startup"] + bundle["market"])
         risk_sources = bundle["risks"]
@@ -150,7 +151,6 @@ class IntelligenceOrchestrator:
                 {"skip_market_research": True},
             )
             founder_result = f_fut.result()
-            startup_result = s_fut.result()
 
         progress(0.50, "Parallel underwriting — Diligence ∥ Risk ∥ Trust Graph…")
         with ThreadPoolExecutor(max_workers=3) as pool:

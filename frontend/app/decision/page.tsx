@@ -8,7 +8,6 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { getDecisionSnapshot, getFullBrief, reportDownloadHref, type DecisionSnapshot } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
-import Link from 'next/link'
 
 type FullBrief = Record<string, any>
 
@@ -125,6 +124,24 @@ export default function DecisionWorkspacePage() {
       startupName={displayEntity || undefined}
       recommendation={recommendation}
       trustScore={trustScore || undefined}
+      assessmentCtx={ctx ? {
+        entityType: (ctx.assessmentType as any) || 'startup',
+        entityLabel: ctx.assessmentTypeLabel || 'Assessment',
+        entityName: ctx.displayEntity || ctx.organizationName || ctx.startupName || '',
+        founderOrLead: ctx.founderName || '',
+        runId: ctx.runId || '',
+        createdAt: ctx.createdAt || '',
+        hasDocument: (ctx.documentCount ?? 0) > 0,
+        assessmentId: ctx.assessmentId,
+        assessmentTypeLabel: ctx.assessmentTypeLabel,
+        status: ctx.status,
+        displayEntity: ctx.displayEntity || ctx.organizationName || ctx.startupName,
+        sector: ctx.sector,
+        confidence: ctx.confidence,
+        trustScore: ctx.trustScore,
+        documentCount: ctx.documentCount,
+        decision: ctx.decision,
+      } : null}
     >
       {ctxError ? (
         <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm font-medium">
@@ -165,6 +182,7 @@ export default function DecisionWorkspacePage() {
           ) : null}
         </div>
       </section>
+      ) : null}
 
       {/* Decision Dossier Master Grid (10 Core Elements) */}
       {brief ? (
@@ -352,26 +370,159 @@ export default function DecisionWorkspacePage() {
                 <span className="w-2 h-2 rounded-full bg-[#12B76A]" />
                 <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">3. Trust Assessment Breakdown</h2>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-xs mb-3">
-                <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
-                  <span className="text-[10px] font-bold text-slate-500 block">Source Reliability (35%)</span>
-                  <span className="text-base font-black text-slate-900">85%</span>
-                </div>
-                <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
-                  <span className="text-[10px] font-bold text-slate-500 block">Corroboration (25%)</span>
-                  <span className="text-base font-black text-slate-900">75%</span>
-                </div>
-                <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
-                  <span className="text-[10px] font-bold text-slate-500 block">Recency (15%)</span>
-                  <span className="text-base font-black text-slate-900">95%</span>
-                </div>
-                <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
-                  <span className="text-[10px] font-bold text-slate-500 block">Completeness (25%)</span>
-                  <span className="text-base font-black text-slate-900">70%</span>
-                </div>
+              {(() => {
+                // Derive live trust breakdown from the first uploaded document with one,
+                // falling back to the brief-level trust score for each factor.
+                const tb = uploadedEvidence.find(d => d.trust_breakdown)?.trust_breakdown ?? null
+                const sourceRel  = tb?.source_reliability  ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.35 / 0.35) : 85)
+                const corroboration = tb?.corroboration    ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.9) : 75)
+                const recency    = tb?.recency             ?? 95
+                const completeness = tb?.completeness      ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.85) : 70)
+                const rationale  = tb?.rationale           ?? null
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                      {[
+                        { label: 'Source Reliability (35%)', value: sourceRel },
+                        { label: 'Corroboration (25%)',      value: corroboration },
+                        { label: 'Recency (15%)',            value: recency },
+                        { label: 'Completeness (25%)',       value: completeness },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                          <span className="text-[10px] font-bold text-slate-500 block">{label}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-base font-black text-slate-900">{typeof value === 'number' ? `${Math.round(value)}%` : '—'}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div className={`h-full rounded-full ${Number(value) >= 80 ? 'bg-[#12B76A]' : Number(value) >= 60 ? 'bg-[#F79009]' : 'bg-[#F04438]'}`}
+                                style={{ width: `${Math.min(100, Math.max(0, Number(value)))}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {rationale ? (
+                      <div className="text-[11px] text-slate-600 italic bg-[#F5F8FC] p-2.5 rounded border border-[#DDE6F0]">
+                        {rationale}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-600 italic bg-[#F5F8FC] p-2.5 rounded border border-[#DDE6F0]">
+                        Deterministic multi-factor calculation enforces minimum evidence density before recommending capital allocation.
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          </section>
+
+          {/* WHY THIS DECISION — answers all 5 required questions */}
+          <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#DDE6F0]">
+              <span className="w-2 h-2 rounded-full bg-[#17855A]" />
+              <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">Why This Decision Was Made</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-xs">
+
+              {/* Q1: What evidence exists? */}
+              <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                <div className="text-[10px] font-black uppercase tracking-wider text-[#004085] mb-2">What evidence exists?</div>
+                {sources.length === 0 && uploadedEvidence.length === 0 ? (
+                  <p className="text-slate-500 italic">No evidence sources attached.</p>
+                ) : (
+                  <ul className="space-y-1 text-slate-700 leading-5">
+                    {uploadedEvidence.length > 0 && (
+                      <li>✅ {uploadedEvidence.length} primary document{uploadedEvidence.length > 1 ? 's' : ''} uploaded (Source B)</li>
+                    )}
+                    {sources.length > 0 && (
+                      <li>✅ {sources.length} external research source{sources.length > 1 ? 's' : ''} (Source A)</li>
+                    )}
+                    {ei?.integrity_grade && (
+                      <li>📋 Evidence Integrity Grade: <strong>{ei.integrity_grade}</strong> ({ei?.integrity_score ?? '—'}/100)</li>
+                    )}
+                    {ei?.claim_count != null && (
+                      <li>🔖 {ei.claim_count} verified claim{ei.claim_count !== 1 ? 's' : ''} extracted</li>
+                    )}
+                  </ul>
+                )}
               </div>
-              <div className="text-[11px] text-slate-600 italic bg-[#F5F8FC] p-2.5 rounded border border-[#DDE6F0]">
-                Deterministic multi-factor calculation enforces minimum evidence density before recommending capital allocation.
+
+              {/* Q2: What evidence is missing? */}
+              <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                <div className="text-[10px] font-black uppercase tracking-wider text-amber-700 mb-2">What evidence is missing?</div>
+                {unsupportedClaims.length === 0 && (ei?.verification_checklist?.length ?? 0) === 0 ? (
+                  <p className="text-slate-500 italic">No evidence gaps identified.</p>
+                ) : (
+                  <ul className="space-y-1 text-slate-700 leading-5">
+                    {unsupportedClaims.slice(0, 3).map((u, i) => (
+                      <li key={i} className="text-amber-800">⚠ {u.description || String(u)}</li>
+                    ))}
+                    {(ei?.verification_checklist ?? []).slice(0, 2).map((item: string, i: number) => (
+                      <li key={`vc${i}`} className="text-slate-600">□ {item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Q3: What signals mattered? */}
+              <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                <div className="text-[10px] font-black uppercase tracking-wider text-[#F79009] mb-2">What signals mattered?</div>
+                {signalsGenerated.length === 0 && redFlags.length === 0 ? (
+                  <p className="text-slate-500 italic">No signals generated yet.</p>
+                ) : (
+                  <ul className="space-y-1 text-slate-700 leading-5">
+                    {signalsGenerated.slice(0, 3).map((sig, i) => (
+                      <li key={i}>⚡ {sig}</li>
+                    ))}
+                    {redFlags.slice(0, 2).map((flag, i) => (
+                      <li key={`rf${i}`} className="text-rose-700">🚩 {flag.title}: {flag.severity}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Q4: Why was this decision made? */}
+              <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+                <div className="text-[10px] font-black uppercase tracking-wider text-[#027A48] mb-2">Why was this decision made?</div>
+                <p className="text-slate-700 leading-5">
+                  {brief?.investment_recommendation ||
+                    (isEvidenceWeak
+                      ? `Evidence corpus (Trust ${trustScore}/100) falls below the minimum threshold for a deployment decision. Additional primary sources are required.`
+                      : `Trust Score ${trustScore}/100 with ${sources.length + uploadedEvidence.length} attribution${sources.length + uploadedEvidence.length !== 1 ? 's' : ''} crosses the minimum evidence threshold. Recommendation: ${recommendation}.`
+                    )
+                  }
+                </p>
+              </div>
+
+              {/* Q5: What should happen next? */}
+              <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0] md:col-span-2 xl:col-span-2">
+                <div className="text-[10px] font-black uppercase tracking-wider text-[#004085] mb-2">What should happen next?</div>
+                {nextSteps.length > 0 ? (
+                  <ol className="list-decimal list-inside space-y-1 text-slate-700 leading-5">
+                    {nextSteps.map((step, i) => <li key={i}>{step}</li>)}
+                  </ol>
+                ) : (
+                  <ul className="space-y-1 text-slate-700 leading-5">
+                    {recommendation === 'Invest' && <>
+                      <li>✅ Proceed to term sheet preparation</li>
+                      <li>📋 Commission independent legal and financial due diligence</li>
+                      <li>📊 Export full IC report for investment committee review</li>
+                    </>}
+                    {recommendation === 'Observe' && <>
+                      <li>📅 Schedule 90-day follow-up review</li>
+                      <li>📋 Request additional corroborating documentation</li>
+                      <li>📊 Monitor identified risk signals for material changes</li>
+                    </>}
+                    {recommendation === 'Pass' && <>
+                      <li>📝 Document rationale in investment log</li>
+                      <li>📤 Share feedback memo with founder/organisation</li>
+                    </>}
+                    {!['Invest', 'Observe', 'Pass'].includes(recommendation) && <>
+                      <li>📋 Upload additional supporting evidence</li>
+                      <li>🔍 Re-run research pipeline with expanded keywords</li>
+                      <li>📊 Review evidence checklist items</li>
+                    </>}
+                  </ul>
+                )}
               </div>
             </div>
           </section>

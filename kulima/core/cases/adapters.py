@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from kulima.core.cases.models import Case, CaseSubject, CaseType
+from kulima.core.cases.models import Case, CaseSubject, CaseType, WorkspaceType
 from kulima.models import InvestmentBrief
 
 
@@ -24,6 +24,7 @@ def from_investment_brief(
     case_id: str,
     created_at: datetime | None = None,
     created_by: str | None = None,
+    workspace_type: WorkspaceType = WorkspaceType.STARTUP,
 ) -> Case:
     """Wrap an InvestmentBrief in a Case envelope.
 
@@ -49,6 +50,7 @@ def from_investment_brief(
         id=case_id,
         case_type=CaseType.INVESTMENT,
         subject=subject,
+        workspace_type=workspace_type,
         created_at=created_at or datetime.utcnow(),
         created_by=created_by,
         sources=list(brief.sources),

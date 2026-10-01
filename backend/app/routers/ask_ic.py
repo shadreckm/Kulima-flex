@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from ..schemas.dtos import AskRequest, AskResponse
 from ..services.orchestrator_adapter import ask_ic, get_brief_for_run, get_run_status
+from ..services import assessment_adapter
 from ..core.auth import OrgContext, require_permission
 from ..core.rate_limit import check_rate_limit
 from ..services.demo_chat import doc_intelligence_ask_ic_answer
@@ -34,7 +35,12 @@ _DOC_INTEL_WAIT_ANSWER = (
 )
 
 
-def _make_doc_intel_fallback(run_id: str, question: str, user_id: str | None) -> str:
+def _make_doc_intel_fallback(
+    run_id: str,
+    question: str,
+    user_id: str | None,
+    org_id: str | None = None,
+) -> str:
     """Build a Document Intelligence Mode answer from stored evaluation data.
 
     Tries to load the stored InvestmentBrief and answer deterministically.
@@ -46,7 +52,19 @@ def _make_doc_intel_fallback(run_id: str, question: str, user_id: str | None) ->
             return _DOC_INTEL_WAIT_ANSWER
         from kulima.models import InvestmentBrief
         brief = InvestmentBrief.model_validate(brief_json) if isinstance(brief_json, dict) else brief_json
-        return doc_intelligence_ask_ic_answer(brief, question)
+        assessment = assessment_adapter.resolve_assessment_for_brief(
+            brief.founder_name,
+            brief.startup_name,
+            run_id=run_id,
+            user_id=user_id,
+            org_id=org_id,
+        )
+        assessment_payload = assessment_adapter.serialize_context(assessment) if assessment else None
+        return doc_intelligence_ask_ic_answer(
+            brief,
+            question,
+            assessment_context=assessment_payload,
+        )
     except Exception as exc:  # noqa: BLE001
         _log.warning("doc_intelligence_ask_ic_answer fallback also failed: %s", exc)
         return _DOC_INTEL_WAIT_ANSWER
@@ -64,14 +82,14 @@ async def post_ask_ic(req: AskRequest, current: OrgContext = Depends(require_per
 
     # Run still processing — return Document Intelligence Mode answer from whatever is stored
     if info.get("status") != "completed":
-        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
         return {"answer": answer}
 
     try:
         answer = ask_ic(req.runId, req.question, req.history, user_id=current.user_id)
     except Exception as exc:
         _log.warning("ask_ic live failed in router (%s) — activating Document Intelligence Mode.", exc)
-        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
     return {"answer": answer}
 
 
@@ -87,13 +105,13 @@ async def post_ask_ic_stream(req: AskRequest, current: OrgContext = Depends(requ
 
     # Run still processing — stream Document Intelligence Mode answer
     if info.get('status') != 'completed':
-        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
     else:
         try:
             answer = ask_ic(req.runId, req.question, req.history, user_id=current.user_id)
         except Exception as exc:
             _log.warning("ask_ic live failed in stream router (%s) — activating Document Intelligence Mode.", exc)
-            answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id)
+            answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
 
     async def event_stream():
         # Simple tokenizer by words + spaces to keep whitespace

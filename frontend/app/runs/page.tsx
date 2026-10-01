@@ -4,8 +4,7 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { archiveRun, deleteRun, listLiveRuns, listStoredRuns, reopenRun, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
-import { isDemoRunRecord } from '../../lib/current-run'
+import { archiveRun, deleteRun, isDemoRunRecord, listLiveRuns, listStoredRuns, reopenRun, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
 
 export default function RunsPage() {
   const { status: authStatus } = useSession()

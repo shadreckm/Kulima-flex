@@ -1,4 +1,9 @@
-const API_BASE = typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_URL || '' : ''
+const API_BASE = typeof window === 'undefined'
+  ? process.env.KULIMA_BACKEND_URL
+    || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
+    || process.env.NEXT_PUBLIC_API_URL
+    || ''
+  : ''
 
 export function withAuth(headers: HeadersInit = {}): HeadersInit {
   const base: Record<string, string> = {}
@@ -44,6 +49,8 @@ function authFailureHint(code: string | null): string {
       return 'Your session has expired. Please sign in again.'
     case 'SESSION_INVALID':
       return 'Session could not be verified — the deployment secrets are mismatched (contact support).'
+    case 'TOKEN_VERIFICATION_FAILED':
+      return 'The backend could not verify the signed request. Check token integrity and signing configuration.'
     case 'SESSION_EXPIRED':
       return 'Your session has expired. Please sign in again.'
     case 'FRONTEND_SECRET_MISSING':
@@ -588,6 +595,19 @@ export async function listStoredRuns(limit = 50, includeArchived = true): Promis
   })
   if (!res.ok) throw new Error(`listStoredRuns failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ runs: StoredRunRecord[] }>(res, 'listStoredRuns')
+}
+
+/** True for demo/deleted-user records (no owning user) — pure data helper. */
+export function isDemoRunRecord(run: { runId: number | string; startupName?: string; userId?: string | null }): boolean {
+  return run.userId === null || run.userId === undefined
+}
+
+export async function listAssessments(limit = 50): Promise<{ assessments: AssessmentWorkspacePayload[] }> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments?limit=${encodeURIComponent(String(limit))}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`listAssessments failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ assessments: AssessmentWorkspacePayload[] }>(res, 'listAssessments')
 }
 
 export async function getPilotAnalytics(): Promise<PilotAnalyticsMetrics> {

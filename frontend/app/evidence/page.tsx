@@ -7,7 +7,6 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
 import { getFullBrief, attachAssessmentDocuments, type AssessmentWorkspacePayload } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
-import TrustGauge from '../../components/TrustGauge/TrustGauge'
 
 type FullBrief = Record<string, any>
 
@@ -87,8 +86,11 @@ export default function EvidencePage() {
   const ei = brief?.evidence_integrity || null
   /** Tavily / web research sources — Source A */
   const researchSources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
-  /** Uploaded primary documents — Source B */
-  const uploadedEvidence: Array<any> = Array.isArray(brief?.uploaded_evidence) ? brief.uploaded_evidence : []
+  /** Uploaded primary documents — prefer Assessment Context docs (single source of truth),
+   *  fall back to brief.uploaded_evidence for backward compatibility. */
+  const ctxDocs: Array<any> = Array.isArray(ctx?.uploadedDocuments) ? ctx.uploadedDocuments : []
+  const briefDocs: Array<any> = Array.isArray(brief?.uploaded_evidence) ? brief.uploaded_evidence : []
+  const uploadedEvidence: Array<any> = ctxDocs.length > 0 ? ctxDocs : briefDocs
   const contradictions: Array<any> = Array.isArray(ei?.contradictions) ? ei.contradictions : []
   const unsupported: Array<any> = Array.isArray(ei?.unsupported_claims) ? ei.unsupported_claims : []
   const verificationChecklist: Array<string> = Array.isArray(ei?.verification_checklist) ? ei.verification_checklist : []
@@ -123,6 +125,24 @@ export default function EvidencePage() {
       startupName={displayEntity}
       recommendation={(ctx?.decision?.recommendation as string) || undefined}
       trustScore={ctx?.trustScore ?? undefined}
+      assessmentCtx={ctx ? {
+        entityType: (ctx.assessmentType as any) || 'startup',
+        entityLabel: ctx.assessmentTypeLabel || 'Assessment',
+        entityName: ctx.displayEntity || ctx.organizationName || ctx.startupName || '',
+        founderOrLead: ctx.founderName || '',
+        runId: ctx.runId || '',
+        createdAt: ctx.createdAt || '',
+        hasDocument: (ctx.documentCount ?? 0) > 0,
+        assessmentId: ctx.assessmentId,
+        assessmentTypeLabel: ctx.assessmentTypeLabel,
+        status: ctx.status,
+        displayEntity: ctx.displayEntity || ctx.organizationName || ctx.startupName,
+        sector: ctx.sector,
+        confidence: ctx.confidence,
+        trustScore: ctx.trustScore,
+        documentCount: ctx.documentCount,
+        uploadedDocuments: ctx.uploadedDocuments as any,
+      } : null}
     >
       {ctxError ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{ctxError}</div> : null}
       {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}
@@ -376,97 +396,143 @@ export default function EvidencePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {uploadedEvidence.map((doc, idx) => (
-              <div key={doc.id || idx} className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0] space-y-3">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#DDE6F0]">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-900 text-white">
-                        {doc.file_type || 'DOCUMENT'}
+            {uploadedEvidence.map((doc, idx) => {
+              // Normalise field names from both ctx.uploadedDocuments and brief.uploaded_evidence
+              const docName     = doc.name || doc.filename || 'Document'
+              const docType     = doc.file_type || doc.fileType || (doc.name?.split('.').pop()?.toUpperCase()) || 'DOCUMENT'
+              const uploadDate  = doc.upload_date || doc.uploadDate || doc.created_at || null
+              const trustScore  = doc.trust_breakdown?.final_trust_score ?? doc.trust_score ?? doc.trustScore ?? null
+              const trustPct    = trustScore != null ? Math.round(Number(trustScore)) : null
+              const evStatus    = doc.evidence_status || doc.evidenceStatus || 'PROCESSED'
+              const tb          = doc.trust_breakdown ?? null
+              const rawSummary  = doc.raw_summary || doc.rawSummary || null
+              return (
+                <div key={doc.id || idx} className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0] space-y-3">
+                  {/* Document header row */}
+                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 pb-3 border-b border-[#DDE6F0]">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-900 text-white">
+                          {docType}
+                        </span>
+                        <span className="text-sm font-extrabold text-slate-900 truncate">{docName}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-[11px] text-slate-500">
+                        {uploadDate ? (
+                          <span>Uploaded: {new Date(uploadDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        ) : (
+                          <span>Uploaded: Recent</span>
+                        )}
+                        {doc.uploader ? <span>By: {doc.uploader}</span> : null}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      {/* Evidence Status */}
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        evStatus === 'VERIFIED'    ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
+                        evStatus === 'CORROBORATED'? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+                        evStatus === 'INSUFFICIENT_EVIDENCE' ? 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]' :
+                                                    'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}>
+                        {evStatus.replace(/_/g, ' ')}
                       </span>
-                      <span className="text-sm font-extrabold text-slate-900">{doc.filename}</span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      Source: {doc.source} · Uploaded: {doc.upload_date ? new Date(doc.upload_date).toLocaleString() : 'Recent'} · By: {doc.uploader}
+                      {/* Trust Contribution */}
+                      {trustPct != null ? (
+                        <div className="flex flex-col items-center">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Trust</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${trustPct >= 80 ? 'bg-[#12B76A]' : trustPct >= 60 ? 'bg-[#F79009]' : 'bg-[#F04438]'}`}
+                                style={{ width: `${trustPct}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-black text-slate-900">{trustPct}</span>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      doc.evidence_status === 'VERIFIED' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-                      doc.evidence_status === 'CORROBORATED' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
-                      'bg-slate-200 text-slate-700'
-                    }`}>
-                      {doc.evidence_status || 'CORROBORATED'}
-                    </span>
-                    <TrustGauge score={doc.trust_breakdown?.final_trust_score ?? 80} size="sm" showLabel={false} />
+                  {/* Trust Engine Breakdown */}
+                  {tb ? (
+                    <div className="p-3 bg-white rounded-lg border border-[#DDE6F0] text-xs">
+                      <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">
+                        Trust Engine Breakdown
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                        {[
+                          { label: 'Source Reliability', pct: '35%', value: tb.source_reliability },
+                          { label: 'Corroboration',      pct: '25%', value: tb.corroboration },
+                          { label: 'Recency',            pct: '15%', value: tb.recency },
+                          { label: 'Completeness',       pct: '25%', value: tb.completeness },
+                        ].map(({ label, pct, value }) => (
+                          <div key={label} className="p-2 bg-[#F5F8FC] rounded border border-[#E2E8F0]">
+                            <span className="text-[9px] text-slate-400 block">{label} ({pct})</span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <strong className="font-mono text-xs text-slate-900">{value != null ? `${Math.round(value)}%` : '—'}</strong>
+                              {value != null ? (
+                                <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
+                                  <div className={`h-full rounded-full ${Number(value) >= 80 ? 'bg-[#12B76A]' : Number(value) >= 60 ? 'bg-[#F79009]' : 'bg-[#F04438]'}`}
+                                    style={{ width: `${Math.min(100, Number(value))}%` }} />
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {tb.rationale ? (
+                        <p className="text-[11px] text-slate-500 italic">{tb.rationale}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Raw summary */}
+                  {rawSummary ? (
+                    <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded border border-[#DDE6F0] leading-relaxed">
+                      {rawSummary}
+                    </div>
+                  ) : null}
+
+                  {/* Evidence items + Signals */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-white rounded-lg border border-[#DDE6F0]">
+                      <div className="font-bold text-slate-800 mb-1.5">Extracted Evidence</div>
+                      <ul className="space-y-1 list-disc list-inside text-slate-700">
+                        {Array.isArray(doc.evidence_items) && doc.evidence_items.length > 0 ? (
+                          doc.evidence_items.map((item: string, i: number) => <li key={i}>{item}</li>)
+                        ) : (
+                          <li className="text-slate-400 italic list-none">No structured evidence extracted</li>
+                        )}
+                      </ul>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg border border-[#DDE6F0]">
+                      <div className="font-bold text-slate-800 mb-1.5">Signals Generated</div>
+                      <ul className="space-y-1 text-slate-700">
+                        {Array.isArray(doc.signals_generated || doc.signals) && (doc.signals_generated || doc.signals || []).length > 0 ? (
+                          (doc.signals_generated || doc.signals || []).map((sig: string, i: number) => (
+                            <li key={i} className="flex items-start gap-1">
+                              <span className="text-amber-500 shrink-0">⚡</span> {sig}
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-slate-400 italic">No signals emitted</li>
+                        )}
+                      </ul>
+                    </div>
                   </div>
+
+                  {/* Audit trail */}
+                  {Array.isArray(doc.audit_trail) && doc.audit_trail.length > 0 ? (
+                    <div className="text-[10px] text-slate-400 font-mono flex items-start gap-2 pt-2 border-t border-[#DDE6F0]">
+                      <span className="shrink-0 font-bold">Audit:</span>
+                      <span className="break-all">{doc.audit_trail.join(' · ')}</span>
+                    </div>
+                  ) : null}
                 </div>
-
-                {/* Transparent Trust Engine Breakdown */}
-                {doc.trust_breakdown ? (
-                  <div className="p-3 bg-white rounded-lg border border-[#DDE6F0] text-xs">
-                    <div className="font-extrabold text-slate-900 mb-2 uppercase tracking-wider text-[10px] text-slate-500">
-                      Transparent Trust Engine Breakdown
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-slate-700">
-                      <div className="p-2 bg-[#F5F8FC] rounded border border-[#E2E8F0]">
-                        <span className="text-slate-500 block text-[10px]">Source Reliability (35%)</span>
-                        <strong className="text-slate-900 font-mono text-xs">{doc.trust_breakdown.source_reliability}%</strong>
-                      </div>
-                      <div className="p-2 bg-[#F5F8FC] rounded border border-[#E2E8F0]">
-                        <span className="text-slate-500 block text-[10px]">Corroboration (25%)</span>
-                        <strong className="text-slate-900 font-mono text-xs">{doc.trust_breakdown.corroboration}%</strong>
-                      </div>
-                      <div className="p-2 bg-[#F5F8FC] rounded border border-[#E2E8F0]">
-                        <span className="text-slate-500 block text-[10px]">Recency (15%)</span>
-                        <strong className="text-slate-900 font-mono text-xs">{doc.trust_breakdown.recency}%</strong>
-                      </div>
-                      <div className="p-2 bg-[#F5F8FC] rounded border border-[#E2E8F0]">
-                        <span className="text-slate-500 block text-[10px]">Completeness (25%)</span>
-                        <strong className="text-slate-900 font-mono text-xs">{doc.trust_breakdown.completeness}%</strong>
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-slate-600 italic">
-                      {doc.trust_breakdown.rationale || 'Calculated via weighted multi-factor deterministic scoring.'}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Extracted Evidence Items & Generated Signals */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-white rounded-lg border border-[#DDE6F0]">
-                    <div className="font-bold text-slate-900 mb-1">Extracted Evidence Items</div>
-                    <ul className="list-disc list-inside space-y-1 text-slate-700">
-                      {Array.isArray(doc.evidence_items) && doc.evidence_items.length > 0 ? (
-                        doc.evidence_items.map((item: string, i: number) => <li key={i}>{item}</li>)
-                      ) : (
-                        <li className="text-slate-400 italic">INSUFFICIENT EVIDENCE</li>
-                      )}
-                    </ul>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-lg border border-[#DDE6F0]">
-                    <div className="font-bold text-slate-900 mb-1">Signals Generated</div>
-                    <ul className="list-disc list-inside space-y-1 text-slate-700">
-                      {Array.isArray(doc.signals_generated) && doc.signals_generated.length > 0 ? (
-                        doc.signals_generated.map((sig: string, i: number) => <li key={i}>{sig}</li>)
-                      ) : (
-                        <li className="text-slate-400 italic">No automated signals emitted</li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Audit Trail */}
-                {Array.isArray(doc.audit_trail) && doc.audit_trail.length > 0 ? (
-                  <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 pt-2 border-t border-[#DDE6F0]">
-                    <span>Audit Trail:</span>
-                    <span>{doc.audit_trail.join(' · ')}</span>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>

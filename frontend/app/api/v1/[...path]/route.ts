@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SignJWT } from 'jose'
 import { getToken } from 'next-auth/jwt'
+import { createHash } from 'node:crypto'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -11,7 +12,11 @@ export const fetchCache = 'force-no-store'
 // `api.bodyParser.sizeLimit`; enforce the limit in this route handler instead.
 const MAX_REQUEST_BYTES = 26 * 1024 * 1024
 
-const BACKEND_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace('http://localhost:8000', 'http://127.0.0.1:8000')
+const configuredBackendUrl = process.env.KULIMA_BACKEND_URL
+  || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
+  || process.env.NEXT_PUBLIC_API_URL
+  || 'http://127.0.0.1:8000'
+const BACKEND_API_URL = configuredBackendUrl.replace('http://localhost:8000', 'http://127.0.0.1:8000')
 
 async function proxy(request: NextRequest) {
   const upstreamUrl = new URL(request.nextUrl.pathname + request.nextUrl.search, BACKEND_API_URL)
@@ -27,6 +32,7 @@ async function proxy(request: NextRequest) {
   headers.delete('connection')
   headers.delete('content-length')
   headers.delete('authorization')
+  headers.delete('x-kulima-auth-secret-fingerprint')
 
   const secret = process.env.NEXTAUTH_SECRET
   if (!secret) {
@@ -68,6 +74,9 @@ async function proxy(request: NextRequest) {
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(new TextEncoder().encode(secret))
+
+  const secretFingerprint = createHash('sha256').update(secret, 'utf8').digest('hex').slice(0, 16)
+  headers.set('x-kulima-auth-secret-fingerprint', secretFingerprint)
 
   console.info('[kulima-proxy]', {
     path: request.nextUrl.pathname,

@@ -1,11 +1,8 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { hrefWithRun, loadCurrentRun } from '../../lib/current-run'
-import { getOrgContext } from '../../lib/enterprise'
 import TrustGauge from '../TrustGauge/TrustGauge'
 import type { EntityType } from '../../lib/entity-types'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
@@ -26,54 +23,37 @@ type SidebarProps = {
   startupName?: string | null
   recommendation?: string | null
   trustScore?: number | null
+  /** Canonical entity type from the shared Assessment Context. */
+  entityType?: EntityType | null
   onCloseMobile?: () => void
 }
 
 const PIPELINE_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard' },
-  { label: 'Assessments', href: '/runs' },
-  { label: 'Overview', href: '/flex' },
-  { label: 'Evidence', href: '/evidence' },
-  { label: 'Research', href: '/research' },
-  { label: 'Signals', href: '/signals' },
-  { label: 'Decision', href: '/decision' },
-  { label: 'Reports', href: '/reports' },
-  { label: 'Activity', href: '/activity' },
-  { label: 'Feedback', href: '/feedback' },
+  { label: 'Dashboard',   href: '/dashboard' },
+  { label: 'Assessments', href: '/assessments' },
+  { label: 'Evidence',    href: '/evidence' },
+  { label: 'Research',    href: '/research' },
+  { label: 'Signals',     href: '/signals' },
+  { label: 'Decision',    href: '/decision' },
+  { label: 'Reports',     href: '/reports' },
 ]
 
-const INSIGHTS_ITEMS = [
-  { label: 'Reports', href: '/reports' },
-  { label: 'Analytics', href: '/analytics' },
-]
-
-const SYSTEM_ITEMS = [
-  { label: 'Feedback', href: '/feedback' },
-  { label: 'Settings', href: '/settings' },
-]
-
-// Enterprise Trust & Monetization navigation. Items with `requires` are
-// hidden when the active organization context lacks the permission. Read
-// pages (Billing, Privacy, Legal) are member-scoped on the backend and
-// always visible; mutations inside them are gated separately by RBAC.
-const GOVERNANCE_ITEMS: { label: string; href: string; requires?: string }[] = [
-  { label: 'Trust & Governance', href: '/trust', requires: 'view_audit' },
-  { label: 'Billing & Plan', href: '/billing' },
-  { label: 'Privacy & Data', href: '/privacy' },
-  { label: 'Legal & Policies', href: '/legal' },
+const SECONDARY_ITEMS = [
+  { label: 'Feedback',         href: '/feedback' },
+  { label: 'Trust & Governance', href: '/trust' },
+  { label: 'Settings',         href: '/settings' },
+  { label: 'Billing & Plan',   href: '/billing' },
 ]
 
 function NavGroup({
   label,
   items,
   pathname,
-  currentRun,
   onCloseMobile,
 }: {
   label: string
   items: { label: string; href: string }[]
   pathname: string | null
-  currentRun: ReturnType<typeof loadCurrentRun>
   onCloseMobile?: () => void
 }) {
   return (
@@ -84,11 +64,12 @@ function NavGroup({
       <div className="flex flex-col gap-0.5">
         {items.map((item) => {
           const active = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-          const href = hrefWithRun(item.href, currentRun)
+          // Assessment-centric navigation — every route reads the shared
+          // Assessment Context on arrival; no legacy ?run= URL parameters.
           return (
             <Link
               key={item.label}
-              href={href}
+              href={item.href}
               onClick={onCloseMobile}
               className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 active
@@ -112,48 +93,15 @@ export default function NavigationSidebar({
   startupName,
   recommendation,
   trustScore,
+  entityType,
   onCloseMobile,
 }: SidebarProps) {
   const pathname = usePathname()
-  const currentRun = useMemo(() => loadCurrentRun(), [runId, startupName])
 
-  const { status: authStatus } = useSession()
-  const [permissions, setPermissions] = useState<string[] | null>(null)
-
-  useEffect(() => {
-    if (authStatus !== 'authenticated') {
-      setPermissions(null)
-      return
-    }
-    let cancelled = false
-    getOrgContext()
-      .then(org => {
-        if (!cancelled) setPermissions(org.permissions)
-      })
-      .catch(() => {
-        // Unknown permissions → show every item; the backend enforces RBAC
-        // on each endpoint regardless of what the sidebar renders.
-        if (!cancelled) setPermissions(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [authStatus])
-
-  const governanceItems = useMemo(
-    () =>
-      GOVERNANCE_ITEMS.filter(item => {
-        if (!item.requires) return true
-        if (permissions === null) return true
-        return permissions.includes(item.requires)
-      }).map(({ label, href }) => ({ label, href })),
-    [permissions],
-  )
-
-  const currentStatus = useMemo(() => status || currentRun?.status || 'idle', [status, currentRun?.status])
-  const displayStartup = startupName || currentRun?.startupName
-  const displayRec = recommendation || currentRun?.recommendation
-  const displayTrust = trustScore ?? currentRun?.trustScore
+  const currentStatus = useMemo(() => status || 'idle', [status])
+  const displayStartup = startupName
+  const displayRec = recommendation
+  const displayTrust = trustScore
 
   return (
     <aside className="bg-[#061C14] text-white p-5 rounded-[12px] border border-[#0E3627] flex flex-col h-full overflow-y-auto shadow-saas-elevated select-none">
@@ -162,7 +110,6 @@ export default function NavigationSidebar({
         <div className="mb-5 pb-4 border-b border-[#0E3627]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* Logo — white pill container preserves cream bg on dark sidebar */}
               <KulimaLogo variant="sidebar" />
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold text-emerald-400 leading-tight mt-0.5">Decision Intelligence</div>
@@ -181,20 +128,19 @@ export default function NavigationSidebar({
           </div>
         </div>
 
-        {/* Current Active Run Capsule */}
+        {/* Active Evaluation Capsule */}
         <div className="rounded-[10px] bg-[#0A261C] p-3 mb-5 border border-[#124231]">
           <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-            <span>Active Evaluation</span>
-            <span className={`w-2 h-2 rounded-full ${currentStatus === 'completed' ? 'bg-[#12B76A]' : 'bg-[#F79009] animate-pulse'}`} />
+            <span>Active Assessment</span>
+            <span className={`w-2 h-2 rounded-full ${currentStatus === 'completed' || currentStatus === 'complete' ? 'bg-[#12B76A]' : 'bg-[#F79009] animate-pulse'}`} />
           </div>
-
-          {runId || currentRun?.runId ? (
+          {runId ? (
             <div>
               <div className="flex items-center gap-2 mb-0.5">
-                <div className="text-xs font-bold text-white truncate leading-tight">{displayStartup || 'Active Venture'}</div>
-                {currentRun?.entityType && currentRun.entityType !== 'startup' ? (
+                <div className="text-xs font-bold text-white truncate leading-tight">{displayStartup || 'Active Assessment'}</div>
+                {entityType && entityType !== 'startup' ? (
                   <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                    {ENTITY_LABELS[currentRun.entityType] || currentRun.entityType}
+                    {ENTITY_LABELS[entityType] || entityType}
                   </span>
                 ) : null}
               </div>
@@ -211,48 +157,32 @@ export default function NavigationSidebar({
               <div className="text-[10px] text-emerald-300/80 mt-1 capitalize">Status: {currentStatus}</div>
             </div>
           ) : (
-            <div className="text-[11px] text-emerald-300/60 italic">No active evaluation selected.</div>
+            <div className="text-[11px] text-emerald-300/60 italic">No active assessment selected.</div>
           )}
         </div>
 
         {/* Navigation Groups */}
         <nav className="flex flex-col gap-4">
+          {/* Primary */}
           <NavGroup
-            label="Decision Pipeline"
+            label="Assessment Pipeline"
             items={PIPELINE_ITEMS}
             pathname={pathname}
-            currentRun={currentRun}
             onCloseMobile={onCloseMobile}
           />
           <div className="border-t border-[#0E3627]" />
+          {/* Secondary */}
           <NavGroup
-            label="Insights & Exports"
-            items={INSIGHTS_ITEMS}
+            label="Platform"
+            items={SECONDARY_ITEMS}
             pathname={pathname}
-            currentRun={currentRun}
-            onCloseMobile={onCloseMobile}
-          />
-          <div className="border-t border-[#0E3627]" />
-          <NavGroup
-            label="Governance"
-            items={governanceItems}
-            pathname={pathname}
-            currentRun={currentRun}
-            onCloseMobile={onCloseMobile}
-          />
-          <div className="border-t border-[#0E3627]" />
-          <NavGroup
-            label="System"
-            items={SYSTEM_ITEMS}
-            pathname={pathname}
-            currentRun={currentRun}
             onCloseMobile={onCloseMobile}
           />
         </nav>
       </div>
 
       <div className="pt-4 mt-4 border-t border-[#0E3627] text-[10px] text-emerald-400/60 flex items-center justify-between flex-shrink-0">
-        <span className="font-semibold">Kulima OS</span>
+        <span className="font-semibold">Kulima FLEX</span>
         <span className="font-mono opacity-60">v2.0</span>
       </div>
     </aside>
