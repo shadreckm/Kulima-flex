@@ -6,29 +6,73 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
 import { saveUseCase } from '../lib/use-case-store'
-import { INTAKE_ENTITY_TYPES, entityToAssessmentType, getEntityConfig, type EntityType } from '../lib/entity-types'
+import { INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
 import * as api from '../lib/api'
-import UploadGuidance from '../components/UploadGuidance/UploadGuidance'
 
 const TYPE_LABELS: Record<EntityType, string> = {
   startup: 'Startup', ngo: 'NGO', government_program: 'Government Programme', development_program: 'Development Programme', tourism_sme: 'Tourism SME', accelerator: 'Accelerator',
 }
 
-const UPLOAD_GUIDANCE: Record<EntityType, string> = {
-  startup: 'Upload pitch deck, financial projections, market analysis, team bios, product roadmap',
-  ngo: 'Upload monitoring reports, impact assessments, donor reports, financial statements, annual reports',
-  government_program: 'Upload program proposals, budget allocations, implementation reports, impact evaluations, policy documents',
-  development_program: 'Upload program frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
-  tourism_sme: 'Upload visitor statistics, sustainability reports, destination impact data, business licenses, financial statements',
-  accelerator: 'Upload cohort reports, startup pitch decks, program metrics, portfolio summaries, impact reports',
-}
+const FILE_TYPES = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'CSV', 'TXT']
 
-const FLOW = [
-  { number: '01', title: 'Upload Documents', detail: 'Business plans, reports, proposals, financials' },
-  { number: '02', title: 'Analyze Evidence', detail: 'Extract entities, score trust, detect risks' },
-  { number: '03', title: 'Research Context', detail: 'Market, climate, tourism and web signals' },
-  { number: '04', title: 'Generate Decisions', detail: 'Readiness, risk assessment and action plan' },
+const PIPELINE = [
+  { key: 'info', label: 'Information', detail: 'Reports, budgets, evaluations, policies' },
+  { key: 'evidence', label: 'Evidence', detail: 'Claims extracted and structured' },
+  { key: 'trust', label: 'Trust', detail: 'Source reliability scored 0–100' },
+  { key: 'signals', label: 'Signals', detail: 'Risk, opportunity, climate, tourism' },
+  { key: 'decision', label: 'Decision', detail: 'Invest / Observe / Reassess + rationale' },
+]
+
+const PIPELINE_CARDS = [
+  { label: 'Documents Uploaded', icon: '📄' },
+  { label: 'Entities Extracted', icon: '🏛️' },
+  { label: 'Evidence Built', icon: '🧱' },
+  { label: 'Research Complete', icon: '🌐' },
+  { label: 'Signals Generated', icon: '⚡' },
+  { label: 'Decision Ready', icon: '🎯' },
+  { label: 'Report Ready', icon: '📑' },
+]
+
+const SIGNAL_DOMAINS = [
+  { label: 'Trust', icon: '🛡️', desc: 'Source reliability and corroboration' },
+  { label: 'Risk', icon: '⚠️', desc: 'Red flags and material exposure' },
+  { label: 'Opportunity', icon: '🌱', desc: 'Growth and upside signals' },
+  { label: 'Market', icon: '📈', desc: 'Size, competition, positioning' },
+  { label: 'Funding', icon: '💰', desc: 'Readiness, burn, capital efficiency' },
+  { label: 'Climate', icon: '🌤️', desc: 'Climate risk and net-zero alignment' },
+  { label: 'Environment', icon: '🌿', desc: 'Compliance and ecological footprint' },
+  { label: 'Tourism', icon: '🧭', desc: 'Destination impact and visitor economy' },
+  { label: 'Community', icon: '🤝', desc: 'Beneficiary reach and social outcomes' },
+]
+
+const USE_CASES = [
+  { title: 'NGO Programme Review', desc: 'Verify impact claims across donor reports and field data before the board sees them.' },
+  { title: 'Tourism Investment Readiness', desc: 'Score destination businesses on trust, sustainability and visitor-economy signals.' },
+  { title: 'Development Programme Performance', desc: 'Turn monitoring data and theory-of-change documents into decision-ready evidence.' },
+  { title: 'Government Initiative Assessment', desc: 'Assess budget allocation, implementation progress and policy alignment in one workspace.' },
+  { title: 'Startup Readiness', desc: 'Evidence-based investment screening — trust score, risk register and IC memo.' },
+  { title: 'Community Impact Verification', desc: 'Corroborate beneficiary outcomes against independent research intelligence.' },
+]
+
+const BEFORE = ['WhatsApp', 'Email', 'Excel', 'PDFs', 'Field Reports', 'Meetings', 'Scattered Information']
+const AFTER = ['Evidence', 'Trust', 'Signals', 'Decisions', 'Reports']
+
+const REPORT_KINDS = [
+  { label: 'Assessment Report', live: true },
+  { label: 'NGO Report', live: true },
+  { label: 'Tourism SME Report', live: true },
+  { label: 'Development Programme Report', live: true },
+  { label: 'Startup Assessment', live: true },
+  { label: 'UNDP Templates', live: false },
+  { label: 'EU Templates', live: false },
+  { label: 'USAID Templates', live: false },
+]
+
+const PRICING = [
+  { name: 'Starter', price: 'Free', detail: 'Run your first assessment. Limited documents per month.', cta: 'Start free' },
+  { name: 'Professional', price: '$49/mo', detail: 'Unlimited assessments, all signal domains, reports, Ask AI Analyst.', cta: 'Go Professional', featured: true },
+  { name: 'Enterprise', price: 'Custom', detail: 'Organizations, RBAC, audit logs, private workspace, donor templates.', cta: 'Talk to us' },
 ]
 
 function HomeInner() {
@@ -43,21 +87,20 @@ function HomeInner() {
   const [context, setContext] = useState<AssessmentContext | null>(null)
   const [organization, setOrganization] = useState('')
   const [founderOrLead, setFounderOrLead] = useState('')
-  const [website, setWebsite] = useState('')
   const [keywords, setKeywords] = useState('')
+  const [showEdit, setShowEdit] = useState(false)
   const resumeHandled = useRef(false)
 
   const runIntake = useCallback(async (
     type: EntityType,
     selectedFiles: File[],
-    meta: { organization?: string; founderOrLead?: string; website?: string; keywords?: string } = {},
+    meta: { organization?: string; founderOrLead?: string; keywords?: string } = {},
   ) => {
     setBusy(true); setMessage(null)
     try {
       const payload = await api.createAssessment(selectedFiles, entityToAssessmentType(type), {
         organizationName: meta.organization || undefined,
         founderName: meta.founderOrLead || undefined,
-        website: meta.website || undefined,
         keywords: meta.keywords || undefined,
       })
       const saved = saveIntakeContext(payload)
@@ -76,8 +119,7 @@ function HomeInner() {
         }
       }
 
-      // Persist the run identity straight into the Assessment Context —
-      // no legacy current-run store.
+      // Persist the run identity straight into the Assessment Context.
       saveIntakeContext({ ...payload, runId: activeRunId || payload.runId || '' })
 
       setMessage('Assessment created. Opening your workspace…')
@@ -114,7 +156,7 @@ function HomeInner() {
   async function handleUpload() {
     if (!files.length || busy) return
     saveUseCase(assessmentType)
-    const meta = { organization, founderOrLead, website, keywords }
+    const meta = { organization, founderOrLead, keywords }
     if (authStatus === 'authenticated') {
       await runIntake(assessmentType, files, meta)
     } else {
@@ -127,30 +169,271 @@ function HomeInner() {
     }
   }
 
+  const hasFiles = files.length > 0
+
   return (
     <main className="min-h-screen bg-white text-[#101828]">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-10">
         <Link href="/" className="flex items-center gap-3" aria-label="Kulima FLEX home"><KulimaLogo variant="header" /><span className="text-sm font-bold tracking-tight">Kulima <span className="text-[#159A62]">FLEX</span></span></Link>
-        <nav className="hidden items-center gap-8 text-sm font-medium text-[#667085] md:flex"><a href="#solutions">Solutions</a><a href="#pricing">Pricing</a><a href="#cases">Case Studies</a><a href="#about">About</a></nav>
-        <div className="flex items-center gap-3"><Link href="/api/auth/signin" className="hidden px-3 py-2 text-sm font-semibold text-[#344054] sm:block">Login</Link><a href="#intake" className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">Get Started</a></div>
+        <nav className="hidden items-center gap-8 text-sm font-medium text-[#667085] md:flex">
+          <a href="#pipeline">Pipeline</a>
+          <a href="#signals">Signals</a>
+          <a href="#use-cases">Use cases</a>
+          <a href="#pricing">Pricing</a>
+        </nav>
+        <div className="flex items-center gap-3"><Link href="/api/auth/signin" className="hidden px-3 py-2 text-sm font-semibold text-[#344054] sm:block">Login</Link><a href="#upload" className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">Get Started</a></div>
       </header>
 
-      <section id="intake" className="border-b border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]">
-        <div className="mx-auto grid max-w-7xl gap-14 px-6 pb-20 pt-14 lg:grid-cols-[1fr_0.86fr] lg:items-center lg:px-10 lg:pb-28 lg:pt-24">
-          <div><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Evidence and Decision Intelligence</div><h1 className="max-w-3xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn documents into <span className="text-[#159A62]">defensible decisions.</span></h1><p className="mt-7 max-w-2xl text-lg leading-8 text-[#667085]">Upload reports, proposals, business plans, financial statements, or programme documents. Kulima FLEX combines document intelligence, external research, trust scoring, climate signals, tourism intelligence, and AI analysis to generate decision-ready insights.</p><div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[#344054]"><span>✓ Evidence Intelligence</span><span>✓ Research Intelligence</span><span>✓ Decision Intelligence</span></div><div className="mt-9 flex flex-wrap gap-3"><a href="#intake" className="rounded-lg bg-[#159A62] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#117A4B]">Get Started <span aria-hidden="true">→</span></a><a href="#how-it-works" className="rounded-lg border border-[#D0D5DD] px-5 py-3 text-sm font-bold text-[#344054] transition hover:bg-[#F9FAFB]">Watch Demo <span aria-hidden="true">▷</span></a></div></div>
-          <div className="rounded-2xl border border-[#D0D5DD] bg-white p-3 shadow-[0_24px_70px_-28px_rgba(16,24,40,0.3)]"><div className="rounded-xl bg-[#F8FAFC] p-5 sm:p-7"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Start an assessment</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Bring the evidence.</h2></div><div className="rounded-lg border border-[#B7E6CC] bg-white px-2.5 py-1 text-[10px] font-bold text-[#117A4B]">SECURE INTAKE</div></div><label onDrop={event => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files) }} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} className={`mt-6 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-5 text-center transition ${dragging ? 'border-[#159A62] bg-[#EAF8F0]' : 'border-[#98A2B3] bg-white hover:border-[#159A62]'}`}><span className="flex size-10 items-center justify-center rounded-full bg-[#EAF8F0] text-xl text-[#159A62]" aria-hidden="true">↑</span><span className="mt-3 text-sm font-bold text-[#344054]">Drop documents here or browse</span><span className="mt-1 text-xs text-[#98A2B3]">PDF · DOCX · PPTX · XLSX</span><input type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.json" className="hidden" onChange={event => { addFiles(event.target.files); event.target.value = '' }} /></label><div className="mt-4 grid gap-3"><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="block text-xs font-bold text-[#344054]">Organization Name</span><input type="text" value={organization} onChange={e => setOrganization(e.target.value)} placeholder="e.g. AgriNova Malawi" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label><label className="block"><span className="block text-xs font-bold text-[#344054]">Founder or Project Lead</span><input type="text" value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder="e.g. Dr. Chimwemwe Phiri" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="block text-xs font-bold text-[#344054]">Website <span className="font-medium text-[#98A2B3]">(optional)</span></span><input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label><label className="block"><span className="block text-xs font-bold text-[#344054]">Research Keywords <span className="font-medium text-[#98A2B3]">(optional)</span></span><input type="text" value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="climate resilience, irrigation, donor funding" className="mt-1 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#101828] placeholder-[#98A2B3] focus:border-[#159A62] focus:outline-none" /></label></div></div>{files.length > 0 && <div className="mt-3 flex flex-col gap-2">{files.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-xs"><span className="truncate font-semibold">{file.name}</span><button type="button" onClick={() => setFiles(previous => previous.filter((_, item) => item !== index))} className="ml-3 font-bold text-[#98A2B3] hover:text-[#D92D20]" aria-label={`Remove ${file.name}`}>×</button></div>)}</div>}<button type="button" onClick={handleUpload} disabled={!files.length || busy} className="mt-4 w-full rounded-lg bg-[#101828] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1D2939] disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Analyzing documents…' : files.length ? 'Analyze documents →' : 'Select documents to begin'}</button>{message && <p className="mt-3 text-center text-xs font-semibold text-[#117A4B]">{message}</p>}<div className="mt-7 grid grid-cols-5 gap-1 text-center">{['Uploaded','Extracted','Researched','Signals','Decision'].map((label, index) => <div key={label}><div className={`mx-auto flex size-7 items-center justify-center rounded-full text-xs font-bold ${index === 0 && files.length ? 'bg-[#159A62] text-white' : 'bg-[#E4E7EC] text-[#667085]'}`}>{index + 1}</div><p className="mt-2 text-[10px] font-semibold text-[#667085]">{label}</p></div>)}</div></div></div>
+      {/* ── SECTION 1: HERO — upload is the page's first act ───────────────── */}
+      <section id="upload" className="border-b border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]">
+        <div className="mx-auto max-w-7xl px-6 pb-16 pt-14 lg:px-10 lg:pb-24 lg:pt-20">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Africa&apos;s Decision Intelligence Platform</div>
+          <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn information into <span className="text-[#159A62]">trusted decisions.</span></h1>
+          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#667085]">Upload reports, proposals, business plans, budgets, evaluations, financial statements, policies, tourism strategies, research reports, or programme documents. Kulima FLEX analyzes evidence, verifies trust, discovers signals, and generates decision-ready intelligence.</p>
+
+          {/* Gigantic dropzone — one action, no forms initially */}
+          <label
+            onDrop={event => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files) }}
+            onDragOver={event => { event.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            className={`mt-10 flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 text-center transition ${dragging ? 'border-[#159A62] bg-[#EAF8F0]' : 'border-[#98A2B3] bg-white hover:border-[#159A62] hover:bg-[#FAFDFB]'}`}
+          >
+            <span className="flex size-14 items-center justify-center rounded-full bg-[#EAF8F0] text-2xl text-[#159A62]" aria-hidden="true">↑</span>
+            <span className="mt-4 text-xl font-bold text-[#101828]">Drop documents here</span>
+            <span className="mt-1.5 text-sm font-semibold text-[#475467]">or click to browse — upload first, ask questions later.</span>
+            <span className="mt-4 flex flex-wrap justify-center gap-2">
+              {FILE_TYPES.map(t => <span key={t} className="rounded-md border border-[#EAECF0] bg-[#F9FAFB] px-2 py-1 text-[11px] font-bold text-[#667085]">{t}</span>)}
+            </span>
+            <input type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt" className="hidden" onChange={event => { addFiles(event.target.files); event.target.value = '' }} />
+          </label>
+
+          <div className="mt-3 text-sm font-semibold text-[#475467]">Upload first. Ask questions later. <span className="font-normal text-[#667085]">Extraction and assessment-type detection happen automatically — you confirm, not re-type.</span></div>
+
+          {message ? <div className="mt-4 rounded-lg border border-[#B7E6CC] bg-[#F0FBF4] px-4 py-3 text-sm font-semibold text-[#117A4B]">{message}</div> : null}
+
+          {/* ── SECTION 2: AUTO DETECTION — appears after files are staged ──── */}
+          {hasFiles ? (
+            <div className="mt-8 rounded-2xl border border-[#D0D5DD] bg-white p-6 shadow-[0_12px_40px_-16px_rgba(16,24,40,0.18)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Detected</p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-tight">Confirm your assessment context</h2>
+                </div>
+                <button type="button" onClick={() => setShowEdit(v => !v)} className="rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB]">{showEdit ? 'Done editing' : 'Edit'}</button>
+              </div>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Assessment Type</div>
+                  {showEdit ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {INTAKE_ENTITY_TYPES.map(type => (
+                        <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {TYPE_LABELS[assessmentType]}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organization</div>
+                  {showEdit ? (
+                    <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="e.g. EcoRestore Ltd" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {organization || 'Detected from documents'}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
+                  {showEdit ? (
+                    <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder="e.g. Project Manager" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {founderOrLead || 'Detected from documents'}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Keywords</div>
+                  {showEdit ? (
+                    <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Climate, Waste Management, Tourism" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs font-semibold text-[#344054]">
+                      {(keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : ['Climate', 'Waste Management', 'Tourism', 'Agriculture']).map(k => <span key={k} className="rounded-md bg-[#EAF8F0] px-2 py-0.5 text-[#117A4B]">{k}</span>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#EAECF0] pt-4">
+                <div className="text-sm text-[#667085]">{files.length} document{files.length !== 1 ? 's' : ''} staged · {files.map(f => f.name).join(', ')}</div>
+                <button type="button" onClick={handleUpload} disabled={busy} className="rounded-lg bg-[#159A62] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#117A4B] disabled:opacity-50">
+                  {busy ? 'Analyzing…' : 'Confirm & Analyze →'}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
-      <section id="how-it-works" className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">From evidence to action</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">A clear path from document to decision.</h2></div><div className="mt-12 grid gap-0 border-y border-[#EAECF0] md:grid-cols-4">{FLOW.map((item, index) => <div key={item.number} className={`relative border-[#EAECF0] py-7 md:px-6 ${index > 0 ? 'md:border-l' : ''}`}><span className="text-xs font-bold text-[#159A62]">{item.number}</span><h3 className="mt-5 text-lg font-bold">{item.title}</h3><p className="mt-2 text-sm leading-6 text-[#667085]">{item.detail}</p></div>)}</div></section>
+      {/* ── SECTION 3: LIVE DECISION PIPELINE ──────────────────────────────── */}
+      <section id="pipeline" className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+        <div className="max-w-2xl">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">The decision pipeline</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Every document travels the same path to a defensible decision.</h2>
+        </div>
+        <div className="mt-12 flex flex-col items-center gap-1 lg:flex-row lg:items-stretch lg:gap-2">
+          {PIPELINE.map((step, i) => (
+            <div key={step.key} className="flex w-full flex-col items-center gap-1 lg:flex-1 lg:flex-row">
+              <div className="w-full rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-5">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">0{i + 1}</div>
+                <div className="mt-2 text-lg font-bold">{step.label}</div>
+                <div className="mt-1 text-sm text-[#667085]">{step.detail}</div>
+              </div>
+              {i < PIPELINE.length - 1 ? <span className="rotate-90 text-[#98A2B3] lg:rotate-0" aria-hidden="true">→</span> : null}
+            </div>
+          ))}
+        </div>
+        <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {PIPELINE_CARDS.map((c, i) => (
+            <div key={c.label} className={`rounded-xl border p-4 ${i === 6 ? 'border-[#A6F4C5] bg-[#ECFDF3]' : 'border-[#EAECF0] bg-white'}`}>
+              <div className="text-xl">{c.icon}</div>
+              <div className="mt-2 text-xs font-bold leading-tight">{c.label}</div>
+              <div className={`mt-2 h-1 rounded-full ${i === 6 ? 'bg-[#12B76A]' : 'bg-[#EAF8F0]'}`} />
+            </div>
+          ))}
+        </div>
+      </section>
 
-      <section id="solutions" className="border-y border-[#EAECF0] bg-[#F8FAFC]"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="flex flex-col justify-between gap-8 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Built for your context</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Choose the decision you need to make.</h2></div><p className="max-w-md text-sm leading-6 text-[#667085]">Start with a focused intake. The deeper evidence, trust, and confidence workspace comes after your documents are analyzed.</p></div><div className="mt-10 flex flex-wrap gap-3">{INTAKE_ENTITY_TYPES.filter(type => type !== 'accelerator').map(type => <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] bg-white text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>)}</div></div></section>
+      {/* ── SECTION 4: WHAT MAKES FLEX DIFFERENT ───────────────────────────── */}
+      <section className="border-y border-[#EAECF0] bg-[#F8FAFC]">
+        <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Not another chatbot. Not another summarizer.</h2>
+          <div className="mt-10 overflow-hidden rounded-2xl border border-[#D0D5DD] bg-white">
+            <div className="grid grid-cols-2 border-b border-[#D0D5DD] bg-[#F8FAFC] text-sm font-bold">
+              <div className="p-5 text-[#667085]">ChatGPT</div>
+              <div className="border-l border-[#D0D5DD] p-5 text-[#117A4B]">Kulima FLEX</div>
+            </div>
+            {[
+              ['Generates text', 'Generates decisions'],
+              ['Summarizes documents', 'Builds evidence'],
+              ['One perspective', 'Trust · Risk · Climate · Tourism · Community · Opportunity'],
+            ].map(([them, us], index) => (
+              <div key={index} className="grid grid-cols-2 border-b border-[#EAECF0] last:border-0">
+                <div className="p-5 text-sm text-[#667085]">{them}</div>
+                <div className="border-l border-[#D0D5DD] p-5 text-sm font-semibold text-[#344054]">{us}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-      <section id="about" className="mx-auto grid max-w-7xl gap-14 px-6 py-20 lg:grid-cols-2 lg:px-10"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Why FLEX</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Not just another AI summary.</h2><p className="mt-5 max-w-lg text-base leading-7 text-[#667085]">ChatGPT helps you write. Kulima FLEX helps you decide — with a transparent evidence layer built for high-consequence work.</p></div><div className="overflow-hidden rounded-2xl border border-[#D0D5DD]"><div className="grid grid-cols-2 border-b border-[#D0D5DD] bg-[#F8FAFC] text-sm font-bold"><div className="p-5 text-[#667085]">ChatGPT</div><div className="border-l border-[#D0D5DD] p-5 text-[#117A4B]">Kulima FLEX</div></div>{['Generates text', 'Summarizes documents', 'One perspective'].map((item, index) => <div key={item} className="grid grid-cols-2 border-b border-[#EAECF0] last:border-0"><div className="p-5 text-sm text-[#667085]">{item}</div><div className="border-l border-[#EAECF0] p-5 text-sm font-semibold text-[#344054]">{['Generates decisions', 'Scores evidence', 'Trust · Risk · Climate · Tourism · Impact'][index]}</div></div>)}</div></section>
+      {/* ── SECTION 5: SIGNAL DOMAINS ──────────────────────────────────────── */}
+      <section id="signals" className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+        <div className="max-w-2xl">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Signal domains</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Nine signal domains power every decision.</h2>
+          <p className="mt-4 text-base leading-7 text-[#667085]">Tourism is not a separate platform — it&apos;s a signal domain. So are Climate and Community. One assessment, nine lenses.</p>
+        </div>
+        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {SIGNAL_DOMAINS.map(d => (
+            <div key={d.label} className="rounded-xl border border-[#EAECF0] bg-white p-5 transition hover:border-[#B7E6CC] hover:shadow-sm">
+              <div className="flex items-center gap-2.5"><span className="text-xl">{d.icon}</span><span className="text-base font-bold">{d.label}</span></div>
+              <div className="mt-2 text-sm text-[#667085]">{d.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      <section id="pricing" className="border-t border-[#EAECF0] bg-[#101828] text-white"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7BE0A9]">Simple plans</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Decision intelligence that scales with you.</h2></div><div className="mt-10 grid gap-4 md:grid-cols-3">{[['Starter','Limited assessments'],['Professional','Advanced signals · Reports · Ask AI Analyst'],['Enterprise','Organizations · RBAC · Audit logs · Private workspace']].map(([name, detail], index) => <div key={name} className={`rounded-xl border p-6 ${index === 1 ? 'border-[#159A62] bg-[#143B2B]' : 'border-[#344054] bg-[#182230]'}`}><h3 className="text-lg font-bold">{name}</h3><p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{detail}</p><a href="#intake" className="mt-8 inline-block text-sm font-bold text-[#7BE0A9]">Get started →</a></div>)}</div></div></section>
+      {/* ── SECTION 6: WHO IT IS FOR ───────────────────────────────────────── */}
+      <section id="use-cases" className="border-y border-[#EAECF0] bg-[#F8FAFC]">
+        <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Who it&apos;s for</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Built for the people who must decide.</h2>
+            <p className="mt-4 text-base leading-7 text-[#667085]">Program Managers, MEAL Coordinators, Executive Directors, NGOs, Tourism SMEs, Development and Government Programmes, Donors, and Startups.</p>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {USE_CASES.map(u => (
+              <div key={u.title} className="rounded-xl border border-[#EAECF0] bg-white p-6">
+                <h3 className="text-base font-bold">{u.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#667085]">{u.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10"><div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div><div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex">Workspace</Link></div></footer>
+      {/* ── SECTION 7: BEFORE FLEX / AFTER FLEX ────────────────────────────── */}
+      <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+        <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From scattered information to decisions.</h2>
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[#EAECF0] bg-[#F9FAFB] p-7">
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#667085]">Before FLEX</div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {BEFORE.map(item => <span key={item} className="rounded-lg border border-[#EAECF0] bg-white px-3 py-2 text-sm font-semibold text-[#475467]">{item}</span>)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#A6F4C5] bg-[#ECFDF3] p-7">
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]">After FLEX</div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {AFTER.map(item => <span key={item} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-[#0C5132] shadow-sm">{item}</span>)}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 8: REPORT OUTPUTS ──────────────────────────────────────── */}
+      <section className="border-t border-[#EAECF0] bg-[#F8FAFC]">
+        <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Report outputs</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Board-ready documents, generated from your evidence.</h2>
+          </div>
+          <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {REPORT_KINDS.map(r => (
+              <div key={r.label} className={`rounded-xl border p-5 ${r.live ? 'border-[#EAECF0] bg-white' : 'border-dashed border-[#D0D5DD] bg-white/60'}`}>
+                <div className="text-sm font-bold">{r.label}</div>
+                <div className={`mt-2 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${r.live ? 'bg-[#EAF8F0] text-[#117A4B]' : 'bg-[#F2F4F7] text-[#667085]'}`}>{r.live ? 'Available now' : 'Coming soon'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 9: PRICING ─────────────────────────────────────────────── */}
+      <section id="pricing" className="border-t border-[#EAECF0] bg-[#101828] text-white">
+        <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <div className="max-w-xl">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7BE0A9]">Simple plans</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Decision intelligence that scales with you.</h2>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
+            {PRICING.map(plan => (
+              <div key={plan.name} className={`rounded-xl border p-6 ${plan.featured ? 'border-[#159A62] bg-[#143B2B]' : 'border-[#344054] bg-[#182230]'}`}>
+                <h3 className="text-lg font-bold">{plan.name}</h3>
+                <div className="mt-2 text-2xl font-semibold">{plan.price}</div>
+                <p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{plan.detail}</p>
+                <a href="#upload" className="mt-8 inline-block rounded-lg bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20">{plan.cta} →</a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 10: FINAL CTA ──────────────────────────────────────────── */}
+      <section className="border-t border-[#EAECF0] bg-[radial-gradient(circle_at_20%_80%,#EAF8F0_0,transparent_35%),#fff]">
+        <div className="mx-auto max-w-4xl px-6 py-24 text-center lg:px-10">
+          <h2 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Ready to turn information into trusted decisions?</h2>
+          <p className="mx-auto mt-4 max-w-xl text-base text-[#667085]">Upload your first document. No forms. No friction.</p>
+          <a href="#upload" className="mt-8 inline-block rounded-xl bg-[#159A62] px-8 py-4 text-base font-bold text-white shadow-sm transition hover:bg-[#117A4B]">Upload your first document ↑</a>
+        </div>
+      </section>
+
+      <footer className="border-t border-[#EAECF0]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10">
+          <div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div>
+          <div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex">Workspace</Link></div>
+        </div>
+      </footer>
     </main>
   )
 }
