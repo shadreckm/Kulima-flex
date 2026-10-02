@@ -1,7 +1,7 @@
 import os
 import re
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from kulima.core.documents.repository import DocumentRepository
 from kulima.core.security.encryption import decrypt_bytes, is_encrypted
 
+from .core.auth import OrgContext, get_current_org
 from .core.rate_limit import RateLimitMiddleware
 from .routers import (
     intelligence,
@@ -131,13 +132,19 @@ def _document_registry() -> DocumentRepository:
 
 
 @app.get("/uploads/{filename}")
-async def serve_upload(filename: str):
-    if not _SAFE_UPLOAD_NAME.match(filename) or ".." in filename or filename != os.path.basename(filename):
-        raise HTTPException(status_code=404, detail={"error": True, "message": "File not found"})
+async def serve_upload(
+    filename: str,
+    current: OrgContext = Depends(get_current_org),
+):
+    """Serve an uploaded document — authenticated and workspace-scoped (P4/P7).
 
-    target = os.path.realpath(os.path.join(uploads_dir, filename))
-    root = os.path.realpath(uploads_dir)
-    if not target.startswith(root + os.sep):
+    Previously this endpoint was public: anyone with a URL could download any
+    uploaded document. Now the caller must hold a valid session, and the
+    document row's workspace (org_id) must match the caller's acting
+    workspace. Legacy pre-registry files (no registry row) still fall back to
+    plain serving, but only for authenticated members of any workspace.
+    """
+    if not _SAFE_UPLOAD_NAME.match(filename) or ".." in filename or filename != os.path.basename(filename):
         raise HTTPException(status_code=404, detail={"error": True, "message": "File not found"})
 
     registry = None
@@ -145,6 +152,22 @@ async def serve_upload(filename: str):
         registry = _document_registry().find_by_storage_path(filename)
     except Exception:  # noqa: BLE001 — registry failure must not break legacy serving
         registry = None
+
+    if registry is not None:
+        # Workspace isolation: the document must belong to the caller's
+        # acting organization. Docs with no org binding (legacy rows) stay
+        # reachable for authenticated users (capability-URL semantics).
+        doc_org = registry.get("orgId")
+        if doc_org and doc_org != current.org_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": True, "code": "DOCUMENT_ACCESS_DENIED", "message": "This document belongs to a different workspace."},
+            )
+
+    target = os.path.realpath(os.path.join(uploads_dir, filename))
+    root = os.path.realpath(uploads_dir)
+    if not target.startswith(root + os.sep):
+        raise HTTPException(status_code=404, detail={"error": True, "message": "File not found"})
 
     if registry is not None:
         if registry.get("deletedAt"):

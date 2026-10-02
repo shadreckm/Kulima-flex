@@ -146,7 +146,7 @@ export default function DecisionWorkspacePage() {
       {ctxError ? (
         <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm font-medium">
           {ctxError}{' '}
-          <Link href="/" className="underline font-bold ml-2">Create assessment</Link>
+          <Link href="/flex" className="underline font-bold ml-2">Open workspace</Link>
         </div>
       ) : null}
       {error ? <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">{error}</div> : null}

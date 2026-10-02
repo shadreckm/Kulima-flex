@@ -131,7 +131,7 @@ function ReportsPageInner() {
       {error && !loading && (
         <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm">
           {error}{' '}
-          <Link href="/" className="underline font-bold ml-2">Create assessment →</Link>
+          <Link href="/flex" className="underline font-bold ml-2">Open workspace</Link>
         </div>
       )}
 

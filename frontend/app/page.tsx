@@ -55,8 +55,17 @@ const USE_CASES = [
   { title: 'Community Impact Verification', desc: 'Corroborate beneficiary outcomes against independent research intelligence.' },
 ]
 
-const BEFORE = ['WhatsApp', 'Email', 'Excel', 'PDFs', 'Field Reports', 'Meetings', 'Scattered Information']
 const AFTER = ['Evidence', 'Trust', 'Signals', 'Decisions', 'Reports']
+
+/** P8: post-upload journey — replaces the old competitor-comparison table. */
+const POST_UPLOAD_FLOW = [
+  { label: 'Documents', desc: 'You upload PDF, DOCX, PPTX, XLSX, CSV or TXT files — one or many.' },
+  { label: 'Evidence', desc: 'Every claim is extracted, structured and linked to its source page.' },
+  { label: 'Trust', desc: 'Each source is reliability-scored 0–100 across four factors.' },
+  { label: 'Signals', desc: 'Nine domains surface risks, opportunities, climate and community impact.' },
+  { label: 'Decision', desc: 'Invest / Observe / Reassess with a defensible, evidence-backed rationale.' },
+  { label: 'Report', desc: 'Export the IC memo, full report, signal register or one-pager.' },
+]
 
 const REPORT_KINDS = [
   { label: 'Assessment Report', live: true },
@@ -312,23 +321,23 @@ function HomeInner() {
         </div>
       </section>
 
-      {/* ── SECTION 4: WHAT MAKES FLEX DIFFERENT ───────────────────────────── */}
+      {/* ── SECTION 4: WHAT HAPPENS AFTER UPLOAD (P8) ──────────────────── */}
       <section className="border-y border-[#EAECF0] bg-[#F8FAFC]">
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
-          <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Not another chatbot. Not another summarizer.</h2>
-          <div className="mt-10 overflow-hidden rounded-2xl border border-[#D0D5DD] bg-white">
-            <div className="grid grid-cols-2 border-b border-[#D0D5DD] bg-[#F8FAFC] text-sm font-bold">
-              <div className="p-5 text-[#667085]">ChatGPT</div>
-              <div className="border-l border-[#D0D5DD] p-5 text-[#117A4B]">Kulima FLEX</div>
-            </div>
-            {[
-              ['Generates text', 'Generates decisions'],
-              ['Summarizes documents', 'Builds evidence'],
-              ['One perspective', 'Trust · Risk · Climate · Tourism · Community · Opportunity'],
-            ].map(([them, us], index) => (
-              <div key={index} className="grid grid-cols-2 border-b border-[#EAECF0] last:border-0">
-                <div className="p-5 text-sm text-[#667085]">{them}</div>
-                <div className="border-l border-[#D0D5DD] p-5 text-sm font-semibold text-[#344054]">{us}</div>
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">What happens after upload?</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From documents to a defensible decision — automatically.</h2>
+            <p className="mt-4 text-base leading-7 text-[#667085]">You upload once. The Assessment Context carries your documents through the whole pipeline — no re-entry, no dead ends, every stage building on the last.</p>
+          </div>
+          <div className="mt-12 flex flex-col items-center gap-1 lg:flex-row lg:items-stretch lg:gap-2">
+            {POST_UPLOAD_FLOW.map((step, i) => (
+              <div key={step.label} className="flex w-full flex-col items-center gap-1 lg:flex-1 lg:flex-row">
+                <div className="w-full rounded-xl border border-[#EAECF0] bg-white p-5 transition hover:border-[#B7E6CC] hover:shadow-sm">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">{String(i + 1).padStart(2, '0')}</div>
+                  <div className="mt-2 text-lg font-bold">{step.label}</div>
+                  <div className="mt-1 text-sm text-[#667085]">{step.desc}</div>
+                </div>
+                {i < POST_UPLOAD_FLOW.length - 1 ? <span className="rotate-90 text-[#98A2B3] lg:rotate-0" aria-hidden="true">→</span> : null}
               </div>
             ))}
           </div>
@@ -371,14 +380,14 @@ function HomeInner() {
         </div>
       </section>
 
-      {/* ── SECTION 7: BEFORE FLEX / AFTER FLEX ────────────────────────────── */}
+      {/* ── SECTION 7: FROM SCATTERED TO DECISIONS ────────────────────── */}
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
         <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From scattered information to decisions.</h2>
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-[#EAECF0] bg-[#F9FAFB] p-7">
             <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#667085]">Before FLEX</div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {BEFORE.map(item => <span key={item} className="rounded-lg border border-[#EAECF0] bg-white px-3 py-2 text-sm font-semibold text-[#475467]">{item}</span>)}
+              {['WhatsApp', 'Email', 'Excel', 'PDFs', 'Field Reports', 'Meetings'].map(item => <span key={item} className="rounded-lg border border-[#EAECF0] bg-white px-3 py-2 text-sm font-semibold text-[#475467]">{item}</span>)}
             </div>
           </div>
           <div className="rounded-2xl border border-[#A6F4C5] bg-[#ECFDF3] p-7">

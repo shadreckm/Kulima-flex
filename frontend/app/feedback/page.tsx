@@ -172,7 +172,7 @@ function FeedbackPageInner() {
     >
       {ctxError ? (
         <div className="p-4 bg-amber-50 text-amber-800 rounded-[12px] border border-amber-200 text-sm font-medium">
-          {ctxError} — <Link href="/" className="underline font-bold">create an assessment</Link> to submit feedback.
+          {ctxError} — <Link href="/flex" className="underline font-bold">open the workspace</Link> to submit feedback.
         </div>
       ) : null}
       {assessmentId ? (

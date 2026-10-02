@@ -120,8 +120,8 @@ function ResearchPageInner() {
       {error && !loading && (
         <div className="p-4 rounded-[12px] border border-amber-300 bg-amber-50 text-sm text-amber-800">
           {error}{' '}
-          <button className="underline font-bold ml-2" onClick={() => router.push('/')}>
-            Create assessment
+          <button className="underline font-bold ml-2" onClick={() => router.push('/flex')}>
+            Open workspace
           </button>
         </div>
       )}

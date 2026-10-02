@@ -106,7 +106,7 @@ function ActivityInner() {
       {ctxError && (
         <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
           {ctxError}{' '}
-          <Link className="underline" href="/">Create assessment</Link>
+          <Link className="underline" href="/flex">Open workspace</Link>
         </div>
       )}
 
