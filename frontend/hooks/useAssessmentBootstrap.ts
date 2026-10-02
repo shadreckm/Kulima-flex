@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import * as api from '../lib/api'
 import {
   contextNeedsConfirmation,
@@ -35,12 +36,17 @@ type Options = {
  * the context, never from a legacy localStorage current-run store.
  */
 export function useAssessmentBootstrap(options: Options = {}) {
+  const { status: authStatus } = useSession()
   const [assessmentContext, setAssessmentContext] = useState<AssessmentContext | null>(null)
   const [bootState, setBootState] = useState<AssessmentBootState>('idle')
   const [attempt, setAttempt] = useState(0)
   const startedRef = useRef<string | null>(null)
 
   useEffect(() => {
+    // Do not run while the session is still resolving — an unauthenticated
+    // probe of getActiveAssessment() would fail silently, cache 'none', and
+    // never re-run once auth resolves, leaving the workspace empty.
+    if (authStatus === 'loading') return
     let cancelled = false
     let ctx = loadAssessmentContext()
 
@@ -89,7 +95,7 @@ export function useAssessmentBootstrap(options: Options = {}) {
         saveIntakeContext(ctx)
         setAssessmentContext(ctx)
         setBootState('started')
-      } catch {
+      } catch (err) {
         if (cancelled) return
         startedRef.current = null
         setBootState('error')
@@ -100,7 +106,7 @@ export function useAssessmentBootstrap(options: Options = {}) {
     return () => {
       cancelled = true
     }
-  }, [attempt])
+  }, [attempt, authStatus])
 
   /** Re-attempt the automatic run start after a failure. */
   const retry = useCallback(() => {

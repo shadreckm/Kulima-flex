@@ -105,7 +105,6 @@ function HomeInner() {
       })
       const saved = saveIntakeContext(payload)
       setContext(saved)
-      await clearIntakeDraft()
       setFiles([])
 
       // Start run immediately
@@ -122,8 +121,14 @@ function HomeInner() {
       // Persist the run identity straight into the Assessment Context.
       saveIntakeContext({ ...payload, runId: activeRunId || payload.runId || '' })
 
+      // Redirect first — never let post-create housekeeping block navigation.
+      // IndexedDB draft cleanup is fire-and-forget (a blocked IndexedDB
+      // transaction used to stall this function before router.push ran,
+      // leaving the user stranded on the landing page with a succeeded
+      // assessment).
       setMessage('Assessment created. Opening your workspace…')
       router.push('/flex')
+      void clearIntakeDraft().catch(() => {})
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Upload failed. Please try again.')
     } finally { setBusy(false) }
