@@ -7,6 +7,8 @@ import ChatShell from '../../components/ChatShell/ChatShell'
 import ContextPanel from '../../components/ContextPanel/ContextPanel'
 import NavigationSidebar from '../../components/NavigationSidebar/NavigationSidebar'
 import AssessmentSummaryBar from '../../components/AssessmentSummaryBar/AssessmentSummaryBar'
+import WorkspaceHeader from '../../components/WorkspaceHeader'
+import AssessmentProgress from '../../components/AssessmentProgress'
 import * as api from '../../lib/api'
 import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
