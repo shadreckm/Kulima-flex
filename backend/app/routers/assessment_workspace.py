@@ -53,12 +53,24 @@ async def get_active_assessment(
     This is the single-source-of-truth read every workspace tab uses, so
     Dashboard / Runs / Analytics / Evidence / Signals / Decision / Reports
     all render the same assessment.
+
+    Falls back to the most recent assessment for the user if no org-scoped
+    assessment exists (supports legacy assessments and new assessments before
+    org association completes).
     """
     try:
         contexts = assessment_adapter._repo.list_for_org(current.org_id, user_id=current.user_id, limit=1)
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
     if not contexts:
+        # Fallback: try to find the most recent assessment for this user
+        try:
+            user_contexts = assessment_adapter._repo.list_for_user(user_id=current.user_id, limit=1)
+            if user_contexts:
+                assessment_id = str(user_contexts[0].assessment_id)
+                return assessment_adapter.get_assessment(assessment_id, current.user_id, org_id=current.org_id)
+        except Exception:  # noqa: BLE001
+            pass
         raise HTTPException(
             status_code=404,
             detail={"error": True, "message": "No assessment context found for this workspace yet."},

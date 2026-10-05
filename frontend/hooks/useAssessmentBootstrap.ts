@@ -57,8 +57,22 @@ export function useAssessmentBootstrap(options: Options = {}) {
           if (active?.assessmentId) {
             ctx = saveIntakeContext(active)
           }
-        } catch {
-          // ignore if no active assessment on server
+        } catch (activeErr) {
+          // If getActiveAssessment fails, retry a few times with exponential backoff
+          // This handles the case where the assessment was just created but the
+          // backend hasn't indexed it yet
+          for (let i = 0; i < 3; i++) {
+            await new Promise(r => setTimeout(r, 500 * (i + 1)))
+            try {
+              const retryActive = await api.getActiveAssessment()
+              if (retryActive?.assessmentId) {
+                ctx = saveIntakeContext(retryActive)
+                break
+              }
+            } catch {
+              // continue retrying
+            }
+          }
         }
       }
       if (cancelled) return
