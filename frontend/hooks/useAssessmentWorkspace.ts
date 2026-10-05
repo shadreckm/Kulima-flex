@@ -37,8 +37,8 @@ export function useAssessmentWorkspace(enabled: boolean): UseAssessmentWorkspace
     if (!enabled) return
     setLoading(true)
     setError(null)
+    const idParam = searchParams.get('id') || searchParams.get('assessmentId')
     try {
-      const idParam = searchParams.get('id') || searchParams.get('assessmentId')
       const payload = idParam
         ? await getAssessmentWorkspace(idParam)
         : await getActiveAssessment()
