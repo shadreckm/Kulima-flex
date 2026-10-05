@@ -117,6 +117,13 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
 
     # Build research payload
     research_payload = dict(ctx.research or {})
+    # Phase 7 reliability: top-level AI mode so every workspace shows either
+    # "AI Available" or "Document Intelligence Mode Active". Never silent.
+    offline_research = (
+        research_payload.get("mode") == "document_intelligence"
+        or research_payload.get("openaiStatus") == "unavailable"
+    )
+    ai_mode = "document_intelligence" if offline_research else "ai_available"
     if not research_payload.get("sources") and brief:
         research_sources = [
             {"title": s.title, "url": s.url, "snippet": s.snippet, "source_type": getattr(s, "source_type", "research")}
@@ -133,6 +140,8 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
     elif not research_payload:
         research_payload = {
             "status": getattr(ctx.status, "value", str(ctx.status)),
+            "mode": "document_intelligence",
+            "openaiStatus": "unknown",
             "sources": [
                 {"title": doc.name, "url": doc.url, "snippet": doc.raw_summary, "source_type": "document"}
                 for doc in ctx.uploaded_documents
@@ -208,6 +217,11 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "assessmentTypeLabel": ASSESSMENT_TYPE_LABELS.get(atype_value, "Assessment"),
         "status": getattr(ctx.status, "value", str(ctx.status)),
         "runId": ctx.run_id,
+        # Phase 7: never fail silently — surface which intelligence mode ran.
+        "aiMode": ai_mode,
+        "aiModeLabel": (
+            "Document Intelligence Mode Active" if ai_mode == "document_intelligence" else "AI Available"
+        ),
         "requiresConfirmation": ctx.requires_confirmation,
         "confidenceThreshold": CONFIRMATION_THRESHOLD,
         "displayEntity": display_entity(ctx),
@@ -225,6 +239,11 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
             "confidence": round(float(ctx.extraction.confidence), 3),
             "textAvailable": bool(ctx.extraction.text_available),
             "fields": fields,
+            # Richer deterministic document intelligence (Phase 1 reliability):
+            # locations, dates, budget references, activities, objectives,
+            # outcomes and risks — extracted with zero AI dependency.
+            "intelligence": (ctx.extraction.intelligence.model_dump(mode="json") if ctx.extraction.intelligence else {}),
+            "projectLead": (ctx.extraction.project_lead.value if ctx.extraction.project_lead else ""),
         },
         "documentIds": list(ctx.document_ids),
         "uploadedDocuments": [doc.model_dump(mode="json") for doc in ctx.uploaded_documents],

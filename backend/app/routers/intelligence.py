@@ -58,8 +58,15 @@ _live_run_repo = RunRepository()
 
 
 def _is_demo_run(run_id: str | int) -> bool:
+    """Legacy demo-run guard.
+
+    Reliability phase: seeded demo data (OSTX/AgriNova) is no longer part of
+    the product. Only the legacy literal prefixes remain so that databases
+    created before the phase can still be managed; any other non-numeric id
+    is a live UUID run and must be treated as user data, not a demo case.
+    """
     s = str(run_id).lower()
-    return s.startswith("ostx-") or s.startswith("pilot-") or not s.isdigit()
+    return s.startswith("ostx-") or s.startswith("pilot-")
 
 def _load_brief_model(run_id: str | int, user_id: str | None = None, org_id: str | None = None) -> InvestmentBrief:
     """Load a stored brief, workspace-scoped when org_id is provided."""

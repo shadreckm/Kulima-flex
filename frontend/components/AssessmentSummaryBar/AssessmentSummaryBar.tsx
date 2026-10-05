@@ -64,6 +64,27 @@ export default function AssessmentSummaryBar({ context, status, compact = false 
           </span>
         </div>
 
+        {/* Phase 7 reliability: never fail silently — show which intelligence mode ran. */}
+        {context.aiMode ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Mode</span>
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider border ${
+                context.aiMode === 'document_intelligence'
+                  ? 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
+                  : 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]'
+              }`}
+              title={
+                context.aiMode === 'document_intelligence'
+                  ? 'Live AI providers are unavailable — the assessment ran on uploaded documents, deterministic trust and rule-based signals.'
+                  : 'Live AI research and analysis are available.'
+              }
+            >
+              {context.aiMode === 'document_intelligence' ? '📄 Doc Intelligence' : '🤖 AI Available'}
+            </span>
+          </div>
+        ) : null}
+
         <div className="ml-auto flex items-center gap-4 text-[10px] text-slate-400 font-semibold">
           {context.confidence != null && <span>{Math.round(context.confidence * 100)}% extraction</span>}
           <span>

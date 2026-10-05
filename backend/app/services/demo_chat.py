@@ -10,13 +10,16 @@ from kulima.models import InvestmentBrief
 from kulima.signals.models import Signal
 from kulima.signals.signals_summary import highest_priority_signals
 
-DEMO_MODE_LABEL = "Demo Mode Response"
+DEMO_MODE_LABEL = "Document Intelligence Mode"
 DOCUMENT_INTELLIGENCE_LABEL = "Document Intelligence Mode"
 
 
 def _banner() -> str:
+    # Reliability contract: never say "Demo Mode" to users. Offline answers are
+    # synthesized from real stored data — the honest label is Document
+    # Intelligence Mode.
     return (
-        f"**{DEMO_MODE_LABEL}**\n\n"
+        f"**📄 {DOCUMENT_INTELLIGENCE_LABEL}**\n\n"
         "Live model APIs are unavailable. This answer is synthesized from the stored "
         "decision snapshot, trust score, evidence integrity, and signals for this run.\n\n"
     )
@@ -40,7 +43,7 @@ def _doc_intelligence_banner(brief: "InvestmentBrief") -> str:
     )
 
 
-def demo_ask_ic_answer(brief: InvestmentBrief, question: str) -> str:
+def doc_intelligence_ask_ic_answer(brief: InvestmentBrief, question: str) -> str:
     q = (question or "").lower()
     rec = getattr(brief.recommendation, "value", str(brief.recommendation))
     ei = brief.evidence_integrity
@@ -306,6 +309,11 @@ def doc_intelligence_ask_ic_answer(
         )
 
     return _doc_intelligence_banner(brief) + body + context_section
+
+
+def demo_ask_signals_answer(case: Case, signals: list[Signal], question: str) -> str:
+    """Backward-compatible alias — routes to the deterministic doc-intelligence answer."""
+    return doc_intelligence_ask_signals_answer(case, signals, question)
 
 
 def doc_intelligence_ask_signals_answer(case: Case, signals: list[Signal], question: str) -> str:

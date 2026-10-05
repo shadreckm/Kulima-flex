@@ -108,7 +108,14 @@ function HomeInner() {
   ) => {
     setBusy(true); setMessage(null)
     try {
-      const payload = await api.createAssessment(selectedFiles, entityToAssessmentType(type), {
+      // Calculate total file size to determine upload method
+      const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0)
+      const FOUR_MB = 4 * 1024 * 1024
+
+      // Use direct backend upload for files > 4MB to bypass Vercel limit
+      const createFn = totalSize > FOUR_MB ? api.createAssessmentDirect : api.createAssessment
+
+      const payload = await createFn(selectedFiles, entityToAssessmentType(type), {
         organizationName: meta.organization || undefined,
         founderName: meta.founderOrLead || undefined,
         keywords: meta.keywords || undefined,

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
-import { getFullBrief, attachAssessmentDocuments, type AssessmentWorkspacePayload } from '../../lib/api'
+import { getFullBrief, attachAssessmentDocuments, attachAssessmentDocumentsDirect, type AssessmentWorkspacePayload } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 
 type FullBrief = Record<string, any>
@@ -55,11 +55,18 @@ export default function EvidencePage() {
     setUploadSuccess(null)
 
     try {
+      // Calculate total file size to determine upload method
+      const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0)
+      const FOUR_MB = 4 * 1024 * 1024
+
+      // Use direct backend upload for files > 4MB to bypass Vercel limit
+      const attachFn = totalSize > FOUR_MB ? attachAssessmentDocumentsDirect : attachAssessmentDocuments
+
       // Document Bridge: all files attach to the Assessment Context in ONE
       // call. The backend re-runs the evidence chain (extraction → research →
       // signals → decision) automatically — no duplicate ingestion, no
       // second pipeline, no manual syncing.
-      const updated = await attachAssessmentDocuments(assessmentId, Array.from(files))
+      const updated = await attachFn(assessmentId, Array.from(files))
 
       const docs = Array.isArray(updated.uploadedDocuments) ? updated.uploadedDocuments : []
       const firstTrust = docs.length ? docs[docs.length - 1]?.trust_score : null

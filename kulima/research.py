@@ -42,7 +42,19 @@ class ResearchEngine:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self.client = TavilyClient(api_key=settings.tavily_api_key)
+        # Reliability: a missing or placeholder Tavily key must never crash the
+        # ResearchEngine at construction time. The engine still builds; searches
+        # return an empty source list and Document Intelligence Mode takes over.
+        api_key = (getattr(settings, "tavily_api_key", "") or "").strip()
+        self._disabled = not api_key or api_key.upper() in {"NONE", "TEST", "DISABLED", "MISSING"}
+        if self._disabled:
+            self.client = None
+        else:
+            try:
+                self.client = TavilyClient(api_key=api_key)
+            except Exception:  # noqa: BLE001 - never dead-end on init
+                self.client = None
+                self._disabled = True
         self.max_results = settings.max_research_results
         self.africa_focus = settings.africa_focus
 
@@ -51,6 +63,8 @@ class ResearchEngine:
         query: str,
         depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "advanced",
     ) -> list[SourceAttribution]:
+        if self._disabled or self.client is None:
+            return []
         africa_boost = (
             " Africa startup founder venture funding market"
             if self.africa_focus
@@ -62,12 +76,18 @@ class ResearchEngine:
         # Only public entity metadata (org name, founder, sector, country)
         # is ever forwarded to the third-party research provider.
         safe_query = _tavily_guard().sanitize_query(f"{query}{africa_boost}".strip())
-        response = self.client.search(
-            query=safe_query,
-            search_depth=depth,
-            max_results=self.max_results,
-            include_answer=True,
-        )
+        # Reliability: bound every Tavily call so a network stall / timeout
+        # degrades to zero sources instead of hanging the whole pipeline.
+        try:
+            response = self.client.search(
+                query=safe_query,
+                search_depth=depth,
+                max_results=self.max_results,
+                include_answer=True,
+                timeout=20,
+            )
+        except Exception as exc:  # noqa: BLE001 - timeout/network/quota/key failure
+            return []
         results = response.get("results", []) if isinstance(response, dict) else []
         sources: list[SourceAttribution] = []
         for item in results:

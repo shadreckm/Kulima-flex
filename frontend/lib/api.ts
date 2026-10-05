@@ -5,6 +5,14 @@ const API_BASE = typeof window === 'undefined'
     || ''
   : ''
 
+// Direct backend URL for large file uploads (bypasses Vercel 4.5MB limit)
+const DIRECT_BACKEND_URL = typeof window === 'undefined'
+  ? process.env.KULIMA_BACKEND_URL
+    || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
+    || process.env.NEXT_PUBLIC_API_URL
+    || ''
+  : ''
+
 export function withAuth(headers: HeadersInit = {}): HeadersInit {
   const base: Record<string, string> = {}
   if (headers instanceof Headers) {
@@ -235,6 +243,9 @@ export type AssessmentIntakeHints = {
  * Create the shared Assessment Context: uploads documents once, runs the
  * evidence pipeline + auto extraction, and returns everything every other
  * workspace needs (no duplicate data entry).
+ *
+ * NOTE: For large files (>4.5MB), this will fail with 413 FUNCTION_PAYLOAD_TOO_LARGE
+ * when deployed to Vercel. Use createAssessmentDirect() for large file uploads.
  */
 export async function createAssessment(
   files: File[],
@@ -258,6 +269,36 @@ export async function createAssessment(
   })
   if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'createAssessment'))
   return parseJsonResponse<AssessmentContextPayload>(res, 'createAssessment')
+}
+
+/**
+ * Create the shared Assessment Context via direct backend upload.
+ * 
+ * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
+ * uploads up to 25MB. Use this for large file uploads.
+ */
+export async function createAssessmentDirect(
+  files: File[],
+  assessmentType: string,
+  hints: AssessmentIntakeHints = {},
+): Promise<AssessmentContextPayload> {
+  const form = new FormData()
+  files.forEach(file => form.append('files', file))
+  form.append('assessmentType', assessmentType)
+  if (hints.entityName) form.append('entityName', hints.entityName)
+  if (hints.founderName) form.append('founderName', hints.founderName)
+  if (hints.organizationName) form.append('organizationName', hints.organizationName)
+  if (hints.sector) form.append('sector', hints.sector)
+  if (hints.country) form.append('country', hints.country)
+  if (hints.keywords) form.append('keywords', hints.keywords)
+  if (hints.website) form.append('website', hints.website)
+  const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/`, {
+    method: 'POST',
+    headers: withAuth(),
+    body: form,
+  })
+  if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'createAssessmentDirect'))
+  return parseJsonResponse<AssessmentContextPayload>(res, 'createAssessmentDirect')
 }
 
 /**
@@ -296,6 +337,27 @@ export async function attachAssessmentDocuments(
   })
   if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'attachAssessmentDocuments'))
   return parseJsonResponse<AssessmentWorkspacePayload>(res, 'attachAssessmentDocuments')
+}
+
+/**
+ * Attach documents to an existing assessment via direct backend upload.
+ * 
+ * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
+ * uploads up to 25MB. Use this for large file uploads.
+ */
+export async function attachAssessmentDocumentsDirect(
+  assessmentId: string,
+  files: File[],
+): Promise<AssessmentWorkspacePayload> {
+  const form = new FormData()
+  files.forEach(f => form.append('files', f))
+  const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/${encodeURIComponent(assessmentId)}/documents`, {
+    method: 'POST',
+    headers: withAuth(),
+    body: form,
+  })
+  if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'attachAssessmentDocumentsDirect'))
+  return parseJsonResponse<AssessmentWorkspacePayload>(res, 'attachAssessmentDocumentsDirect')
 }
 
 // ── Auth chain diagnostic (release engineering) ─────────────────────────

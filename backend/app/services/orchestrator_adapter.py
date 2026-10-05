@@ -373,15 +373,37 @@ def start_intelligence_run(
             _sync_assessment(assessment_id, document_ids, db_id, brief, org_id=org_id)
             _log.info("Orchestrator: analysis complete — run_id=%s db_id=%s", rid, db_id)
         except Exception as exc:  # noqa: BLE001
-            _log.warning("Orchestrator live analysis failed (%s) — activating offline demo fallback.", exc)
+            # Reliability contract: the workflow must NEVER dead-end because of
+            # OpenAI / Tavily / network / key failures. Engage deterministic
+            # Document Intelligence Mode for ANY pipeline failure — the brief
+            # is built only from this assessment's own documents, trust layer,
+            # and whatever research succeeded. Demo seed data is never used.
+            _log.warning("Orchestrator live analysis failed (%s) — activating Document Intelligence Mode.", exc)
             try:
-                brief = _get_offline_fallback_brief(founder, startup)
+                brief, research_payload, fallback_signal_titles = build_document_intelligence_fallback(
+                    founder,
+                    startup,
+                    user_id=owner_id,
+                    org_id=org_id,
+                    assessment_id=assessment_id,
+                    sector_hint=sector_hint,
+                    research_bundle=None,
+                    failure=exc,
+                )
                 db_id = _repo.save_brief(brief, user_id=owner_id, org_id=org_id)
                 _run_repo.update_run_completed(rid, db_id=db_id)
-                _sync_assessment(assessment_id, document_ids, db_id, brief, org_id=org_id)
-                _log.info("Orchestrator: offline fallback complete — run_id=%s db_id=%s", rid, db_id)
+                _sync_assessment(
+                    assessment_id,
+                    document_ids,
+                    db_id,
+                    brief,
+                    org_id=org_id,
+                    research=research_payload,
+                    generated_signal_titles=fallback_signal_titles,
+                )
+                _log.info("Orchestrator: Document Intelligence fallback complete — run_id=%s db_id=%s", rid, db_id)
             except Exception as fallback_exc:  # noqa: BLE001
-                _log.exception("Orchestrator fallback also failed: %s", fallback_exc)
+                _log.exception("Orchestrator Document Intelligence fallback also failed: %s", fallback_exc)
                 _run_repo.update_run_failed(rid, error_message=str(exc))
                 _mark_assessment_failed(assessment_id, str(exc))
 
@@ -660,48 +682,9 @@ def _mark_assessment_failed(assessment_id: str | None, message: str) -> None:
         _log.warning("Could not mark assessment %s failed: %s", assessment_id, exc)
 
 
-def _get_offline_fallback_brief(founder: str, startup: str) -> InvestmentBrief:
-    """Return a demo brief adapted from the OSTX seed dataset for offline mode.
-
-    Picks the closest existing demo run from the DB (by sector/stage heuristic)
-    and patches the founder/startup name + prepends the offline-mode banner to
-    the executive_summary so the IC workflow can continue end-to-end.
-    """
-    import copy
-
-    # Pull all completed runs; prefer the INVEST-grade one as the default demo.
-    recent = _repo.recent_runs(limit=50)
-    demo_run: dict | None = None
-    for row in recent:
-        # Prefer AgriNova Malawi (INVEST) as the flagship fallback demo.
-        if "agrinova" in str(row.get("startup_name", "")).lower():
-            demo_run = dict(row)
-            break
-    if demo_run is None and recent:
-        demo_run = dict(recent[0])
-
-    if demo_run is not None:
-        db_id = demo_run.get("id")
-        base_brief = _repo.load_brief(db_id) if db_id else None
-    else:
-        base_brief = None
-
-    if base_brief is None:
-        # Last-resort: import fresh from seed module
-        from scripts.seed_demo_data import build_agrinova_malawi_brief  # noqa: PLC0415
-        base_brief = build_agrinova_malawi_brief()
-
-    # Deep-copy and patch names + offline banner
-    brief_data = base_brief.model_dump(mode="json")
-    brief_data["founder_name"] = founder
-    brief_data["startup_name"] = startup
-    offline_banner = (
-        "⚡ Demo Analysis Generated — Offline Intelligence Mode Active. "
-        "Live OSINT and LLM APIs are currently unavailable. "
-        "The following analysis is based on the OSTX Validation Dataset template.\n\n"
-    )
-    brief_data["executive_summary"] = offline_banner + str(brief_data.get("executive_summary", ""))
-    return InvestmentBrief.model_validate(brief_data)
+# NOTE: The legacy OSTX/AgriNova seed-dataset offline fallback was REMOVED
+# (reliability phase). Every offline run now uses the deterministic
+# Document Intelligence Mode built from the assessment's own documents.
 
 
 
@@ -850,7 +833,7 @@ def ask_signals(
     try:
         return answer_ask_signals_question(case, signals, question, history, user_id=user_id)
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Ask Signals live failed (%s) — returning demo mode response.", exc)
-        from .demo_chat import demo_ask_signals_answer
+        _log.warning("Ask Signals live failed (%s) — answering from stored signals and evidence.", exc)
+        from .demo_chat import doc_intelligence_ask_signals_answer
 
-        return demo_ask_signals_answer(case, signals, question)
+        return doc_intelligence_ask_signals_answer(case, signals, question)

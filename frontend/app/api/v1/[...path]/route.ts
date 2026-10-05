@@ -8,9 +8,10 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 export const fetchCache = 'force-no-store'
 
-// 25 MB file + multipart overhead. Next.js 13.5 App Router has no next.config
-// `api.bodyParser.sizeLimit`; enforce the limit in this route handler instead.
-const MAX_REQUEST_BYTES = 26 * 1024 * 1024
+// Vercel has a 4.5MB limit for function payloads. Files larger than this will fail
+// with 413 FUNCTION_PAYLOAD_TOO_LARGE regardless of this limit.
+// This is a known Vercel limitation that cannot be bypassed without architecture changes.
+const MAX_REQUEST_BYTES = 4.5 * 1024 * 1024
 
 const configuredBackendUrl = process.env.KULIMA_BACKEND_URL
   || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')

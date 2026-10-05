@@ -62,6 +62,9 @@ export type AssessmentContext = {
   assessmentType?: string
   assessmentTypeLabel?: string
   status?: AssessmentContextStatus
+  /** Phase 7 reliability: which intelligence mode produced the results. */
+  aiMode?: 'ai_available' | 'document_intelligence'
+  aiModeLabel?: string
   requiresConfirmation?: boolean
   confidenceThreshold?: number
   displayEntity?: string

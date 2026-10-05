@@ -74,6 +74,22 @@ class ExtractedField(BaseModel):
         return not (self.value or "").strip()
 
 
+class DocumentIntelligence(BaseModel):
+    """Deterministic document-derived facts for the richer domains.
+
+    Populated entirely by rule-based extraction (no external AI), used by the
+    research, signals, decision and report layers when offline.
+    """
+
+    locations: List[str] = Field(default_factory=list)
+    dates: List[str] = Field(default_factory=list)
+    budget_references: List[str] = Field(default_factory=list)
+    activities: List[str] = Field(default_factory=list)
+    objectives: List[str] = Field(default_factory=list)
+    outcomes: List[str] = Field(default_factory=list)
+    risks: List[str] = Field(default_factory=list)
+
+
 class AssessmentExtraction(BaseModel):
     """Everything auto-extracted from the uploaded documents."""
 
@@ -85,6 +101,9 @@ class AssessmentExtraction(BaseModel):
     website: Optional[ExtractedField] = None
     team: Optional[ExtractedField] = None
     problem_statement: Optional[ExtractedField] = None
+    # Richer deterministic facts (Phase 1 reliability)
+    project_lead: Optional[ExtractedField] = None
+    intelligence: DocumentIntelligence = Field(default_factory=DocumentIntelligence)
     # Overall extraction confidence (0–1) used to decide whether the user
     # must confirm entity details before the run starts.
     confidence: float = Field(ge=0, le=1, default=0.0)

@@ -118,6 +118,79 @@ _RUN_IDS = ("anonymous", "unknown", "unnamed", "tbd", "n/a", "na", "none")
 
 _EXTRACTION_KEY_FIELDS = ("organization_name", "startup_name", "founder_name", "sector", "country")
 
+# ── Richer deterministic extraction (Phase 1 reliability) ────────────────
+
+_PROJECT_LEAD_RE = re.compile(
+    r"(?:project lead|project manager|program(?:me)? lead|program(?:me)? manager|"
+    r"team lead|coordinator|country director|executive director|director)\s*"
+    r"(?:is|:|\()\s*"
+    r"((?:Dr|Mr|Mrs|Ms|Prof|Eng)\.?[ \t]+)?([A-Z][A-Za-z'\-]+(?:[ \t]+[A-Z][A-Za-z'\-]+){1,3})",
+    re.IGNORECASE,
+)
+
+_MONEY_RE = re.compile(
+    r"(?:USD|EUR|GBP|MWK|KES|ZAR|NGN|TZS|R\$|KSh|\$|€|£|R)\s?"
+    r"\d{1,3}(?:[,\s]\d{3})+(?:\.\d{1,2})?\s?(?:million|billion|m|bn|k)?"
+    r"|\b\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s?(?:USD|EUR|MWK|KES|ZAR|NGN|TZS)\b",
+    re.IGNORECASE,
+)
+
+_DATE_RE = re.compile(
+    r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|"
+    r"Dec(?:ember)?)\s+\d{1,2},?\s+\d{4}"
+    r"|\b\d{1,2}/\d{1,2}/\d{2,4}\b"
+    r"|\b\d{4}-\d{2}-\d{2}\b"
+    r"|\b(?:Q[1-4])\s+\d{4}\b"
+    r"|\b(?:H[12])\s+\d{4}\b"
+)
+
+_LOCATION_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:locations?|coverage|regions?|districts?|sites?|implementation areas?|"
+    r"project sites?|geographic(?:al)? (?:scope|area|coverage))\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_ACTIVITY_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:activities|key activities|planned activities|project activities|"
+    r"work plan|scope of work|interventions|deliverables)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_OBJECTIVE_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:objectives?|goals?|aims?|purpose|theory of change|"
+    r"expected results?|mission)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_OUTCOME_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:outcomes?|expected outcomes?|results?|impact statement|"
+    r"key results|indicators|targets)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_RISK_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:risks?|key risks|risk factors?|assumptions and risks|"
+    r"risk assessment|challenges)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_BUDGET_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:budget|total budget|project budget|estimated budget|"
+    r"budget summary|financing|cost estimate)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_BULLET_SPLIT_RE = re.compile(r"[;•·]|\s+[–-]\s+", re.IGNORECASE)
+
+_RISK_KEYWORDS = (
+    "climate", "drought", "flood", "currency", "inflation", "regulatory",
+    "political", "security", "supply chain", "competition", "default",
+    "delay", "shortfall", "dropout", "attrition", "dependency", "sanction",
+)
+
+_MAX_LIST_ITEMS = 12
+
 
 def _clean(value: str, limit: int = 80) -> str:
     """Normalise whitespace, strip trailing punctuation, clamp length."""
@@ -262,6 +335,79 @@ def _extract_problem_statement(text: str) -> Optional[ExtractedField]:
     return ExtractedField(value=statement, confidence=0.7, source="document_section")
 
 
+def _extract_rich(text: str) -> "DocumentIntelligence":
+    """Deterministic extraction of locations, dates, budget, activities,
+    objectives, outcomes and risks — no AI involved."""
+    from .models import DocumentIntelligence
+
+    raw = text or ""
+
+    def _section_values(pattern, *, split_items: bool = False) -> list[str]:
+        values: list[str] = []
+        for match in pattern.finditer(raw):
+            chunk = " ".join(match.group(1).split())
+            if len(chunk) < 3:
+                continue
+            if split_items:
+                values.extend(_split_list(chunk))
+            else:
+                values.append(chunk)
+        return values[:_MAX_LIST_ITEMS]
+
+    def _split_list(chunk: str) -> list[str]:
+        """Split a section value into items on bullets/semicolons/commas."""
+        parts = [p.strip(" .,-–;") for p in re.split(r"[;•·,]|\s+[–-]\s+", chunk) if p.strip()]
+        return parts or [chunk]
+
+    locations = _section_values(_LOCATION_SECTION_RE, split_items=True)
+    for country in _COUNTRY_NAMES:
+        if country not in [x.lower() for x in locations] and re.search(rf"\b{re.escape(country)}\b", raw, re.IGNORECASE):
+            locations.append(country.title())
+    locations = [loc.title() if loc.islower() else loc for loc in locations][:_MAX_LIST_ITEMS]
+
+    dates = [" ".join(m.group(0).split()) for m in _DATE_RE.finditer(raw)][:_MAX_LIST_ITEMS]
+
+    budgets: list[str] = []
+    budgets.extend(_section_values(_BUDGET_SECTION_RE))
+    seen_budgets = set(budgets)
+    for m in _MONEY_RE.finditer(raw):
+        val = " ".join(m.group(0).split())
+        if val not in seen_budgets:
+            seen_budgets.add(val)
+            budgets.append(val)
+    budgets = budgets[:_MAX_LIST_ITEMS]
+
+    risks = _section_values(_RISK_SECTION_RE, split_items=True)
+    for kw in _RISK_KEYWORDS:
+        if len(risks) >= _MAX_LIST_ITEMS:
+            break
+        if re.search(rf"\b{re.escape(kw)}\b", raw, re.IGNORECASE):
+            entry = f"Risk indicator: {kw.title()}"
+            if entry not in risks:
+                risks.append(entry)
+    risks = risks[:_MAX_LIST_ITEMS]
+
+    return DocumentIntelligence(
+        locations=locations,
+        dates=dates,
+        budget_references=budgets,
+        activities=_section_values(_ACTIVITY_SECTION_RE),
+        objectives=_section_values(_OBJECTIVE_SECTION_RE),
+        outcomes=_section_values(_OUTCOME_SECTION_RE),
+        risks=risks,
+    )
+
+
+def _extract_project_lead(text: str):
+    match = _PROJECT_LEAD_RE.search(text or "")
+    if not match:
+        return None
+    value = _clean(f"{match.group(1) or ''} {match.group(2)}")
+    if not value:
+        return None
+    return ExtractedField(value=value, confidence=0.7, source="document")
+
+
 def extract_assessment_fields(
     text: str,
     assessment_type: AssessmentType | str = AssessmentType.STARTUP,
@@ -280,11 +426,13 @@ def extract_assessment_fields(
 
     organization = _extract_organization(raw, filename)
     founder = _extract_founder(raw)
+    project_lead = _extract_project_lead(raw)
     sector = _extract_sector(text_lower)
     country = _extract_country(text_lower)
     website = _extract_website(raw)
     team = _extract_team(raw)
     problem = _extract_problem_statement(raw)
+    rich = _extract_rich(raw)
 
     # Startup name mirrors the organisation name for venture-style documents.
     startup_name = organization
@@ -298,6 +446,8 @@ def extract_assessment_fields(
         website=website,
         team=team,
         problem_statement=problem,
+        project_lead=project_lead,
+        intelligence=rich,
         text_available=text_available,
     )
     extraction.confidence = score_extraction_confidence(extraction, text_available=text_available)
@@ -360,7 +510,9 @@ def merge_extractions(extractions: Iterable[AssessmentExtraction]) -> Assessment
         "website",
         "team",
         "problem_statement",
+        "project_lead",
     )
+    merged_intelligence = merged.intelligence
     for extraction in extractions:
         if extraction.text_available:
             merged.text_available = True
@@ -368,6 +520,13 @@ def merge_extractions(extractions: Iterable[AssessmentExtraction]) -> Assessment
             current = getattr(merged, field_name)
             candidate = getattr(extraction, field_name)
             setattr(merged, field_name, best_field(current, candidate))
+        rich = extraction.intelligence
+        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks"):
+            existing = getattr(merged_intelligence, key)
+            for item in getattr(rich, key):
+                if item not in existing:
+                    existing.append(item)
+            setattr(merged_intelligence, key, existing[:_MAX_LIST_ITEMS])
 
     merged.confidence = score_extraction_confidence(merged, text_available=merged.text_available)
     return merged
