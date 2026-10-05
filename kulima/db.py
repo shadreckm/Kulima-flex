@@ -449,15 +449,24 @@ class IntelligenceRepository:
         self,
         run_id: int,
         user_id: str | None = None,
+        org_id: str | None = None,
     ) -> list[dict]:
         """Return all feedback records for a given run.
 
-        Shared demo runs (user_id IS NULL) are accessible by any user.
+        Workspace isolation (Phase 2): callers outside the run's workspace see
+        an empty list. Same-org members and shared demo rows are visible.
         """
         with self._connect() as conn:
-            run_row = conn.execute(
-                "SELECT user_id FROM intelligence_runs WHERE id = ?", (run_id,)
-            ).fetchone()
+            query = "SELECT user_id, org_id FROM intelligence_runs WHERE id = ?"
+            params: list[Any] = [run_id]
+            if org_id is not None:
+                # Workspace scope: org must match (shared demo rows stay open).
+                query += " AND (org_id = ? OR user_id IS NULL)"
+                params.append(org_id)
+            elif user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            run_row = conn.execute(query, tuple(params)).fetchone()
             if run_row is None:
                 return []
             existing_owner = run_row["user_id"] if hasattr(run_row, "__getitem__") else run_row[0]
@@ -478,11 +487,13 @@ class IntelligenceRepository:
         self,
         limit: int = 100,
         user_id: str | None = None,
+        org_id: str | None = None,
     ) -> list[dict]:
         """Return all feedback records visible to the given user.
 
-        Includes feedback on shared demo runs (user_id IS NULL on the run).
-        Admin view: pass user_id=None to get all records.
+        Workspace isolation (Phase 2): when ``org_id`` is provided only
+        feedback on runs inside that workspace is returned (shared demo rows
+        with ``user_id IS NULL`` remain visible to workspace members).
         """
         with self._connect() as conn:
             if user_id is None:
@@ -498,6 +509,22 @@ class IntelligenceRepository:
                     LIMIT ?
                     """,
                     (limit,),
+                ).fetchall()
+            elif org_id is not None:
+                # Workspace-scoped: runs inside the caller's workspace plus
+                # shared demo runs. Foreign workspaces never leak.
+                rows = conn.execute(
+                    """
+                    SELECT f.id, f.run_id, f.user_name, f.rating, f.comment, f.created_at,
+                           r.startup_name, r.founder_name, r.recommendation, r.trust_score,
+                           r.integrity_grade, r.user_id as run_owner_id
+                    FROM run_feedback f
+                    LEFT JOIN intelligence_runs r ON r.id = f.run_id
+                    WHERE (r.org_id = ? OR r.user_id IS NULL)
+                    ORDER BY f.created_at DESC
+                    LIMIT ?
+                    """,
+                    (org_id, limit),
                 ).fetchall()
             else:
                 # Scoped: feedback on runs owned by user or shared demo runs

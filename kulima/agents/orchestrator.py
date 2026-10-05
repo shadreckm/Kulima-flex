@@ -151,6 +151,7 @@ class IntelligenceOrchestrator:
                 {"skip_market_research": True},
             )
             founder_result = f_fut.result()
+            startup_result = s_fut.result()
 
         progress(0.50, "Parallel underwriting — Diligence ∥ Risk ∥ Trust Graph…")
         with ThreadPoolExecutor(max_workers=3) as pool:

@@ -16,6 +16,7 @@ Enterprise Trust additions:
 import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from typing import List, Optional
+from pydantic import BaseModel
 
 from kulima.core.assessment.repository import AssessmentRepository
 from kulima.core.billing.service import BillingBlocked
@@ -270,6 +271,69 @@ async def delete_assessment(
     try:
         return assessment_adapter.purge_assessment(
             assessment_id, user_id=current.user_id, org_id=current.org_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+class InviteCollaboratorRequest(BaseModel):
+    userId: str
+    role: str = "contributor"
+    email: Optional[str] = None
+
+
+@router.get("/{assessment_id}/collaborators")
+async def list_assessment_collaborators(
+    assessment_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """List invited collaborators for an assessment (P5)."""
+    try:
+        return {
+            "collaborators": assessment_adapter.list_collaborators(
+                assessment_id, current.user_id, org_id=current.org_id
+            ),
+            "assessmentId": assessment_id,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.post("/{assessment_id}/collaborators")
+async def invite_assessment_collaborator(
+    assessment_id: str,
+    payload: InviteCollaboratorRequest,
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Invite a collaborator with role Viewer, Contributor, Reviewer, or Admin (P5)."""
+    check_rate_limit(current.user_id, "assessments:update")
+    try:
+        return assessment_adapter.add_collaborator(
+            assessment_id,
+            current.user_id,
+            payload.userId,
+            role=payload.role,
+            email=payload.email,
+            org_id=current.org_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.delete("/{assessment_id}/collaborators/{target_user}")
+async def remove_assessment_collaborator(
+    assessment_id: str,
+    target_user: str,
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Remove a collaborator from an assessment (P5)."""
+    check_rate_limit(current.user_id, "assessments:update")
+    try:
+        return assessment_adapter.remove_collaborator(
+            assessment_id,
+            current.user_id,
+            target_user,
+            org_id=current.org_id,
         )
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)

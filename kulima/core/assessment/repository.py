@@ -180,25 +180,28 @@ class AssessmentRepository:
             ).fetchone()
         if row is None:
             return None
-        if org_id is not None:
-            row_org = row["org_id"]
-            if row_org is not None and row_org != org_id:
-                return None
-            if (
-                row_org is None
-                and user_id is not None
-                and row["user_id"] is not None
-                and row["user_id"] != user_id
-            ):
-                # Unclaimed legacy row owned by a different user.
-                return None
-        elif user_id is not None and row["user_id"] is not None and row["user_id"] != user_id:
-            return None
         try:
-            return AssessmentContext.model_validate(json.loads(row["payload_json"]))
+            ctx = AssessmentContext.model_validate(json.loads(row["payload_json"]))
         except Exception as exc:  # noqa: BLE001
             _log.warning("Failed to decode assessment context %s: %s", assessment_id, exc)
             return None
+
+        # 1. Matches workspace org
+        if org_id is not None and row["org_id"] is not None and row["org_id"] == org_id:
+            return ctx
+        # 2. Matches owner user
+        if user_id is not None and (row["user_id"] == user_id or ctx.created_by == user_id):
+            return ctx
+        # 3. User is in invited collaborators
+        if user_id is not None and any(
+            str(c.get("userId") or c.get("user_id") or c.get("email")).lower() == user_id.lower()
+            for c in getattr(ctx, "collaborators", [])
+        ):
+            return ctx
+        # 4. Unscoped internal query
+        if org_id is None and user_id is None:
+            return ctx
+        return None
 
     def get_by_run_id(
         self,

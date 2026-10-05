@@ -6,7 +6,7 @@ truth for assessment results, containing all scores, recommendations, and summar
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -61,7 +61,7 @@ class DecisionDossier(BaseModel):
     recommendation: str = ""
     research_summary: str = ""
     executive_summary: str = ""
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     generated_by: str | None = None
     approved_by: str | None = None
     approved_at: datetime | None = None

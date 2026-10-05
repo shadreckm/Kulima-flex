@@ -23,10 +23,10 @@ _DOC_INTEL_SIGNALS_WAIT = (
 )
 
 
-def _make_signals_doc_intel_fallback(run_id: str, question: str, user_id: str | None) -> str:
+def _make_signals_doc_intel_fallback(run_id: str, question: str, user_id: str | None, org_id: str | None = None) -> str:
     """Build a Document Intelligence Mode signals answer from stored data. Never raises."""
     try:
-        brief_json = get_brief_for_run(run_id, user_id=user_id)
+        brief_json = get_brief_for_run(run_id, user_id=user_id, org_id=org_id)
         if brief_json is None:
             return _DOC_INTEL_SIGNALS_WAIT
         from kulima.models import InvestmentBrief
@@ -46,19 +46,19 @@ async def post_ask_signals(req: AskRequest, current: OrgContext = Depends(requir
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "ask_signals:post")
 
-    info = get_run_status(req.runId, current.user_id)
+    info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
     if info.get("status") != "completed":
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id, org_id=current.org_id)
         return {"answer": answer}
 
     try:
         answer = ask_signals(req.runId, req.question, req.history, user_id=current.user_id)
     except Exception as exc:
         _log.warning("ask_signals live failed in router (%s) — activating Document Intelligence Mode.", exc)
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id, org_id=current.org_id)
     return {"answer": answer}
 
 
@@ -67,18 +67,18 @@ async def post_ask_signals_stream(req: AskRequest, current: OrgContext = Depends
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "ask_signals:stream")
 
-    info = get_run_status(req.runId, current.user_id)
+    info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
     if info.get('status') != 'completed':
-        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
+        answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id, org_id=current.org_id)
     else:
         try:
             answer = ask_signals(req.runId, req.question, req.history, user_id=current.user_id)
         except Exception as exc:
             _log.warning("ask_signals live failed in stream router (%s) — activating Document Intelligence Mode.", exc)
-            answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id)
+            answer = _make_signals_doc_intel_fallback(req.runId, req.question, current.user_id, org_id=current.org_id)
 
     async def event_stream():
         import re

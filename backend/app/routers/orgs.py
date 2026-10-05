@@ -56,7 +56,7 @@ def _role_definitions() -> list[dict]:
             "label": ROLE_LABELS.get(role.value, role.value.title()),
             "permissions": permissions_for_role(role),
         }
-        for role in (Role.OWNER, Role.ADMIN, Role.REVIEWER, Role.VIEWER)
+        for role in (Role.OWNER, Role.ADMIN, Role.REVIEWER, Role.CONTRIBUTOR, Role.VIEWER)
     ]
 
 
@@ -140,7 +140,7 @@ async def add_member(
     if role is None:
         raise HTTPException(
             status_code=422,
-            detail={"error": True, "message": "Invalid role. Use owner, admin, reviewer or viewer."},
+            detail={"error": True, "message": "Invalid role. Use owner, admin, reviewer, contributor or viewer."},
         )
     existing = _repo().get_membership_for_org(current.org_id, payload.userId)
     if existing is None:
@@ -172,7 +172,7 @@ async def update_member_role(
     if role is None:
         raise HTTPException(
             status_code=422,
-            detail={"error": True, "message": "Invalid role. Use owner, admin, reviewer or viewer."},
+            detail={"error": True, "message": "Invalid role. Use owner, admin, reviewer, contributor or viewer."},
         )
     target = _repo().get_membership_for_org(current.org_id, user_id)
     if target is None:

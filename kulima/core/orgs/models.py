@@ -18,6 +18,7 @@ class Role(str, Enum):
     OWNER = "owner"
     ADMIN = "admin"
     REVIEWER = "reviewer"
+    CONTRIBUTOR = "contributor"
     VIEWER = "viewer"
 
 
@@ -52,6 +53,14 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EXPORT,
         }
     ),
+    Role.CONTRIBUTOR: frozenset(
+        {
+            Permission.VIEW,
+            Permission.ASSESS,
+            Permission.MANAGE_DOCUMENTS,
+            Permission.EXPORT,
+        }
+    ),
     Role.VIEWER: frozenset({Permission.VIEW}),
 }
 
@@ -59,6 +68,7 @@ ROLE_LABELS: dict[str, str] = {
     Role.OWNER.value: "Owner",
     Role.ADMIN.value: "Admin",
     Role.REVIEWER.value: "Reviewer",
+    Role.CONTRIBUTOR.value: "Contributor",
     Role.VIEWER.value: "Viewer",
 }
 

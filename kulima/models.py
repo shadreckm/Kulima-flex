@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -503,7 +503,7 @@ class MEALRecord(BaseModel):
     outputs: list[MEALOutput] = Field(default_factory=list)
     outcomes: list[MEALOutcome] = Field(default_factory=list)
     audit_trail: list[str] = Field(default_factory=list)
-    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 # ── Transparent Trust Engine & Uploaded Evidence Models ──────────────────────
@@ -600,7 +600,7 @@ class OutcomeIntelligenceReport(BaseModel):
     recommendation_accuracy: float = 0.0
     calibration: TrustCalibrationReport = Field(default_factory=TrustCalibrationReport)
     decisions: list[DecisionOutcomeRecord] = Field(default_factory=list)
-    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class DecisionTimelineNode(BaseModel):

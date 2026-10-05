@@ -6,7 +6,7 @@ together on assessments with comments, review requests, and approval workflows.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -38,7 +38,7 @@ class Comment(BaseModel):
     anchor_type: CommentAnchorType = CommentAnchorType.CASE
     anchor_id: str | None = None  # ID of the anchored entity
     parent_id: str | None = None  # For threaded replies
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     edited_at: datetime | None = None
     deleted_at: datetime | None = None
     deleted_by: str | None = None
@@ -76,7 +76,7 @@ class ReviewRequest(BaseModel):
     requested_from: str  # User ID of the reviewer/approver
     status: ReviewRequestStatus = ReviewRequestStatus.PENDING
     resolution_note: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     resolved_at: datetime | None = None
     resolved_by: str | None = None
     due_at: datetime | None = None  # Optional deadline

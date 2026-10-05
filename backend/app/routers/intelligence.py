@@ -80,7 +80,7 @@ def _load_brief_model(run_id: str | int, user_id: str | None = None, org_id: str
             if brief is not None:
                 return brief
 
-    brief_json = get_brief_for_run(run_str, user_id=user_id)
+    brief_json = get_brief_for_run(run_str, user_id=user_id, org_id=org_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
     return InvestmentBrief.model_validate(brief_json) if isinstance(brief_json, dict) else brief_json
@@ -290,7 +290,7 @@ async def list_all_feedback(
 ):
     """Admin/reviewer view: list all feedback entries visible to this user."""
     check_rate_limit(current.user_id, "intelligence:feedback_list")
-    records = _brief_repo.list_all_feedback(limit=limit, user_id=current.user_id)
+    records = _brief_repo.list_all_feedback(limit=limit, user_id=current.user_id, org_id=current.org_id)
     return {
         "feedback": [
             {
@@ -321,7 +321,7 @@ async def get_run_feedback(
     check_rate_limit(current.user_id, "intelligence:feedback_get")
     if not run_id.isdigit():
         return {"feedback": [], "total": 0, "runId": run_id}
-    records = _brief_repo.get_feedback_for_run(int(run_id), user_id=current.user_id)
+    records = _brief_repo.get_feedback_for_run(int(run_id), user_id=current.user_id, org_id=current.org_id)
     return {
         "feedback": [
             {
@@ -402,7 +402,7 @@ async def get_intelligence(run_id: str, current: OrgContext = Depends(require_pe
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "intelligence:get")
 
-    info = get_run_status(run_id, current.user_id)
+    info = get_run_status(run_id, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
     return {
@@ -426,11 +426,11 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "intelligence:brief")
 
-    info = get_run_status(run_id, current.user_id)
+    info = get_run_status(run_id, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
-    brief_json = get_brief_for_run(run_id, current.user_id)
+    brief_json = get_brief_for_run(run_id, current.user_id, org_id=current.org_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
 
@@ -545,11 +545,11 @@ async def get_signals_summary(run_id: str, current: OrgContext = Depends(require
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "intelligence:signals")
 
-    info = get_run_status(run_id, current.user_id)
+    info = get_run_status(run_id, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
-    brief_json = get_brief_for_run(run_id, current.user_id)
+    brief_json = get_brief_for_run(run_id, current.user_id, org_id=current.org_id)
     if brief_json is None:
         raise HTTPException(status_code=404, detail="brief not found")
 

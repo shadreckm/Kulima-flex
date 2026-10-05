@@ -11,7 +11,7 @@ These helpers do not touch the database or orchestrator public APIs.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from kulima.core.cases.models import Case, CaseSubject, CaseType, WorkspaceType
@@ -51,7 +51,7 @@ def from_investment_brief(
         case_type=CaseType.INVESTMENT,
         subject=subject,
         workspace_type=workspace_type,
-        created_at=created_at or datetime.utcnow(),
+        created_at=created_at or datetime.now(timezone.utc),
         created_by=created_by,
         sources=list(brief.sources),
         evidence_integrity=brief.evidence_integrity,

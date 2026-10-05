@@ -47,7 +47,7 @@ def _make_doc_intel_fallback(
     Never raises — always returns a human-readable string.
     """
     try:
-        brief_json = get_brief_for_run(run_id, user_id=user_id)
+        brief_json = get_brief_for_run(run_id, user_id=user_id, org_id=org_id)
         if brief_json is None:
             return _DOC_INTEL_WAIT_ANSWER
         from kulima.models import InvestmentBrief
@@ -76,7 +76,7 @@ async def post_ask_ic(req: AskRequest, current: OrgContext = Depends(require_per
     check_rate_limit(current.user_id, "ask_ic:post")
     _enforce_ask_ic_feature(current)
 
-    info = get_run_status(req.runId, current.user_id)
+    info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 
@@ -99,7 +99,7 @@ async def post_ask_ic_stream(req: AskRequest, current: OrgContext = Depends(requ
     check_rate_limit(current.user_id, "ask_ic:stream")
     _enforce_ask_ic_feature(current)
 
-    info = get_run_status(req.runId, current.user_id)
+    info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:
         raise HTTPException(status_code=401, detail={"error": True, "message": "Unauthorized"})
 

@@ -3,6 +3,7 @@
 import React from 'react'
 import NavigationSidebar from '../NavigationSidebar/NavigationSidebar'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
+import UserMenu from '../UserMenu/UserMenu'
 import { useState } from 'react'
 import type { AssessmentContext } from '../../lib/assessment-store'
 
@@ -186,8 +187,9 @@ export default function PilotWorkspaceShell({
               </div>
             </div>
 
-            {/* Right: status pill */}
+            {/* Right: user menu + status pill */}
             <div className="hidden sm:flex items-center gap-2 shrink-0">
+              <UserMenu />
               {(assessmentCtx?.runId || runId) ? (
                 <span className="bg-[#EAF3FF] border border-[#D6E8FF] px-3 py-1 rounded-lg text-[11px] font-bold text-[#004085] font-mono">
                   #{String(assessmentCtx?.runId || runId).slice(0, 10)}

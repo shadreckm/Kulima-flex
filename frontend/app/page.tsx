@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
+import UserMenu from '../components/UserMenu/UserMenu'
 import { saveUseCase } from '../lib/use-case-store'
 import { INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
@@ -199,7 +200,7 @@ function HomeInner() {
           <a href="#use-cases">Use cases</a>
           <a href="#pricing">Pricing</a>
         </nav>
-        <div className="flex items-center gap-3"><Link href="/api/auth/signin" className="hidden px-3 py-2 text-sm font-semibold text-[#344054] sm:block">Login</Link><a href="#upload" className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">Get Started</a></div>
+        <div className="flex items-center gap-3"><UserMenu /><a href="#upload" className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">Get Started</a></div>
       </header>
 
       {/* ── SECTION 1: HERO — upload is the page's first act ───────────────── */}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from kulima.config import get_settings
@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS api_runs (
     completed_at TEXT,
     db_id INTEGER,
     error_message TEXT,
-    user_id TEXT
+    user_id TEXT,
+    org_id TEXT
 );
 """
 
@@ -34,6 +35,8 @@ class RunRepository:
                 cols = {row[1] for row in conn.execute("PRAGMA table_info(api_runs)")}
                 if "user_id" not in cols:
                     conn.execute("ALTER TABLE api_runs ADD COLUMN user_id TEXT")
+                if "org_id" not in cols:
+                    conn.execute("ALTER TABLE api_runs ADD COLUMN org_id TEXT")
             except Exception:
                 pass
             conn.commit()
@@ -47,17 +50,17 @@ class RunRepository:
         finally:
             conn.close()
 
-    def create_run(self, run_id: str, status: str = "running", user_id: str | None = None) -> None:
-        now = datetime.utcnow().isoformat()
+    def create_run(self, run_id: str, status: str = "running", user_id: str | None = None, org_id: str | None = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO api_runs (run_id, status, created_at, user_id) VALUES (?, ?, ?, ?)",
-                (run_id, status, now, user_id),
+                "INSERT OR REPLACE INTO api_runs (run_id, status, created_at, user_id, org_id) VALUES (?, ?, ?, ?, ?)",
+                (run_id, status, now, user_id, org_id),
             )
             conn.commit()
 
     def update_run_completed(self, run_id: str, db_id: int | None = None) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 "UPDATE api_runs SET status = ?, completed_at = ?, db_id = ?, error_message = NULL WHERE run_id = ?",
@@ -66,7 +69,7 @@ class RunRepository:
             conn.commit()
 
     def update_run_failed(self, run_id: str, error_message: str | None = None) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 "UPDATE api_runs SET status = ?, completed_at = ?, error_message = ? WHERE run_id = ?",
@@ -74,11 +77,15 @@ class RunRepository:
             )
             conn.commit()
 
-    def get_run(self, run_id: str, user_id: str | None = None) -> Optional[dict]:
+    def get_run(self, run_id: str, user_id: str | None = None, org_id: str | None = None) -> Optional[dict]:
         with self._connect() as conn:
             query = "SELECT * FROM api_runs WHERE run_id = ?"
             params: list[object] = [run_id]
-            if user_id is not None:
+            if org_id is not None:
+                # Workspace scope: same-org rows plus shared demo rows (user_id NULL).
+                query += " AND (org_id = ? OR user_id IS NULL)"
+                params.append(org_id)
+            elif user_id is not None:
                 query += " AND user_id = ?"
                 params.append(user_id)
             row = conn.execute(query, tuple(params)).fetchone()

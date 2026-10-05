@@ -12,7 +12,7 @@ Phase 4 Enterprise:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -105,9 +105,9 @@ class Case(BaseModel):
     assignee_id: str | None = None  # Primary owner
     reviewer_id: str | None = None  # Current reviewer in REVIEW state
     version: int = 1
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str | None = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Evidence & graph surfaces shared across verticals
     sources: list[SourceAttribution] = Field(default_factory=list)

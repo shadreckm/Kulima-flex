@@ -43,7 +43,10 @@ def get_outcome(
     run_id: int,
     current: OrgContext = Depends(require_permission(Permission.VIEW)),
 ) -> dict:
-    """Return outcome record for a specific run."""
+    """Return outcome record for a specific run (workspace-isolated)."""
+    run_row = _repo.get_run(run_id, user_id=current.user_id, org_id=current.org_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="Run not found in your workspace")
     outcome = _repo.get_decision_outcome(run_id)
     if outcome is None:
         return {"run_id": run_id, "outcome_status": "Pending", "outcome_date": None, "outcome_notes": ""}

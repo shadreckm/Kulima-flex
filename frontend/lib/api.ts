@@ -60,6 +60,7 @@ function authFailureHint(code: string | null): string {
     case 'ORG_CONTEXT_MISSING':
       return 'Your workspace could not be resolved (contact support).'
     case 'RBAC_DENIED':
+    case 'PERMISSION_DENIED':
       return 'Your role does not have permission for this action.'
     default:
       return ''

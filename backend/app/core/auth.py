@@ -225,8 +225,9 @@ def require_permission(permission: Permission | str) -> Callable[..., Awaitable[
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": True,
-                    "code": "RBAC_DENIED",
-                    "permission": "PERMISSION_DENIED",
+                    "code": "PERMISSION_DENIED",
+                    "rbac_code": "RBAC_DENIED",
+                    "permission": perm_value,
                     "message": (
                         f"Your role ({current.role_label}) does not include the "
                         f"'{perm_value}' permission. Ask an organization Owner or Admin."

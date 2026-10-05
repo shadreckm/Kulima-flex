@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from fastapi import UploadFile
+
+from kulima.core.orgs.models import Role
 
 from kulima.core.assessment.extraction import extract_assessment_fields, merge_extractions
 from kulima.core.assessment.models import (
@@ -153,6 +156,9 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
             "onePagerUrl": f"/api/v1/intelligence/export/{ctx.run_id}/one-pager" if ctx.run_id else None,
         }
 
+    # Build signals list from context
+    signals_list = list(ctx.signals or [])
+
     # If decision or signals were populated in brief but not in ctx, sync them
     decision_payload = dict(ctx.decision or {})
     if not decision_payload and brief:
@@ -163,10 +169,38 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
             "confidence": brief.confidence,
         }
 
-    signals_list = list(ctx.signals or [])
-    if not signals_list:
-        for doc in ctx.uploaded_documents:
-            signals_list.extend(doc.signals or [])
+    signals_summary_payload = None
+    if brief:
+        try:
+            from kulima.core.cases.adapters import from_investment_brief
+            from kulima.signals.orchestrator import SignalsOrchestrator
+            from kulima.signals.signals_summary import build_domain_overviews, count_signals_by_level
+            case = from_investment_brief(brief, case_id=str(ctx.run_id or ctx.assessment_id), created_by=ctx.created_by)
+            sigs = SignalsOrchestrator().generate(case, sort=True)
+            overviews = build_domain_overviews(sigs)
+            counts = count_signals_by_level(sigs)
+            signals_summary_payload = {
+                "critical": counts.get("critical", 0),
+                "high": counts.get("high", 0),
+                "medium": counts.get("medium", 0),
+                "low": counts.get("low", 0),
+                "domains": overviews,
+                "allSignals": [
+                    {
+                        "id": s.id,
+                        "level": getattr(s.level, "value", str(s.level)),
+                        "category": getattr(s.category, "value", str(s.category)),
+                        "direction": s.direction,
+                        "title": s.title,
+                        "description": s.description,
+                        "recommendedAction": s.recommended_action,
+                        "confidence": float(s.confidence),
+                    }
+                    for s in sigs
+                ],
+            }
+        except Exception as exc:
+            _log.debug("serialize_context: could not generate signalsSummary: %s", exc)
 
     return {
         "assessmentId": ctx.assessment_id,
@@ -199,9 +233,12 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "extractedTextLength": ctx.extracted_text_length or len(ctx.extracted_text or ""),
         "trustScore": ctx.trust_score or (brief.trust_score if brief else None),
         "signals": signals_list,
+        "signalsSummary": signals_summary_payload,
         "decision": decision_payload,
         "research": research_payload,
         "reports": reports_payload,
+        "collaborators": list(getattr(ctx, "collaborators", []) or []),
+        "createdBy": ctx.created_by,
         "createdAt": ctx.created_at,
         "updatedAt": ctx.updated_at,
     }
@@ -678,3 +715,90 @@ def _int_run_id(run_id: Optional[str]) -> Optional[int]:
         return int(run_id) if run_id is not None and str(run_id).isdigit() else None
     except (TypeError, ValueError):  # pragma: no cover
         return None
+
+
+def add_collaborator(
+    assessment_id: str,
+    user_id: str,
+    target_user: str,
+    role: str = "contributor",
+    email: Optional[str] = None,
+    org_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Invite a collaborator to an assessment context (P5)."""
+    valid_roles = {"viewer", "contributor", "reviewer", "admin"}
+    role_norm = role.lower().strip()
+    if role_norm not in valid_roles:
+        raise AssessmentError("invalid_role", f"Invalid role. Use {', '.join(sorted(valid_roles))}")
+
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+
+    if ctx.created_by and ctx.created_by != user_id:
+        from ..core.auth import _org_repo
+        if org_id:
+            m = _org_repo().get_membership_for_org(org_id, user_id)
+            if not m or m.role not in (Role.OWNER, Role.ADMIN):
+                raise AssessmentError("unauthorized", "Only the assessment owner or admin can invite collaborators.")
+
+    collaborators = list(getattr(ctx, "collaborators", []) or [])
+    updated = False
+    for c in collaborators:
+        if c.get("userId") == target_user or (email and c.get("email") == email):
+            c["role"] = role_norm
+            if email:
+                c["email"] = email
+            updated = True
+            break
+    if not updated:
+        collaborators.append({
+            "userId": target_user,
+            "email": email or target_user,
+            "role": role_norm,
+            "invitedAt": datetime.now(timezone.utc).isoformat(),
+            "invitedBy": user_id,
+        })
+    ctx.collaborators = collaborators
+    _repo.save(ctx, org_id=org_id)
+    record_event(
+        "assessment.collaborator_invited",
+        org_id=org_id,
+        user_id=user_id,
+        assessment_id=ctx.assessment_id,
+        metadata={"targetUser": target_user, "role": role_norm, "email": email},
+    )
+    return {"assessmentId": assessment_id, "collaborators": ctx.collaborators}
+
+
+def list_collaborators(
+    assessment_id: str,
+    user_id: str,
+    org_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+    return list(getattr(ctx, "collaborators", []) or [])
+
+
+def remove_collaborator(
+    assessment_id: str,
+    user_id: str,
+    target_user: str,
+    org_id: Optional[str] = None,
+) -> dict[str, Any]:
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+    collaborators = [c for c in getattr(ctx, "collaborators", []) if c.get("userId") != target_user and c.get("email") != target_user]
+    ctx.collaborators = collaborators
+    _repo.save(ctx, org_id=org_id)
+    record_event(
+        "assessment.collaborator_removed",
+        org_id=org_id,
+        user_id=user_id,
+        assessment_id=ctx.assessment_id,
+        metadata={"targetUser": target_user},
+    )
+    return {"removed": True, "assessmentId": assessment_id}

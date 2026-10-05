@@ -6,7 +6,7 @@ process restarts and enables resume-on-login functionality.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -52,7 +52,7 @@ class Job(BaseModel):
     run_after: datetime | None = None  # Delayed execution
     lease_owner: str | None = None  # Worker currently processing this job
     lease_expires_at: datetime | None = None  # Lease timeout for recovery
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     error_message: str | None = None
     result: dict[str, Any] | None = None  # Output of successful job

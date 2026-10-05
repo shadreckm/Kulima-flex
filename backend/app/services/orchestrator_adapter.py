@@ -71,6 +71,12 @@ def is_openai_unavailable(exc: BaseException) -> bool:
             or status_code in unavailable_statuses
             or error_code in {"insufficient_quota", "rate_limit_exceeded"}
             or "insufficient_quota" in message
+            # Missing/invalid credentials surface as a plain RuntimeError from
+            # the LLM client rather than an openai SDK error — the deployment
+            # still cannot complete an LLM stage, so Document Intelligence
+            # Mode must engage instead of failing the whole run.
+            or "missing openai credentials" in message
+            or ("openai_api_key" in message and "environment variable" in message)
         ):
             return True
         current = current.__cause__ or current.__context__ or getattr(current, "cause", None)
@@ -334,7 +340,7 @@ def start_intelligence_run(
     """
     run_id = str(uuid.uuid4())
     # Persist run record so it survives restarts
-    _run_repo.create_run(run_id, status="running", user_id=user_id)
+    _run_repo.create_run(run_id, status="running", user_id=user_id, org_id=org_id)
     # Audit: an external (Tavily) research pass is about to be triggered. The
     # payload never includes document content — only public metadata fields.
     record_event(
@@ -699,21 +705,24 @@ def _get_offline_fallback_brief(founder: str, startup: str) -> InvestmentBrief:
 
 
 
-def _resolve_run_record(run_id: str, user_id: str | None = None) -> Optional[Dict[str, Any]]:
+def _resolve_run_record(run_id: str, user_id: str | None = None, org_id: str | None = None) -> Optional[Dict[str, Any]]:
     """Resolve a live api_runs row, including shared demo rows (user_id NULL)."""
-    info = _run_repo.get_run(run_id, user_id=user_id)
-    if info is None and user_id is not None:
-        legacy = _run_repo.get_run(run_id)
-        if legacy is not None and legacy.get("user_id") is None:
-            info = legacy
+    if org_id is not None:
+        info = _run_repo.get_run(run_id, org_id=org_id)
+    else:
+        info = _run_repo.get_run(run_id, user_id=user_id)
+        if info is None and user_id is not None:
+            legacy = _run_repo.get_run(run_id)
+            if legacy is not None and legacy.get("user_id") is None:
+                info = legacy
     if info is not None:
         return info
 
     # Allow Flex/Signals URL sync with stored intelligence run integer IDs.
     if str(run_id).isdigit():
         db_id = int(run_id)
-        row = _repo.get_run(db_id, user_id=user_id)
-        if row is None and user_id is not None:
+        row = _repo.get_run(db_id, user_id=user_id, org_id=org_id)
+        if row is None and org_id is None and user_id is not None:
             legacy_row = _repo.get_run(db_id)
             if legacy_row is not None and legacy_row.get("user_id") is None:
                 row = legacy_row
@@ -730,16 +739,21 @@ def _resolve_run_record(run_id: str, user_id: str | None = None) -> Optional[Dic
     return None
 
 
-def get_run_status(run_id: str, user_id: str | None = None) -> Optional[Dict[str, Any]]:
-    return _resolve_run_record(run_id, user_id=user_id)
+def get_run_status(run_id: str, user_id: str | None = None, org_id: str | None = None) -> Optional[Dict[str, Any]]:
+    return _resolve_run_record(run_id, user_id=user_id, org_id=org_id)
 
 
-def get_brief_for_run(run_id: str, user_id: str | None = None) -> Optional[InvestmentBrief | dict]:
-    info = _resolve_run_record(run_id, user_id=user_id)
+def get_brief_for_run(run_id: str, user_id: str | None = None, org_id: str | None = None) -> Optional[InvestmentBrief | dict]:
+    info = _resolve_run_record(run_id, user_id=user_id, org_id=org_id)
     if not info:
         return None
     db_id = info.get("db_id")
     if db_id:
+        # Workspace isolation: only load the brief when the stored run belongs
+        # to the caller's workspace (or is a shared legacy/demo row).
+        row = _repo.get_run(int(db_id), user_id=user_id, org_id=org_id) if org_id is not None or user_id is not None else _repo.get_run(int(db_id))
+        if row is None:
+            return None
         brief = _repo.load_brief(int(db_id))
         if brief:
             try:

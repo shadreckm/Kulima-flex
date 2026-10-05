@@ -191,6 +191,7 @@ class AssessmentContext(BaseModel):
     created_at: str = Field(default_factory=_utc_now_iso)
     updated_at: str = Field(default_factory=_utc_now_iso)
     created_by: Optional[str] = None
+    collaborators: List[Dict[str, Any]] = Field(default_factory=list)
 
     def type_label(self) -> str:
         return ASSESSMENT_TYPE_LABELS.get(
