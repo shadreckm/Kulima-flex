@@ -65,6 +65,9 @@ export type AssessmentContext = {
   /** Phase 7 reliability: which intelligence mode produced the results. */
   aiMode?: 'ai_available' | 'document_intelligence'
   aiModeLabel?: string
+  /** Phase 11: which provider tier served the run (🤖 OpenAI / ⚡ Groq / 🌐 OpenRouter / 🧠 HuggingFace / 📄 Document Intelligence). */
+  providerUsed?: string
+  providerLabel?: string
   requiresConfirmation?: boolean
   confidenceThreshold?: number
   displayEntity?: string

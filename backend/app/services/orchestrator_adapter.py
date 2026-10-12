@@ -10,6 +10,7 @@ from kulima.core.audit import record_event
 from kulima.core.cases.adapters import from_investment_brief
 from kulima.db import IntelligenceRepository
 from kulima.models import InvestmentBrief
+from kulima.providers import AIProviderManager
 from kulima.signals.ask_signals import answer_ask_signals_question
 from kulima.signals.orchestrator import SignalsOrchestrator
 from kulima.signals.signals_summary import build_domain_overviews
@@ -46,37 +47,32 @@ def get_orchestrator() -> IntelligenceOrchestrator:
 
 
 def is_openai_unavailable(exc: BaseException) -> bool:
-    """Identify unavailable OpenAI requests through wrapped pipeline errors."""
+    """Identify unavailable AI providers through wrapped pipeline errors.
+
+    Reliability: also matches the multi-provider chain exhaustion — when every
+    tier (OpenAI/Groq/OpenRouter/HuggingFace) has failed, Document Intelligence
+    Mode must engage, and the run must never be left stuck in 'running'.
+    """
+    from kulima.providers import ProviderExhaustedError
+
     current: BaseException | None = exc
     seen: set[int] = set()
-    unavailable_statuses = {401, 408, 429, 500, 502, 503, 504}
-    unavailable_names = {
-        "apiconnectionerror",
-        "apiauthenticationerror",
-        "authenticationerror",
-        "ratelimiterror",
-        "apitimeouterror",
-        "internalservererror",
-    }
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        if isinstance(current, ProviderExhaustedError):
+            return True
         error_name = type(current).__name__.lower()
-        error_module = type(current).__module__.lower()
         status_code = getattr(current, "status_code", None)
         error_code = str(getattr(current, "code", "") or "").lower()
         message = str(current).lower()
         if (
-            error_name in unavailable_names
-            or (error_module.startswith("openai") and status_code in unavailable_statuses)
-            or status_code in unavailable_statuses
+            error_name in {"apiconnectionerror", "apiauthenticationerror", "authenticationerror", "ratelimiterror", "apitimeouterror", "internalservererror"}
+            or status_code in {401, 408, 429, 500, 502, 503, 504}
             or error_code in {"insufficient_quota", "rate_limit_exceeded"}
             or "insufficient_quota" in message
-            # Missing/invalid credentials surface as a plain RuntimeError from
-            # the LLM client rather than an openai SDK error — the deployment
-            # still cannot complete an LLM stage, so Document Intelligence
-            # Mode must engage instead of failing the whole run.
             or "missing openai credentials" in message
             or ("openai_api_key" in message and "environment variable" in message)
+            or "all providers exhausted" in message
         ):
             return True
         current = current.__cause__ or current.__context__ or getattr(current, "cause", None)
@@ -224,12 +220,12 @@ def build_document_intelligence_fallback(
         geography=context.country if context else "",
         stage="Not assessed",
         executive_summary=(
-            "OpenAI is unavailable. Document Intelligence Mode used uploaded-document extraction, "
+            "AI providers are temporarily unavailable. Document Intelligence Mode used uploaded-document extraction, "
             "document trust scores, available Tavily sources, and deterministic signals. "
             "This is a preliminary evidence summary, not an AI-validated investment recommendation."
         ),
         founder_assessment=(
-            "Founder identity came from the Assessment Context. OpenAI-based founder credibility "
+            "Founder identity came from the Assessment Context. AI-based founder credibility "
             "analysis was unavailable; verify identity and track record independently."
         ),
         startup_assessment=(
@@ -245,11 +241,11 @@ def build_document_intelligence_fallback(
             + ("Potential risk terms found in evidence: " + ", ".join(risk_markers) + ". " if risk_markers else "No explicit high-risk terms were detected in the available text. ")
             + "This does not replace a full diligence review."
         ),
-        investment_recommendation="Review Required — OpenAI was unavailable; do not make an investment decision from this fallback alone.",
+        investment_recommendation="Review Required — AI providers were unavailable; do not make an investment decision from this fallback alone.",
         next_steps=[
             "Verify primary operating and financial claims with the organization.",
             "Review every uploaded document and source citation.",
-            "Repeat the full AI-assisted assessment when OpenAI is available.",
+            "Retry the full AI-assisted assessment when AI providers are available.",
         ],
         recommendation=Recommendation.REVIEW_REQUIRED,
         overall_score=overall_score,
@@ -271,7 +267,7 @@ def build_document_intelligence_fallback(
         ),
         sources=sources,
         explainability=[
-            "OpenAI unavailable; deterministic Document Intelligence Mode was used.",
+            "All AI providers unavailable; deterministic Document Intelligence Mode was used.",
             f"Trust score is the mean of {len(document_scores)} stored document trust score(s).",
             f"Research sources: {len(external_sources)}; uploaded documents: {len(documents)}.",
             "Recommendation is Review Required until an analyst verifies the evidence.",
@@ -299,7 +295,7 @@ def build_document_intelligence_fallback(
         "status": "completed",
         "mode": "document_intelligence",
         "openaiStatus": "unavailable",
-        "message": "OpenAI unavailable — Document Intelligence Mode active.",
+        "message": "All AI providers unavailable — Document Intelligence Mode active.",
         "summary": research_summary,
         "progress": 100,
         "sourceCount": len(external_sources),
@@ -615,6 +611,34 @@ def _sync_assessment(
                 seen_sig.add(s)
                 dedup_signals.append(s)
 
+        research = research or {}
+        # Phase 10: record which provider tier served this run so the workspace
+        # can display the intelligence layer that produced these results.
+        if not research.get("providerUsed"):
+            try:
+                last = AIProviderManager.instance().last_result
+                research["providerUsed"] = last.provider if last else "document_intelligence"
+            except Exception:
+                research["providerUsed"] = "document_intelligence"
+        # Phase 8: when research carries no summary (Tavily unavailable, no
+        # sources), generate findings from documents + context + signals +
+        # evidence + trust — research never comes back empty-handed.
+        if not research.get("summary"):
+            research["summary"] = AIProviderManager.research_fallback_summary(
+                documents=[
+                    {"name": doc.name, "raw_summary": doc.raw_summary}
+                    for doc in (ctx.uploaded_documents if ctx else [])
+                ],
+                assessment_context=None,
+                signals=dedup_signals,
+                evidence=[
+                    item
+                    for doc in (ctx.uploaded_documents if ctx else [])
+                    for item in doc.evidence_items
+                ][:8],
+                trust_score=trust_score,
+            )
+            research.setdefault("mode", "document_intelligence")
         AssessmentRepository().update_outputs(
             assessment_id,
             trust_score=trust_score,
@@ -631,6 +655,7 @@ def _sync_assessment(
                 "entities": [{"name": ctx.organization_name or ctx.startup_name, "label": ctx.type_label()}] if ctx else [],
                 "summary": brief.executive_summary if brief else "Research completed.",
                 "progress": 100,
+                "providerUsed": research.get("providerUsed", "document_intelligence"),
             },
         )
 

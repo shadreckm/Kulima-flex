@@ -744,6 +744,20 @@ def _esc(text: str) -> str:
     )
 
 
+def _truncate_for_cell(text: str, limit: int = 900) -> str:
+    """Keep PDF table cells within ReportLab's row-height tolerance.
+
+    Very long executive summaries (2k+ chars produced by chatty provider
+    models) blow past ReportLab's single-cell row budget and crash PDF
+    generation with a Flowable error. Long text still appears in full in
+    the narrative sections of the report — only the snapshot cell is
+    truncated."""
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + " â€¦"
+
+
 def _build_brand_header(brief: InvestmentBrief, report_name: str, styles: Any) -> list:
     elements = []
     logo_path = _get_logo_path()
@@ -866,9 +880,9 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     )
 
     # 3. Key Reasons vs Key Risks Table
-    reasons_list = [Paragraph("â€¢ " + _esc(brief.executive_summary or "â€”"), styles["KulimaBullet"])]
+    reasons_list = [Paragraph("â€¢ " + _esc(_truncate_for_cell(brief.executive_summary or "â€”")), styles["KulimaBullet"])]
     if brief.investment_recommendation:
-        reasons_list.append(Paragraph("â€¢ " + _esc(brief.investment_recommendation), styles["KulimaBullet"]))
+        reasons_list.append(Paragraph("â€¢ " + _esc(_truncate_for_cell(brief.investment_recommendation, 400)), styles["KulimaBullet"]))
         
     if brief.red_flags:
         risks_list = [Paragraph(f"â€¢ <b>[{rf.severity.upper()}]</b> " + _esc(rf.title) + ": " + _esc(rf.detail), styles["KulimaBullet"]) for rf in brief.red_flags[:2]]

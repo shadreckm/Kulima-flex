@@ -34,6 +34,7 @@ from typing import List
 
 from kulima.core.cases.models import Case
 from kulima.llm import LLMClient
+from kulima.providers import AIProviderManager
 from kulima.signals.models import Signal, SignalCategory, SignalLevel
 from kulima.signals.signals_summary import (
     count_signals_by_category,
@@ -512,4 +513,6 @@ def answer_ask_signals_question(
         """
     ).strip()
 
-    return LLMClient().complete(system=system, user=user, temperature=0.2)
+    # Multi-provider: routes through the failover chain; provider failures
+    # never reach the user — orchestrator_adapter handles doc-intelligence.
+    return AIProviderManager.instance().chat(system=system, user=user, history=history, temperature=0.2)

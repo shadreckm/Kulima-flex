@@ -129,6 +129,66 @@ def _report_payload(brief: InvestmentBrief, report_kind: str, fmt: str) -> tuple
     raise HTTPException(status_code=404, detail="report not found")
 
 
+@router.get("/providers/status")
+async def get_provider_status(current: OrgContext = Depends(require_permission(Permission.VIEW))):
+    """Phase 10 observability: which provider tiers are configured, which one
+    served the last LLM call, and failover statistics for administrators."""
+    from kulima.providers import AIProviderManager
+
+    manager = AIProviderManager.instance()
+    return manager.status()
+
+
+@router.post("/providers/disable")
+async def disable_providers(
+    body: dict,
+    current: OrgContext = Depends(require_permission(Permission.MANAGE_USERS)),
+):
+    """Phase 12 validation: temporarily disable one or more providers in-process.
+    Body: {"providers": ["openai", "groq"]}  — admin-only."""
+    from kulima.providers import AIProviderManager
+
+    manager = AIProviderManager.instance()
+    providers = body.get("providers") or []
+    manager.set_disabled_providers(providers)
+    return {"disabled": list(manager._disabled_providers), "chain": manager.chain}
+
+
+@router.post("/providers/override")
+async def override_providers(
+    body: dict,
+    current: OrgContext = Depends(require_permission(Permission.MANAGE_USERS)),
+):
+    """Phase 12 validation: enable/disable individual providers in-process.
+    Body: {"enable": ["huggingface"], "disable": ["openai"]}  — admin-only.
+    Empty/absent lists leave the other providers untouched; use
+    {"reset": true} to restore the full configured chain."""
+    from kulima.providers import AIProviderManager
+
+    manager = AIProviderManager.instance()
+    if body.get("reset"):
+        manager.reset_providers()
+    for provider in body.get("enable") or []:
+        manager.enable_provider(provider)
+    for provider in body.get("disable") or []:
+        manager.disable_provider(provider)
+    return {
+        "chain": manager.chain,
+        "disabledProviders": list(manager._disabled_providers),
+        "providers": manager.status()["providers"],
+    }
+
+
+@router.post("/providers/reset")
+async def reset_providers(current: OrgContext = Depends(require_permission(Permission.MANAGE_USERS))):
+    """Phase 12 validation: restore all providers to enabled state."""
+    from kulima.providers import AIProviderManager
+
+    manager = AIProviderManager.instance()
+    manager.reset_providers()
+    return {"chain": manager.chain, "disabledProviders": []}
+
+
 @router.get("/runs/live")
 async def list_live_runs(
     limit: int = Query(default=50, ge=1, le=200),

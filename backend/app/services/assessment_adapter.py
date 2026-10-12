@@ -47,6 +47,7 @@ from kulima.core.assessment.service import (
 )
 from kulima.core.audit import record_event
 from kulima.core.billing.service import assert_can_assess
+from kulima.providers import AIProviderManager
 from .document_adapter import UPLOAD_DIR, save_uploaded_file
 from .orchestrator_adapter import start_intelligence_run
 
@@ -124,6 +125,30 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         or research_payload.get("openaiStatus") == "unavailable"
     )
     ai_mode = "document_intelligence" if offline_research else "ai_available"
+    # Phase 10: resolve which provider tier served the last intelligence run.
+    _PROVIDER_LABELS = {
+        "openai": "🤖 OpenAI",
+        "groq": "⚡ Groq",
+        "gemini": "✨ Gemini",
+        "openrouter": "🌐 OpenRouter",
+        "huggingface": "🧠 HuggingFace",
+    }
+    research_mode = research_payload.get("mode")
+    provider_used = research_payload.get("providerUsed")
+    if provider_used in (None, "document_intelligence") and not offline_research:
+        # Prefer the provider actually recorded on the run's research payload;
+        # fall back to the manager's last served provider.
+        try:
+            last = AIProviderManager.instance().last_result
+            if last is not None:
+                provider_used = last.provider
+        except Exception:
+            provider_used = None
+    provider_used = provider_used or ("document_intelligence" if offline_research else None)
+    if provider_used is None:
+        manager = AIProviderManager.instance()
+        provider_used = manager.chain[0] if manager.chain else "document_intelligence"
+    provider_label = _PROVIDER_LABELS.get(provider_used, "📄 Document Intelligence")
     if not research_payload.get("sources") and brief:
         research_sources = [
             {"title": s.title, "url": s.url, "snippet": s.snippet, "source_type": getattr(s, "source_type", "research")}
@@ -167,6 +192,21 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
 
     # Build signals list from context
     signals_list = list(ctx.signals or [])
+    # Reliability: never show an empty signal panel. When the context has no
+    # stored signal titles, generate them deterministically from the brief's
+    # case (rule engine, no AI) so Signals always loads.
+    if not signals_list and brief is not None:
+        try:
+            from kulima.core.cases.adapters import from_investment_brief
+            from kulima.signals.orchestrator import SignalsOrchestrator
+            case = from_investment_brief(brief, case_id=ctx.assessment_id)
+            generated = SignalsOrchestrator().generate(case, sort=True)
+            signals_list = [
+                f"{getattr(s.category, 'value', s.category)}: {s.title} ({s.direction})"
+                for s in generated
+            ]
+        except Exception as exc:
+            _log.debug("serialize_context: deterministic signal generation failed: %s", exc)
 
     # If decision or signals were populated in brief but not in ctx, sync them
     decision_payload = dict(ctx.decision or {})
@@ -222,6 +262,9 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "aiModeLabel": (
             "Document Intelligence Mode Active" if ai_mode == "document_intelligence" else "AI Available"
         ),
+        # Phase 10/11 observability: which provider tier produced results.
+        "providerUsed": provider_used,
+        "providerLabel": provider_label,
         "requiresConfirmation": ctx.requires_confirmation,
         "confidenceThreshold": CONFIRMATION_THRESHOLD,
         "displayEntity": display_entity(ctx),

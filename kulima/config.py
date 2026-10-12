@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+_backend_env = Path(__file__).resolve().parent.parent / "backend" / ".env"
+if _backend_env.exists():
+    load_dotenv(_backend_env)
 
 # Twin Syndicate and Futures models can be configured independently from the main agent model
 SYNDICATE_MODEL = os.getenv("SYNDICATE_MODEL", "gpt-4.1-mini")
@@ -19,6 +23,21 @@ class Settings:
     openai_api_key: str
     tavily_api_key: str
     openai_model: str
+    # ── Multi-provider (Phase 1 reliability architecture) ──────────────
+    groq_api_key: str
+    groq_model: str
+    groq_reasoning_model: str
+    groq_preferred_models: tuple[str, ...]
+    openrouter_api_key: str
+    openrouter_model: str
+    openrouter_free_model: str
+    gemini_api_key: str
+    gemini_model: str
+    huggingface_api_key: str
+    huggingface_model: str
+    huggingface_base_url: str
+    provider_order: tuple[str, ...]
+    llm_timeout_seconds: int
     db_path: str
     max_research_results: int
     africa_focus: bool
@@ -44,8 +63,10 @@ class Settings:
 
     def missing_required_secrets(self) -> list[str]:
         missing = []
-        if not self.openai_api_key:
-            missing.append("OPENAI_API_KEY")
+        # Reliability: OpenAI is Tier 1 of a five-tier provider chain — a
+        # missing OpenAI key is no longer fatal (Groq / OpenRouter /
+        # HuggingFace / Document Intelligence Mode take over). Only Tavily
+        # absence is flagged (research degrades to document-only mode).
         if not self.tavily_api_key:
             missing.append("TAVILY_API_KEY")
         return missing
@@ -66,6 +87,29 @@ def get_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        # Multi-provider tiers (all configurable via env)
+        groq_api_key=os.getenv("GROQ_API_KEY", ""),
+        groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+        groq_reasoning_model=os.getenv("GROQ_REASONING_MODEL", "openai/gpt-oss-120b"),
+        groq_preferred_models=tuple(
+            m.strip()
+            for m in os.getenv("GROQ_PREFERRED_MODELS", "gpt-oss-120b,qwen,llama").split(",")
+            if m.strip()
+        ),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        openrouter_model=os.getenv("OPENROUTER_MODEL", "openrouter/auto"),
+        openrouter_free_model=os.getenv("OPENROUTER_FREE_MODEL", "openrouter/auto"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
+        huggingface_api_key=os.getenv("HUGGINGFACE_API_KEY", ""),
+        huggingface_model=os.getenv("HUGGINGFACE_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
+        huggingface_base_url=os.getenv("HUGGINGFACE_BASE_URL", "https://router.huggingface.co/v1"),
+        provider_order=tuple(
+            p.strip().lower()
+            for p in os.getenv("KULIMA_PROVIDER_ORDER", "openai,groq,gemini,openrouter,huggingface").split(",")
+            if p.strip()
+        ),
+        llm_timeout_seconds=int(os.getenv("KULIMA_LLM_TIMEOUT", "45")),
         db_path=os.getenv("KULIMA_DB_PATH", "founders.db"),
         max_research_results=int(os.getenv("MAX_RESEARCH_RESULTS", "8")),
         africa_focus=os.getenv("AFRICA_FOCUS", "true").lower() == "true",
