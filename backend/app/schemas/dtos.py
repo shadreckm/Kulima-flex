@@ -90,6 +90,13 @@ class DecisionSnapshot(BaseModel):
     decisionBand: Optional[str] = None
     decisionRationale: Optional[List[str]] = None
     domainScores: Optional[dict[str, Any]] = None
+    # Entity-aware decision (Phase 4): verdict expressed in the entity's own
+    # framework (e.g. "Strong Capacity" for NGOs, "Ready for Growth" for
+    # Tourism SMEs) plus the adaptive report title.
+    entityType: Optional[str] = None
+    entityBand: Optional[str] = None
+    entityRecommendation: Optional[str] = None
+    entityReportTitle: Optional[str] = None
 
 
 class SignalItem(BaseModel):

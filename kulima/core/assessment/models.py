@@ -204,6 +204,11 @@ class AssessmentContext(BaseModel):
     # landing page. They sharpen Tavily market queries without re-entry.
     keywords: List[str] = Field(default_factory=list)
 
+    # Entity-aware intelligence profile (Phases 1–2 of the quality upgrade):
+    # document classifications, entity classification, signal domains,
+    # research focus, decision framework and report title. JSON payload.
+    entity_profile: Dict[str, Any] = Field(default_factory=dict)
+
     # ── Lifecycle ─────────────────────────────────────────────────────────
     status: AssessmentStatus = AssessmentStatus.INTAKE
     requires_confirmation: bool = False

@@ -25,12 +25,17 @@ def from_investment_brief(
     created_at: datetime | None = None,
     created_by: str | None = None,
     workspace_type: WorkspaceType = WorkspaceType.STARTUP,
+    entity_profile: dict[str, Any] | None = None,
 ) -> Case:
     """Wrap an InvestmentBrief in a Case envelope.
 
     The conversion is intentionally lossless: the full InvestmentBrief
     JSON representation is stored in Case.payload["investment_brief"].
     All existing InvestmentBrief fields are preserved.
+
+    ``entity_profile`` (optional) carries the entity-aware intelligence
+    profile (document/entity classification, signal domains, decision
+    framework) into the signals layer.
     """
 
     subject = CaseSubject(
@@ -45,6 +50,8 @@ def from_investment_brief(
     payload: dict[str, Any] = {
         "investment_brief": brief.model_dump(mode="json"),
     }
+    if entity_profile:
+        payload["entity_profile"] = entity_profile
 
     return Case(
         id=case_id,

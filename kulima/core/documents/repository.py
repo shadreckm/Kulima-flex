@@ -256,6 +256,35 @@ class DocumentRepository:
             ).fetchall()
         return [self._row_to_document(r) for r in rows]
 
+    def document_trust_scores_for_run(self, run_id: int) -> list[float]:
+        """Return stored Trust Engine scores for the run's documents.
+
+        Entity-aware intelligence (Phase 7): uploaded documents are the
+        primary evidence base, so their Trust Engine scores must feed the
+        run's trust graph instead of relying on web-OSINT absence.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT metadata_json FROM documents
+                WHERE run_id = ? AND deleted_at IS NULL
+                ORDER BY uploaded_at ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        import json as _json
+
+        scores: list[float] = []
+        for (meta_json,) in rows:
+            try:
+                meta = _json.loads(meta_json or "{}")
+                score = meta.get("trust_score")
+                if isinstance(score, (int, float)) and score > 0:
+                    scores.append(float(score))
+            except Exception:  # noqa: BLE001
+                continue
+        return scores
+
     def get_chunks_for_document(self, document_id: str) -> list[DocumentChunk]:
         with self._connect() as conn:
             rows = conn.execute(

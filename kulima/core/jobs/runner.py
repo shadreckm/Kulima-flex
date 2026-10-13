@@ -196,6 +196,49 @@ class JobRunner:
         fallback_used = False
         research_payload = None
         fallback_signal_titles: list[str] = []
+        # Entity-aware intelligence: load the profile from the assessment
+        # context so research and decision follow the entity's own framework.
+        entity_profile_payload: dict = {}
+        if assessment_id:
+            try:
+                from kulima.core.assessment.repository import AssessmentRepository
+                _ctx = AssessmentRepository().get(assessment_id, org_id=org_id)
+                if _ctx is not None:
+                    entity_profile_payload = dict(_ctx.entity_profile or {})
+            except Exception as _ctx_exc:  # noqa: BLE001
+                _log.warning("Could not load entity profile for %s: %s", assessment_id, _ctx_exc)
+        if not entity_profile_payload:
+            from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
+            try:
+                from kulima.core.assessment.repository import AssessmentRepository
+                _ctx = AssessmentRepository().get(assessment_id, org_id=org_id) if assessment_id else None
+                _docs = [
+                    {"name": d.name, "rawSummary": d.raw_summary or "", "evidence_items": list(d.evidence_items or [])}
+                    for d in (_ctx.uploaded_documents if _ctx else [])
+                ]
+                entity_profile_payload = profile_to_payload(build_entity_profile(
+                    (getattr(_ctx.assessment_type, "value", None) if _ctx else None) or "startup",
+                    _docs,
+                    _ctx.extracted_text if _ctx else "",
+                    entity_name=(_ctx.organization_name if _ctx else "") or startup,
+                ))
+            except Exception as _ep_exc:  # noqa: BLE001
+                _log.warning("entity profile build failed: %s", _ep_exc)
+        # Phase 7: gather Trust Engine scores of the run's uploaded documents
+        # so Source A evidence feeds the trust graph.
+        document_trust_scores: list[float] = []
+        try:
+            if assessment_id:
+                from kulima.core.assessment.repository import AssessmentRepository as _AR
+                _ctx2 = _AR().get(assessment_id, org_id=org_id)
+                _scores = [
+                    float(d.trust_score)
+                    for d in (_ctx2.uploaded_documents if _ctx2 else [])
+                    if d.trust_score is not None
+                ]
+                document_trust_scores = _scores or document_trust_scores
+        except Exception as _dts_exc:  # noqa: BLE001
+            _log.warning("document trust score collection failed: %s", _dts_exc)
         try:
             orchestrator = orchestrator_adapter.get_orchestrator()
             brief = await asyncio.to_thread(
@@ -205,6 +248,8 @@ class JobRunner:
                 user_id=user_id,
                 sector_hint=sector_hint,
                 research_results=research_bundle,
+                entity_profile=entity_profile_payload,
+                document_trust_scores=document_trust_scores,
             )
         except Exception as exc:  # noqa: BLE001 — only OpenAI outages use document intelligence fallback
             if not orchestrator_adapter.is_openai_unavailable(exc):

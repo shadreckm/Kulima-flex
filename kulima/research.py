@@ -124,15 +124,26 @@ class ResearchEngine:
         return self._dedupe(self._multi(queries))
 
     def research_market(
-        self, startup: str, sector_hint: str = ""
+        self, startup: str, sector_hint: str = "",
+        *, entity_type: str = "startup", country: str = "",
     ) -> list[SourceAttribution]:
-        queries = [
+        """Entity-aware market research (Phase 4).
+
+        Startups get investment/market queries; NGOs institutional/programmatic;
+        development programs implementation/impact; Tourism SMEs
+        tourism/climate/destination/visitor-economy queries.
+        """
+        from kulima.intelligence.entity_profile import entity_research_queries
+
+        entity_queries = list(
+            entity_research_queries(entity_type, startup, sector_hint, country)
+        )
+        # Always append the generic market sweep for coverage.
+        entity_queries += [
             f"{startup} {sector_hint} Africa market opportunity TAM SAM regulation",
-            f"{sector_hint or startup} Africa fintech agritech healthtech competition market size",
-            f"venture capital Africa {sector_hint or startup} trends 2024 2025 2026",
-            f"Africa {sector_hint or startup} incumbents regulatory tailwinds customer adoption",
+            f"{sector_hint or startup} Africa competition market size",
         ]
-        return self._dedupe(self._multi(queries))
+        return self._dedupe(self._multi(entity_queries))
 
     def research_risks(self, founder: str, startup: str) -> list[SourceAttribution]:
         queries = [
@@ -167,20 +178,34 @@ class ResearchEngine:
         return self._rank_sources(self._dedupe(out, limit=24))
 
     def research_bundle(
-        self, founder: str, startup: str, sector_hint: str = ""
+        self, founder: str, startup: str, sector_hint: str = "",
+        *, entity_type: str = "startup", country: str = "",
     ) -> dict[str, list[SourceAttribution]]:
         """One-shot parallel OSINT pack: founder, startup, market, risks.
 
         ``sector_hint`` is an additive refinement sourced from the shared
         Assessment Context (extracted from the uploaded documents); when empty
         behaviour is identical to previous releases.
+
+        Phase 4 (entity-aware intelligence): ``entity_type`` steers the query
+        templates so research follows the entity (investment/market research
+        for startups, institutional/programmatic research for NGOs,
+        implementation/impact research for development programs,
+        tourism/climate/destination research for Tourism SMEs). External
+        research is corroborative only — uploaded documents (Source A) always
+        outrank it.
         """
         from concurrent.futures import ThreadPoolExecutor
+
+        from kulima.intelligence.entity_profile import entity_research_queries
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             f_fut = pool.submit(self.research_founder, founder, startup)
             s_fut = pool.submit(self.research_startup, founder, startup)
-            m_fut = pool.submit(self.research_market, startup, sector_hint)
+            m_fut = pool.submit(
+                self.research_market, startup, sector_hint,
+                entity_type=entity_type, country=country,
+            )
             r_fut = pool.submit(self.research_risks, founder, startup)
             return {
                 "founder": f_fut.result(),

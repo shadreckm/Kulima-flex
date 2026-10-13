@@ -253,26 +253,42 @@ def build_ask_ic_context(
             )
 
     if brief.sources:
-        sections.append("[EVIDENCE_SOURCES]")
-        for i, src in enumerate(brief.sources, 1):
-            sections.append(
-                f"[S{i}] {src.title}\nURL: {src.url}\nSnippet: {_clip(src.snippet, 800)}\n"
-                f"Relevance: {src.relevance:.2f}; confidence: {src.confidence_score:.2f}; type: {src.source_type}"
-            )
+        doc_sources = [s for s in brief.sources if s.source_type == "document"]
+        if doc_sources:
+            sections.append("[EVIDENCE_SOURCES — Source A: uploaded documents (PRIMARY)]")
+            for i, src in enumerate(doc_sources, 1):
+                sections.append(
+                    f"[DS{i}] {src.title}\nSnippet: {_clip(src.snippet, 900)}\n"
+                    f"Relevance: {src.relevance:.2f}; confidence: {src.confidence_score:.2f}"
+                )
 
     # Append document evidence section when documents are available for this
     # founder/startup. This uses a separate [DOCUMENTS] header and [D#]
     # labels so the IC Analyst can distinguish document-backed claims from
     # web sources ([S#]).
+    # Source Priority: documents (Source A) receive HALF the context budget
+    # and are placed immediately after the assessment context — BEFORE web
+    # evidence sections — so uploaded content drives the reasoning.
     doc_section = build_document_context_for_subject(
         brief.founder_name,
         brief.startup_name,
-        max_documents=3,
-        max_chars=MAX_CONTEXT_CHARS // 4,
+        max_documents=5,
+        max_chars=MAX_CONTEXT_CHARS // 2,
         user_id=user_id,
     )
     if doc_section:
         sections.append(doc_section)
+
+    # Web research (Source C) is corroborative — it follows the documents.
+    if brief.sources:
+        web_only = [s for s in brief.sources if s.source_type != "document"]
+        if web_only:
+            sections.append("[EVIDENCE_SOURCES — Source C: external web research (corroborative only)]")
+            for i, src in enumerate(web_only, 1):
+                sections.append(
+                    f"[S{i}] {src.title}\nURL: {src.url}\nSnippet: {_clip(src.snippet, 800)}\n"
+                    f"Relevance: {src.relevance:.2f}; confidence: {src.confidence_score:.2f}; type: {src.source_type}"
+                )
 
     context = "\n\n".join(sections)
     return context[:MAX_CONTEXT_CHARS]
@@ -332,15 +348,25 @@ def answer_ask_ic_question(
           "Before making a decision, I'd verify:".
 
         Grounding rules:
+        - SOURCE PRIORITY (critical): [DOCUMENTS] entries are UPLOADED
+          DOCUMENTS (Source A) — the PRIMARY evidence base. The business plan
+          IS evidence. The annual report IS evidence. The proposal IS evidence.
+          Cite [D#] document content FIRST, before web sources [S#]. A web
+          source NEVER overrules an uploaded document unless there is a
+          material contradiction — if one exists, state it explicitly.
+          NEVER conclude "no evidence exists", "unknown entity" or "no
+          product" when [DOCUMENTS] contains a business plan or any substantive
+          uploaded document: read its content and reason from it.
         - Use ONLY the provided context pack: generated report, evidence sources,
           agent/syndicate outputs, risk analysis, and futures analysis.
         - Do not use outside knowledge, assumptions, market facts, or web browsing.
         - If the context does not support an answer, say what is missing and what
-          evidence would be needed.
+          evidence would be needed — and distinguish "not documented" from
+          "no evidence exists" (the documents may simply not address it).
         - Include citations when helpful using the context labels, e.g. [REPORT],
           [R1], [V2], [F1], [S3] for web sources, and [D1], [D2] for document
           evidence when referring to uploaded documents in the [DOCUMENTS]
-          section. For source-backed claims, prefer [S#] and [D#].
+          section. For source-backed claims, prefer [D#] first, then [S#].
         - The [ASSESSMENT_CONTEXT] section already contains the intake facts
           (assessment type, organisation, founder/lead, sector, country,
           uploaded documents, trust score). NEVER ask the user for these again —
@@ -364,6 +390,15 @@ def answer_ask_ic_question(
           * Required verification
           * Recommended action
           * Next question I'd ask
+        - If the user asks "what evidence supports this?" (or "where does the
+          evidence come from"), answer with a Source-A-first evidence map:
+          1) Uploaded documents [D#] with the specific sections/claims that
+             support the point, quoting short fragments where possible;
+          2) Assessment Context facts (entity, sector, founder, trust score);
+          3) Signals [DOMAIN_SIGNALS] derived from that evidence;
+          4) Trust graph / evidence integrity;
+          5) External research [S#] as corroboration ONLY.
+          Never present web sources as the primary basis when documents exist.
         - If the user asks about "what would make this a pass", return:
           * Pass triggers
           * Why they matter

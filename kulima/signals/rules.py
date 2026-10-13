@@ -443,25 +443,51 @@ def _market_signals(case: Case) -> List[Signal]:
     
     market_terms = ("market size", "tam", "sam", "som", "growth rate", "cagr", "customer adoption", "expansion", "traction")
     found = next((s for s in doc_sources + web_sources if any(t in s["snippet"].lower() for t in market_terms)), None)
+    # Source-A first: prefer document evidence for the citation.
+    doc_found = next((s for s in doc_sources if any(t in s["snippet"].lower() for t in market_terms)), None)
+    if doc_found:
+        found = doc_found
     ref = found["ref"] if found else "MARKET_INTELLIGENCE"
-    
-    signals.append(
-        Signal(
-            id=f"{case.id}-market-expansion",
-            case_id=case.id,
-            level=SignalLevel.HIGH if found else SignalLevel.MEDIUM,
-            category=SignalCategory.MARKET,
-            title="Market Signal: Commercial market runway & demand velocity",
-            description="Addressable market demonstrates favorable structural tailwinds and commercial uptake.",
-            direction="opportunity",
-            evidence_refs=[ref],
-            evidence_summary=f"Strong customer demand and corridor market dynamics corroborated by {ref}.",
-            recommended_action="Accelerate sales distribution through existing anchor partnership channels.",
-            time_horizon="short-term",
-            confidence=0.82 if found else 0.70,
-            metadata={"domain": "Market Signals", "source_type": "market"}
+
+    # Evidence-grounded signal generation: when NO market evidence exists in
+    # the corpus, the signal must reflect the gap — not assert fabricated
+    # "tailwinds". Unsupported optimism distorts the Market domain score.
+    if found:
+        signals.append(
+            Signal(
+                id=f"{case.id}-market-expansion",
+                case_id=case.id,
+                level=SignalLevel.HIGH if doc_found else SignalLevel.MEDIUM,
+                category=SignalCategory.MARKET,
+                title="Market Signal: Commercial market runway & demand velocity",
+                description="Addressable market demonstrates favorable structural tailwinds and commercial uptake.",
+                direction="opportunity",
+                evidence_refs=[ref],
+                evidence_summary=f"Strong customer demand and corridor market dynamics corroborated by {ref}.",
+                recommended_action="Accelerate sales distribution through existing anchor partnership channels.",
+                time_horizon="short-term",
+                confidence=0.82 if doc_found else 0.70,
+                metadata={"domain": "Market Signals", "source_type": "document" if doc_found else "market"}
+            )
         )
-    )
+    else:
+        signals.append(
+            Signal(
+                id=f"{case.id}-market-gap",
+                case_id=case.id,
+                level=SignalLevel.MEDIUM,
+                category=SignalCategory.MARKET,
+                title="Market Signal: Market sizing not yet evidenced",
+                description="No market sizing, traction, or demand evidence found in the corpus — flagged as a diligence gap.",
+                direction="risk",
+                evidence_refs=[ref],
+                evidence_summary="No market sizing or traction markers detected in uploaded documents or external research.",
+                recommended_action="Request market sizing and customer validation evidence from the entity.",
+                time_horizon="short-term",
+                confidence=0.68,
+                metadata={"domain": "Market Signals", "source_type": "gap"}
+            )
+        )
     return signals
 
 
@@ -471,26 +497,48 @@ def _funding_signals(case: Case, ei: EvidenceIntegrityReport | None) -> List[Sig
     signals: List[Signal] = []
 
     funding_terms = ("seed", "series a", "funding round", "investor", "grant", "runway", "capital", "debt", "valuation", "equity")
-    found = next((s for s in doc_sources + web_sources if any(t in s["snippet"].lower() for t in funding_terms)), None)
+    doc_found = next((s for s in doc_sources if any(t in s["snippet"].lower() for t in funding_terms)), None)
+    found = doc_found or next((s for s in web_sources if any(t in s["snippet"].lower() for t in funding_terms)), None)
     ref = found["ref"] if found else "FINANCIAL_DISCLOSURES"
 
-    signals.append(
-        Signal(
-            id=f"{case.id}-funding-runway",
-            case_id=case.id,
-            level=SignalLevel.HIGH if found else SignalLevel.MEDIUM,
-            category=SignalCategory.FUNDING,
-            title="Funding Signal: Capital structure & runway sustainability",
-            description="Historical capitalization and ongoing fundraising requirements mapped from evidence base.",
-            direction="opportunity" if found else "neutral",
-            evidence_refs=[ref],
-            evidence_summary=f"Capitalization history and investor syndicate commitments documented in {ref}.",
-            recommended_action="Ensure minimum 18-month cash runway cushion post-disbursement.",
-            time_horizon="short-term",
-            confidence=0.80 if found else 0.68,
-            metadata={"domain": "Funding Signals", "source_type": "funding"}
+    # Evidence-grounded signal generation: no funding evidence in the corpus →
+    # neutral gap signal, never a fabricated opportunity claim.
+    if found:
+        signals.append(
+            Signal(
+                id=f"{case.id}-funding-runway",
+                case_id=case.id,
+                level=SignalLevel.HIGH if doc_found else SignalLevel.MEDIUM,
+                category=SignalCategory.FUNDING,
+                title="Funding Signal: Capital structure & runway sustainability",
+                description="Historical capitalization and ongoing fundraising requirements mapped from evidence base.",
+                direction="opportunity" if doc_found else "neutral",
+                evidence_refs=[ref],
+                evidence_summary=f"Capitalization history and investor syndicate commitments documented in {ref}.",
+                recommended_action="Ensure minimum 18-month cash runway cushion post-disbursement.",
+                time_horizon="short-term",
+                confidence=0.80 if doc_found else 0.68,
+                metadata={"domain": "Funding Signals", "source_type": "document" if doc_found else "funding"}
+            )
         )
-    )
+    else:
+        signals.append(
+            Signal(
+                id=f"{case.id}-funding-gap",
+                case_id=case.id,
+                level=SignalLevel.MEDIUM,
+                category=SignalCategory.FUNDING,
+                title="Funding Signal: Capital structure not yet evidenced",
+                description="No funding, grant, or capital-structure evidence found in the corpus — flagged as a diligence gap.",
+                direction="risk",
+                evidence_refs=[ref],
+                evidence_summary="No funding or capitalization markers detected in uploaded documents or external research.",
+                recommended_action="Request funding history and capital plan documentation from the entity.",
+                time_horizon="short-term",
+                confidence=0.66,
+                metadata={"domain": "Funding Signals", "source_type": "gap"}
+            )
+        )
     return signals
 
 
@@ -529,24 +577,37 @@ def _opportunity_signals(case: Case) -> List[Signal]:
     signals: List[Signal] = []
 
     opportunity_terms = ("opportunity", "expansion", "unmet demand", "under-served", "underserved", "untapped", "growth potential", "partnership", "scale-up", "scale up", "pilot", "new market")
-    found = next((s for s in doc_sources + web_sources if any(t in s["snippet"].lower() or t in s["title"].lower() for t in opportunity_terms)), None)
+    doc_found = next((s for s in doc_sources if any(t in s["snippet"].lower() or t in s["title"].lower() for t in opportunity_terms)), None)
+    found = doc_found or next((s for s in web_sources if any(t in s["snippet"].lower() or t in s["title"].lower() for t in opportunity_terms)), None)
     ref = found["ref"] if found else "OPPORTUNITY_SCAN"
 
     signals.append(
         Signal(
             id=f"{case.id}-opportunity-upside",
             case_id=case.id,
-            level=SignalLevel.HIGH if found else SignalLevel.MEDIUM,
+            level=SignalLevel.HIGH if doc_found else (SignalLevel.MEDIUM if found else SignalLevel.LOW),
             category=SignalCategory.OPPORTUNITY,
             title="Opportunity Signal: Expansion headroom & upside potential",
-            description="Evidence indicates unmet demand, expansion corridors, or partnership openings that can compound impact and returns.",
-            direction="opportunity",
+            description=(
+                "Evidence indicates unmet demand, expansion corridors, or partnership openings that can compound impact and returns."
+                if found
+                else "No expansion or upside markers detected yet — flagged as an evidence gap, not asserted as upside."
+            ),
+            direction="opportunity" if found else "risk",
             evidence_refs=[ref],
-            evidence_summary=f"Growth headroom and upside markers corroborated by {ref}.",
-            recommended_action="Prioritise the highest-leverage expansion corridor and validate it with a scoped pilot.",
+            evidence_summary=(
+                f"Growth headroom and upside markers corroborated by {ref}."
+                if found
+                else "No opportunity markers found in uploaded documents or external research."
+            ),
+            recommended_action=(
+                "Prioritise the highest-leverage expansion corridor and validate it with a scoped pilot."
+                if found
+                else "Request growth plan and expansion evidence from the entity."
+            ),
             time_horizon="medium-term",
-            confidence=0.80 if found else 0.68,
-            metadata={"domain": "Opportunity Signals", "source_type": "document" if found else "scan"}
+            confidence=0.80 if doc_found else (0.68 if found else 0.60),
+            metadata={"domain": "Opportunity Signals", "source_type": "document" if doc_found else ("scan" if found else "gap")}
         )
     )
     return signals
@@ -619,6 +680,12 @@ def generate_signals_from_case(
     This function derives signals across the core domains: Trust, Risk,
     Opportunity, Market, Funding, Competitive, Climate, Environmental,
     Tourism, and Community Impact.
+
+    Phase 3 (entity-aware intelligence): when the case payload carries an
+    entity profile, entity-specific signal domains (e.g. Institutional
+    Capacity for NGOs, Destination Readiness for Tourism SMEs) are generated
+    on top of the universal domains, with uploaded-document evidence cited
+    first (Source A before Source C).
     """
 
     signals: List[Signal] = []
@@ -639,4 +706,103 @@ def generate_signals_from_case(
     signals.extend(_tourism_signals(case))
     signals.extend(_community_impact_signals(case))
 
+    # 3. Entity-aware domains (never replaces the universal set; extends it)
+    signals.extend(_entity_profile_signals(case))
+
+    return signals
+
+
+def _entity_profile_signals(case: Case) -> List[Signal]:
+    """Entity-aware signal domains driven by the entity profile in the payload."""
+    from kulima.intelligence.entity_profile import (
+        detect_domain_evidence,
+        entity_signal_domains,
+    )
+
+    profile = (case.payload or {}).get("entity_profile") or {}
+    entity_type = str(profile.get("entityType") or "startup")
+    domains = entity_signal_domains(entity_type)
+    if not domains:
+        return []
+
+    doc_sources, web_sources, corpus = _gather_evidence_corpus(case)
+    detected = detect_domain_evidence(corpus, domains)
+    signals: List[Signal] = []
+    for domain in domains:
+        hits = detected.get(domain) or []
+        has_doc = any(h in corpus for h in hits) and doc_sources
+        # Uploaded-document evidence outranks web corroboration (Source A > C).
+        if hits and doc_sources:
+            level = SignalLevel.HIGH
+            primary_ref = doc_sources[0]["ref"]
+            source_label = f"uploaded document ({doc_sources[0]['title']})"
+            direction = "opportunity"
+            confidence = 0.85
+        elif hits:
+            level = SignalLevel.MEDIUM
+            primary_ref = web_sources[0]["ref"] if web_sources else "EVIDENCE_CORPUS"
+            source_label = "external corroboration"
+            direction = "opportunity"
+            confidence = 0.7
+        elif doc_sources:
+            # Domain not evidenced yet, but documents exist: gap, not absence.
+            level = SignalLevel.MEDIUM
+            primary_ref = doc_sources[0]["ref"]
+            source_label = f"uploaded document ({doc_sources[0]['title']})"
+            direction = "risk"
+            confidence = 0.65
+        else:
+            level = SignalLevel.LOW
+            primary_ref = "EVIDENCE_CORPUS"
+            source_label = "general corpus"
+            direction = "risk"
+            confidence = 0.55
+        signals.append(
+            Signal(
+                id=f"{case.id}-entity-{domain.lower().replace(' ', '-')}",
+                case_id=case.id,
+                level=level,
+                category=SignalCategory.COMMUNITY_IMPACT if "Community" in domain else (
+                    SignalCategory.CLIMATE if "Climate" in domain else (
+                        SignalCategory.TOURISM if "Tourism" in domain or "Visitor" in domain or "Destination" in domain else (
+                            SignalCategory.FUNDING if "Funding" in domain else (
+                                SignalCategory.GOVERNANCE if domain in ("Governance", "Member Governance", "Institutional Capacity") else (
+                                    SignalCategory.MARKET if domain in ("Market Readiness", "Visitor Economy Signals") else (
+                                        SignalCategory.IMPACT if domain in ("Impact Evidence", "Program Performance", "Public Value", "Monitoring Capacity") else
+                                        SignalCategory.OPPORTUNITY
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+                title=f"{domain}: " + (
+                    f"documented in {source_label}" if hits else f"not yet evidenced — gap flagged"
+                ),
+                description=(
+                    f"Evidence markers ({', '.join(hits[:4])}) found in {source_label}."
+                    if hits
+                    else f"No {domain.lower()} evidence detected in the corpus; the assessment flags this as a diligence gap for the {profile.get('entityLabel') or 'entity'}."
+                ),
+                direction=direction,
+                evidence_refs=[primary_ref],
+                evidence_summary=(
+                    f"Detected terms: {', '.join(hits[:6])}. Source: {source_label}."
+                    if hits
+                    else f"No matching evidence for {domain} in {len(doc_sources)} document(s) and {len(web_sources)} external source(s)."
+                ),
+                recommended_action=(
+                    f"Leverage documented {domain.lower()} strength in the final assessment."
+                    if hits
+                    else f"Request {domain.lower()} documentation from the entity before final decision."
+                ),
+                time_horizon="immediate" if direction == "risk" else "medium-term",
+                confidence=confidence,
+                metadata={
+                    "domain": domain,
+                    "entityType": entity_type,
+                    "source_type": "document" if has_doc else ("web" if hits else "gap"),
+                },
+            )
+        )
     return signals

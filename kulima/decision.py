@@ -30,7 +30,7 @@ from kulima.signals.signals_summary import (
 )
 
 # Relative importance of each display domain in the composite score.
-# Weights sum to 1.0.
+# Weights sum to 1.0. This is the default (startup-leaning) profile.
 DOMAIN_WEIGHTS: dict[str, float] = {
     "trust": 0.16,
     "risk": 0.18,
@@ -43,8 +43,81 @@ DOMAIN_WEIGHTS: dict[str, float] = {
     "community_impact": 0.10,
 }
 
+# Phase 5: entity-aware weight profiles so that domains that are CORE to an
+# entity type materially drive its decision instead of being garnish.
+# Tourism/Climate/Community are the business for a Tourism SME; program
+# delivery and community reach are the business for NGOs and programs.
+ENTITY_DOMAIN_WEIGHTS: dict[str, dict[str, float]] = {
+    "startup": DOMAIN_WEIGHTS,
+    "tourism_sme": {
+        "trust": 0.13,
+        "risk": 0.14,
+        "opportunity": 0.09,
+        "market": 0.10,
+        "funding": 0.08,
+        "climate": 0.16,
+        "environmental": 0.10,
+        "tourism": 0.14,
+        "community_impact": 0.06,
+    },
+    "ngo": {
+        "trust": 0.14,
+        "risk": 0.12,
+        "opportunity": 0.07,
+        "market": 0.05,
+        "funding": 0.12,
+        "climate": 0.06,
+        "environmental": 0.05,
+        "tourism": 0.03,
+        "community_impact": 0.36,
+    },
+    "development_program": {
+        "trust": 0.13,
+        "risk": 0.12,
+        "opportunity": 0.06,
+        "market": 0.05,
+        "funding": 0.12,
+        "climate": 0.07,
+        "environmental": 0.06,
+        "tourism": 0.03,
+        "community_impact": 0.36,
+    },
+    "government_program": {
+        "trust": 0.16,
+        "risk": 0.14,
+        "opportunity": 0.06,
+        "market": 0.05,
+        "funding": 0.10,
+        "climate": 0.07,
+        "environmental": 0.06,
+        "tourism": 0.02,
+        "community_impact": 0.34,
+    },
+}
+_ENTITY_WEIGHT_INHERIT = {
+    "research_institution": "ngo",
+    "social_enterprise": "startup",
+    "foundation": "ngo",
+    "cooperative": "startup",
+    "farmer_organization": "development_program",
+}
+
+
+def domain_weights_for(entity_type: str | None) -> dict[str, float]:
+    """Return the domain weight profile for an entity type."""
+    if not entity_type:
+        return DOMAIN_WEIGHTS
+    weights = ENTITY_DOMAIN_WEIGHTS.get(entity_type)
+    if weights:
+        return weights
+    parent = ENTITY_DOMAIN_WEIGHTS.get(_ENTITY_WEIGHT_INHERIT.get(entity_type, ""))
+    return parent or DOMAIN_WEIGHTS
+
 # Evidence is not a signal domain; its weight applies only when present.
-EVIDENCE_WEIGHT: float = 0.18
+# Phase 1 (Evidence Weighting): uploaded evidence is the dominant source of
+# reasoning, so Source A carries the LARGEST single-component weight — a rich
+# uploaded corpus can never be outweighed by missing/thin web research.
+EVIDENCE_WEIGHT: float = 0.24
 
 # Score bands → narrative band name and the matching Recommendation value.
 _BANDS: tuple[tuple[float, str, Recommendation], ...] = (
@@ -68,14 +141,16 @@ def _blend_components(
     *,
     evidence_score: Optional[float],
     trust_score: Optional[float],
+    weights: Optional[dict[str, float]] = None,
 ) -> tuple[float, dict[str, float], float, int]:
     """Blend domain scores + evidence into a composite 0–100 score.
 
     Returns ``(composite, effective_weights, coverage, populated_count)``.
     Coverage is the fraction of display domains populated with signals.
     """
+    weights = weights or DOMAIN_WEIGHTS
     components: dict[str, float] = {}
-    weights: dict[str, float] = {}
+    effective: dict[str, float] = {}
     for domain in DISPLAY_DOMAINS:
         entry = overviews.get(domain.value) or {}
         if int(entry.get("signal_count") or 0) <= 0:
@@ -86,20 +161,20 @@ def _blend_components(
         if domain.value == "trust" and trust_score is not None:
             score = float(max(0.0, min(100.0, trust_score)))
         components[domain.value] = score
-        weights[domain.value] = DOMAIN_WEIGHTS[domain.value]
+        effective[domain.value] = weights.get(domain.value, DOMAIN_WEIGHTS.get(domain.value, 0.05))
 
     if evidence_score is not None:
         components["evidence"] = float(max(0.0, min(100.0, evidence_score)))
-        weights["evidence"] = EVIDENCE_WEIGHT
+        effective["evidence"] = EVIDENCE_WEIGHT
 
-    total_weight = sum(weights.values())
+    total_weight = sum(effective.values())
     populated = len(components)
     coverage = round(populated / (len(DISPLAY_DOMAINS) + 1), 3)
     if total_weight <= 0:
         return 50.0, {}, coverage, populated
 
-    composite = sum(components[name] * weights[name] for name in weights) / total_weight
-    return composite, weights, coverage, populated
+    composite = sum(components[name] * effective[name] for name in effective) / total_weight
+    return composite, effective, coverage, populated
 
 
 def _confidence(coverage: float, populated: int, evidence_score: Optional[float]) -> float:
@@ -161,6 +236,7 @@ def build_decision_view(
     *,
     evidence_score: Optional[float] = None,
     trust_score: Optional[float] = None,
+    entity_profile: Optional[dict] = None,
 ) -> dict[str, Any]:
     """Build the expanded decision view from the signal corpus.
 
@@ -170,28 +246,60 @@ def build_decision_view(
             cleaner, fewer contradictions / unsupported claims).
         trust_score: Optional live trust-graph score (0–100) which overrides
             the trust domain heuristic when available.
+        entity_profile: Optional entity-aware profile payload. When present,
+            the decision band is expressed in the entity's own framework
+            (e.g. "Strong Capacity" for NGOs, "Ready for Growth" for Tourism
+            SMEs) instead of the generic Invest/Observe/Pass ladder.
 
     Returns:
         A dict with ``score``, ``band``, ``recommendation``, ``confidence``,
         ``coverage``, per-domain ``domains`` overviews (score / summary /
         recommendation each), ranked ``contributions``, a ``summary`` sentence,
-        and ``rationale`` lines.
+        and ``rationale`` lines. When an entity profile is supplied the result
+        also carries ``entityBand``/``entityRecommendation`` plus
+        ``entityType``/``reportTitle``.
     """
     materialised = list(signals)
     overviews = build_domain_overviews(materialised)
+    # Phase 5: entity-aware domain weights — Tourism/Climate/Community are
+    # core decision drivers for a Tourism SME, community impact for NGOs, etc.
+    entity_type_for_weights = str((entity_profile or {}).get("entityType") or "")
+    active_weights = domain_weights_for(entity_type_for_weights)
     composite, weights, coverage, populated = _blend_components(
-        overviews, evidence_score=evidence_score, trust_score=trust_score
+        overviews, evidence_score=evidence_score, trust_score=trust_score,
+        weights=active_weights,
     )
     score = round(composite, 1)
     band, recommendation = decision_band(score)
+
+    # Phase 5: entity-aware decision framework.
+    entity_band: Optional[str] = None
+    entity_recommendation: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_label: Optional[str] = None
+    report_title: Optional[str] = None
+    if entity_profile:
+        from kulima.intelligence.entity_profile import (
+            entity_decision,
+            entity_report_title,
+        )
+
+        entity_type = str(entity_profile.get("entityType") or "startup")
+        entity_label = entity_profile.get("entityLabel") or entity_type
+        entity_band, entity_label_band = entity_decision(score, entity_type)
+        entity_recommendation = entity_label_band
+        report_title = entity_report_title(entity_type)
+        # The entity band is the authoritative decision wording.
+        band = entity_band
+        recommendation = entity_label_band
 
     contributions: list[dict[str, Any]] = []
     for domain in DISPLAY_DOMAINS:
         entry = overviews.get(domain.value) or {}
         if int(entry.get("signal_count") or 0) <= 0:
             continue
-        effective = weights.get(domain.value, 0.0)
-        if effective <= 0:
+        effective_w = weights.get(domain.value, 0.0)
+        if effective_w <= 0:
             continue
         domain_score = float(entry.get("score", 50))
         if domain.value == "trust" and trust_score is not None:
@@ -201,16 +309,16 @@ def build_decision_view(
                 "domain": domain.value,
                 "label": DOMAIN_LABELS[domain],
                 "score": int(round(domain_score)),
-                "weight": round(effective, 3),
-                "impact": round((domain_score - 50.0) * effective, 2),
+                "weight": round(effective_w, 3),
+                "impact": round((domain_score - 50.0) * effective_w, 2),
             }
         )
     contributions.sort(key=lambda c: c["impact"], reverse=True)
 
-    return {
+    result = {
         "score": score,
         "band": band,
-        "recommendation": recommendation.value,
+        "recommendation": recommendation.value if hasattr(recommendation, "value") else recommendation,
         "confidence": _confidence(coverage, populated, evidence_score),
         "coverage": coverage,
         "evidence_score": round(float(evidence_score), 1) if evidence_score is not None else None,
@@ -221,3 +329,13 @@ def build_decision_view(
         "domains": overviews,
         "signal_count": len(materialised),
     }
+    if entity_profile:
+        result.update({
+            "entityType": entity_type,
+            "entityLabel": entity_label,
+            "entityBand": entity_band,
+            "entityRecommendation": entity_recommendation,
+            "reportTitle": report_title,
+            "domainWeights": {k: round(v, 3) for k, v in active_weights.items()},
+        })
+    return result

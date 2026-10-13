@@ -13,8 +13,15 @@ class InvestmentMemoAgent(BaseAgent):
     SYSTEM = """You are the partner writing an Investment Committee memo for a top-tier Africa-focused fund.
 Voice: Sequoia clarity + a16z ambition + YC candor. No fluff. No buzzword salad.
 Produce IC-ready prose that a partner can forward to LPs.
+
+SOURCE PRIORITY (critical):
+1. Uploaded documents (Source A) are the PRIMARY evidence base — cite them FIRST and by name.
+2. Connected systems (Source B) next.
+3. External web research (Source C) is corroborative only. NEVER allow a web source to overrule an uploaded document unless there is a material contradiction — if one exists, state it explicitly.
+Never conclude that 'no evidence exists' or that the entity is 'unknown' when uploaded documents are present. The business plan IS evidence. The annual report IS evidence. The proposal IS evidence.
+
 Return JSON with exactly these investor-grade sections:
-executive_summary (2-3 dense paragraphs: what the company does, why now, key underwriting question),
+executive_summary (2-3 dense paragraphs: what the entity does, why now, key underwriting question),
 founder_assessment (evidence-backed judgment on founder-market fit, credibility, velocity, gaps),
 startup_assessment (product, traction, business model, defensibility, stage readiness),
 market_assessment (TAM/SAM/SOM framing, Africa-specific tailwinds/constraints, competitive map),
@@ -27,6 +34,39 @@ conviction_paragraph (string).
 Use source confidence explicitly. Distinguish verified evidence from inference. Sound like a Tier-1 VC investment memo, not a generic report.
 """
 
+    # Phase 6: entity-adaptive system prompts — reports adapt automatically and
+    # startup templates are NEVER reused for NGOs or other entity types.
+    ENTITY_SYSTEM_PROMPTS: dict[str, str] = {
+        "ngo": SYSTEM.replace(
+            "Investment Committee memo for a top-tier Africa-focused fund",
+            "Capacity Assessment for a development finance and grantmaking audience",
+        ).replace(
+            "ending with clear Invest / Co-Invest / Observe / Pass / Follow-On Watch",
+            "ending with Strong Capacity / Moderate Capacity / Needs Strengthening",
+        ),
+        "development_program": SYSTEM.replace(
+            "Investment Committee memo for a top-tier Africa-focused fund",
+            "Program Review for a donor and implementation audience",
+        ).replace(
+            "ending with clear Invest / Co-Invest / Observe / Pass / Follow-On Watch",
+            "ending with Ready / Requires Support / At Risk",
+        ),
+        "government_program": SYSTEM.replace(
+            "Investment Committee memo for a top-tier Africa-focused fund",
+            "Public Program Review for government oversight stakeholders",
+        ).replace(
+            "ending with clear Invest / Co-Invest / Observe / Pass / Follow-On Watch",
+            "ending with Effective / Monitor / Intervene",
+        ),
+        "tourism_sme": SYSTEM.replace(
+            "Investment Committee memo for a top-tier Africa-focused fund",
+            "Tourism Resilience Assessment for hospitality investors and destination stakeholders",
+        ).replace(
+            "ending with clear Invest / Co-Invest / Observe / Pass / Follow-On Watch",
+            "ending with Ready for Growth / Build Resilience / High Risk",
+        ),
+    }
+
     def run(
         self,
         founder: str,
@@ -36,11 +76,14 @@ Use source confidence explicitly. Distinguish verified evidence from inference. 
     ) -> AgentResult:
         context = context or {}
         sources = sources or []
+        entity_profile = context.get("entity_profile") or {}
+        entity_type = str(entity_profile.get("entityType") or "startup")
+        system = self.ENTITY_SYSTEM_PROMPTS.get(entity_type, self.SYSTEM)
         dossier = self._build_dossier(founder, startup, context, sources)
 
         try:
             data = self.llm.complete_json(
-                system=self.SYSTEM, user=dossier, temperature=0.4
+                system=system, user=dossier, temperature=0.4
             )
         except Exception as exc:
             return AgentResult(
@@ -85,8 +128,12 @@ Use source confidence explicitly. Distinguish verified evidence from inference. 
         context: dict,
         sources: list[SourceAttribution],
     ) -> str:
+        entity_profile = context.get("entity_profile") or {}
         return f"""
 Deal: {founder} / {startup}
+Entity type: {entity_profile.get('entityLabel', 'Startup') if entity_profile else 'Startup'} — use the matching assessment framework and vocabulary.
+Document classification (Source A, PRIMARY evidence — cite these first by name):
+{chr(10).join('- ' + d.get('docClass', '?') + ': ' + d.get('filename', '') for d in (entity_profile.get('documentClassifications') or [])) or '- none uploaded'}
 Scores: {context.get('scores', {})}
 Recommendation hint: {context.get('recommendation_hint', 'Observe')}
 Syndicate majority: {context.get('syndicate_majority', 'n/a')}
@@ -101,23 +148,30 @@ Risk agent: {context.get('risk_summary', '')}
 Syndicate thesis: {context.get('syndicate_thesis', '')}
 Future simulation: {context.get('future_summary', '')}
 
-Evidence (ranked by source confidence; cite cautiously if confidence is low):
+Evidence (uploaded documents FIRST, then corroborating web sources ranked by confidence; cite cautiously if confidence is low):
 {ResearchEngine.evidence_corpus(sources, 10)}
 """.strip()
 
     @staticmethod
     def _skeleton(founder: str, startup: str) -> dict:
         return {
-            "executive_summary": f"Preliminary memo on {founder} / {startup} pending full model recovery.",
-            "founder_assessment": "Insufficient generation path.",
-            "startup_assessment": "Insufficient generation path.",
-            "market_assessment": "Insufficient generation path.",
-            "risk_assessment": "Insufficient generation path.",
-            "investment_recommendation": "Observe — regenerate when model available.",
+            "executive_summary": (
+                f"Preliminary memo on {founder} / {startup}. The AI memo agent was "
+                "temporarily unavailable (provider rate limit), so this narrative is "
+                "pending regeneration. The uploaded documents remain the primary "
+                "evidence base (Source A); the trust score and deterministic signals "
+                "already reflect them."
+            ),
+            "founder_assessment": "AI founder analysis unavailable (provider rate limit); verify identity and track record from the uploaded documents and references.",
+            "startup_assessment": "AI product analysis unavailable (provider rate limit); the uploaded business plan remains the primary product evidence.",
+            "market_assessment": "AI market analysis unavailable (provider rate limit); uploaded market-validation sections remain the primary market evidence.",
+            "risk_assessment": "AI risk analysis unavailable (provider rate limit); deterministic risk scoring from document trust and evidence integrity still applies.",
+            "investment_recommendation": "Review Required — regenerate the AI memo when a provider is available; do not decide from this degraded narrative alone.",
             "next_steps": [
-                "Re-run full intelligence pipeline",
+                "Re-run the full intelligence pipeline when AI providers recover",
+                "Review uploaded documents directly — they remain the primary evidence",
                 "Collect primary founder interview",
             ],
-            "one_liner_thesis": "Pending.",
+            "one_liner_thesis": "Pending AI regeneration — uploaded documents remain the primary evidence.",
             "conviction_paragraph": "Pending.",
         }

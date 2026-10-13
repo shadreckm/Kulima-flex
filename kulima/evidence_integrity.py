@@ -976,10 +976,19 @@ class IntegrityScoreCalculator:
 
     @staticmethod
     def _is_sparse(sources: list[SourceAttribution]) -> bool:
-        """Return True when corpus is below the Africa sparsity threshold."""
+        """Return True when corpus is below the Africa sparsity threshold.
+
+        Source-A dominance rule: uploaded documents are PRIMARY evidence.
+        A corpus containing >= 2 document sources is never sparse regardless of
+        web coverage — missing web research (Source C) must not downgrade
+        confidence when rich Source A evidence exists.
+        """
         high_auth = sum(
             1 for s in sources if s.source_type == "high_authority_web"
         )
+        doc_count = sum(1 for s in sources if s.source_type == "document")
+        if doc_count >= 2:
+            return False
         return len(sources) < 5 or high_auth < 2
 
     @staticmethod
@@ -998,7 +1007,15 @@ class IntegrityScoreCalculator:
     def _depth_from_sources(
         sources: list[SourceAttribution], claim_count: int
     ) -> EvidenceDepth:
-        n = len(sources)
+        """Evidence depth weights Source A (uploaded documents) double.
+
+        Uploaded business plans / annual reports / proposals / financials are
+        the primary evidence base — they must contribute more depth than a
+        single web snippet, and thin web research can never outweigh them.
+        """
+        n = len(sources) + sum(
+            1 for s in sources if s.source_type == "document"
+        )  # documents count double (Source A > Source C)
         if n <= 2:
             return EvidenceDepth.THIN
         if n <= 4:

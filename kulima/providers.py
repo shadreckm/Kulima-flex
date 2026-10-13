@@ -108,6 +108,7 @@ class AIProviderManager:
         self._groq_preferred_models = settings.groq_preferred_models
         self._openrouter_free_model = settings.openrouter_free_model
         self._disabled_providers: set[str] = set()
+        self._retried: set[str] = set()  # one in-place retry per provider:model
         order = settings.provider_order or ("openai", "groq", "gemini", "openrouter", "huggingface")
         # Keep only tiers that have keys, in the configured order.
         self._configured_order: list[str] = [p for p in order if self._keys.get(p)]
@@ -140,6 +141,7 @@ class AIProviderManager:
     def reset_providers(self) -> None:
         """Clear disabled providers and reload keys."""
         self._disabled_providers.clear()
+        self._retried.clear()
         settings = get_settings()
         self._keys = {
             "openai": settings.openai_api_key,
@@ -380,6 +382,49 @@ class AIProviderManager:
                 return result
             except Exception as exc:  # noqa: BLE001 — failover on any failure
                 kind = self._classify_error(exc)
+                # Transient rate limits (TPM bursts) retry once in-place before
+                # burning a tier: Groq/Gemini 429s are per-minute and clear fast.
+                if (
+                    kind == "quota_exceeded"
+                    and provider in ("groq", "gemini")
+                    and f"{provider}:{model}" not in self._retried
+                ):
+                    self._retried.add(f"{provider}:{model}")
+                    time.sleep(2.0)
+                    try:
+                        retry_response = self._client_for(provider).chat.completions.create(
+                            model=model,
+                            temperature=temperature,
+                            messages=messages,
+                            **extra,
+                        )
+                        retry_text = (retry_response.choices[0].message.content or "").strip()
+                        if retry_text:
+                            result = ProviderResult(
+                                text=retry_text,
+                                provider=provider,
+                                model=model,
+                                fallback_triggered=fallback_count > 0,
+                                fallback_count=fallback_count,
+                                response_time=time.perf_counter() - started,
+                                analysis_mode="ai_assisted",
+                                errors=errors,
+                            )
+                            self.last_result = result
+                            _log.info(
+                                "llm_call_served",
+                                extra={
+                                    "providerUsed": provider,
+                                    "model": model,
+                                    "fallbackTriggered": fallback_count > 0,
+                                    "fallbackCount": fallback_count,
+                                    "analysisMode": "ai_assisted",
+                                    "responseTime": result.response_time,
+                                },
+                            )
+                            return result
+                    except Exception:  # noqa: BLE001 — retry failed, keep failover
+                        pass
                 errors.append({"provider": provider, "errorType": kind, "message": str(exc)[:200]})
                 _log.warning(
                     "provider_failover",

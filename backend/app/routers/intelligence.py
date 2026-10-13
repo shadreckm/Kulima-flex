@@ -561,6 +561,37 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
     decision_band = None
     decision_rationale = None
     domain_scores = None
+    # Entity-aware intelligence: resolve the profile from the assessment
+    # context bound to this run so decisions use the entity's own framework.
+    brief_entity_profile: dict[str, Any] = {}
+    try:
+        if info.get("assessment_id") or info.get("assessmentId"):
+            from kulima.core.assessment.repository import AssessmentRepository
+            _ctx = AssessmentRepository().get(
+                str(info.get("assessment_id") or info.get("assessmentId")),
+                user_id=current.user_id,
+                org_id=current.org_id,
+            )
+            if _ctx is not None:
+                brief_entity_profile = dict(_ctx.entity_profile or {})
+        elif run_id.isdigit():
+            import sqlite3 as _sqlite3
+            from kulima.config import get_settings as _gs
+            _conn = _sqlite3.connect(_gs().db_path)
+            try:
+                _aid_row = _conn.execute(
+                    "SELECT assessment_id FROM documents WHERE run_id = ? AND assessment_id IS NOT NULL LIMIT 1",
+                    (int(run_id),),
+                ).fetchone()
+            finally:
+                _conn.close()
+            if _aid_row and _aid_row[0]:
+                from kulima.core.assessment.repository import AssessmentRepository
+                _ctx = AssessmentRepository().get(str(_aid_row[0]), user_id=current.user_id, org_id=current.org_id)
+                if _ctx is not None:
+                    brief_entity_profile = dict(_ctx.entity_profile or {})
+    except Exception as _profile_exc:  # noqa: BLE001
+        _log.debug("entity profile resolution failed for run %s: %s", run_id, _profile_exc)
     try:
         case = from_investment_brief(brief, case_id=run_id, created_by=current.user_id)
         decision_signals = _signals_orchestrator.generate(case, sort=True)
@@ -569,6 +600,7 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
             decision_signals,
             evidence_score=evidence_score,
             trust_score=float(brief.trust_score) if brief.trust_score else None,
+            entity_profile=(brief_entity_profile or None),
         )
         decision_score = float(view["score"])
         decision_band = str(view["band"])
@@ -585,6 +617,8 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
     except Exception as _decision_exc:  # noqa: BLE001
         _log.warning("Expanded decision view unavailable for run %s: %s", run_id, _decision_exc)
 
+    # Entity-aware decision outputs (Phase 4)
+    entity_view = view if 'view' in locals() and view else {}
     return DecisionSnapshot(
         verdict=verdict,
         confidencePercent=confidence_percent,
@@ -598,6 +632,10 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
         decisionBand=decision_band,
         decisionRationale=decision_rationale,
         domainScores=domain_scores,
+        entityType=(brief_entity_profile or {}).get("entityType") if brief_entity_profile else None,
+        entityBand=entity_view.get("entityBand"),
+        entityRecommendation=entity_view.get("entityRecommendation"),
+        entityReportTitle=entity_view.get("reportTitle"),
     )
 
 

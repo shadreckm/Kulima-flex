@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from kulima.agents.base import BaseAgent
 from kulima.models import AgentResult, RedFlag, ScoreDimension, SourceAttribution
 from kulima.research import ResearchEngine
@@ -40,6 +42,26 @@ Required score names: Credibility, Leadership, Digital Footprint, Reputation, Do
                 system=self.SYSTEM,
                 user=f"Founder: {founder}\nStartup: {startup}\n\nOSINT Evidence:\n{corpus}",
             )
+        except json.JSONDecodeError as exc:
+            # Resilience: a malformed JSON payload from one provider must not
+            # kill the assessment. Retry once with a stricter instruction.
+            import logging
+            logging.warning("FounderIntelligenceAgent JSON parse failed — retrying with stricter format: %s", exc)
+            try:
+                data = self.llm.complete_json(
+                    system=self.SYSTEM + "\n\nCRITICAL: Respond with a SINGLE valid JSON object. No prose, no markdown, no trailing text.",
+                    user=f"Founder: {founder}\nStartup: {startup}\n\nOSINT Evidence:\n{corpus}",
+                    temperature=0.0,
+                )
+            except Exception as retry_exc:
+                import logging
+                logging.error(f"FounderIntelligenceAgent LLM completion failed after retry: {retry_exc}", exc_info=True)
+                from kulima.errors import PipelineStageError
+                raise PipelineStageError(
+                    stage="Founder Intelligence Agent",
+                    message=f"Failed to complete LLM analysis for founder '{founder}'",
+                    cause=retry_exc
+                ) from retry_exc
         except Exception as exc:
             import logging
             logging.error(f"FounderIntelligenceAgent LLM completion failed: {exc}", exc_info=True)

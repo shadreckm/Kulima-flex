@@ -124,6 +124,36 @@ def build_document_intelligence_fallback(
         else None
     )
     documents = list(context.uploaded_documents) if context else []
+
+    # ── Entity-aware intelligence (Phases 1–7): classify documents and the
+    # entity from UPLOADED EVIDENCE FIRST (Source A). Web research (Source C)
+    # may only corroborate — it never redefines the entity.
+    from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
+
+    assessment_type = (
+        getattr(context.assessment_type, "value", str(context.assessment_type))
+        if context
+        else "assessment"
+    )
+    doc_payloads = [
+        {
+            "name": doc.name,
+            "rawSummary": doc.raw_summary or "",
+            "evidence_items": list(doc.evidence_items or []),
+        }
+        for doc in documents
+    ]
+    entity_profile = build_entity_profile(
+        assessment_type,
+        doc_payloads,
+        context.extracted_text if context else "",
+        sector=(context.sector if context else "") or sector_hint,
+        country=(context.country if context else ""),
+        entity_name=(context.organization_name or context.startup_name) if context else startup,
+    )
+    entity_type = entity_profile.entity.entity_type
+    entity_label = entity_profile.entity.label
+
     document_sources = [
         SourceAttribution(
             title=document.name,
@@ -146,38 +176,58 @@ def build_document_intelligence_fallback(
     ).lower()
     risk_terms = ("fraud", "lawsuit", "litigation", "sanction", "misconduct", "breach", "non-compliance")
     risk_markers = [term for term in risk_terms if term in evidence_text]
-    risk_score = clamp(42 + len(risk_markers) * 8 + max(0, 50 - trust_score) * 0.35, 0, 85)
+    # Phase 7 (Source Priority): thin WEB coverage is not a risk when a solid
+    # document dossier exists — absence of web pages is not evidence of risk.
+    # Base risk lowered and the web-thinness penalty only applies when no
+    # documents are present.
+    if document_scores:
+        risk_score = clamp(30 + len(risk_markers) * 10, 0, 85)
+    else:
+        risk_score = clamp(42 + len(risk_markers) * 8 + max(0, 50 - trust_score) * 0.35, 0, 85)
     evidence_coverage = min(len(documents), 5) * 10 + min(len(external_sources), 10) * 2
+    # Source priority (Phase 7): uploaded documents are the PRIMARY evidence
+    # base. Document coverage drives the score; web sources only corroborate.
+    evidence_coverage = min(len(documents), 5) * 16 + min(len(external_sources), 10) * 2
+    doc_evidence_items = sum(len(doc.evidence_items or []) for doc in documents)
+    evidence_coverage = clamp(evidence_coverage + min(doc_evidence_items, 10) * 2, 0, 100)
     startup_score = clamp(trust_score, 0, 100)
     founder_score = clamp(25 + min(len(bundle.get("founder", [])), 5) * 4, 0, 45)
     market_score = clamp(25 + min(len(bundle.get("market", [])), 8) * 4, 0, 57)
-    investment_readiness = clamp(evidence_coverage, 0, 50)
+    investment_readiness = clamp(evidence_coverage, 0, 100)
     overall_score = round(clamp(
         founder_score * 0.20
         + startup_score * 0.25
         + market_score * 0.20
+        + trust_score * 0.25
+        + investment_readiness * 0.10,
+        0,
+        100,
+    ), 1) if document_scores else round(clamp(
+        founder_score * 0.25
+        + startup_score * 0.30
+        + market_score * 0.15
         + trust_score * 0.20
-        + investment_readiness * 0.15,
+        + investment_readiness * 0.10,
         0,
         100,
     ), 1)
     entity_name = (
         (context.organization_name or context.startup_name) if context else startup
-    ) or startup or "Assessment"
-    assessment_type = (
-        getattr(context.assessment_type, "value", str(context.assessment_type))
-        if context
-        else "assessment"
-    )
+    ) or startup or entity_label
+    doc_class_lines = [
+        f"{d.filename} → {d.doc_class} ({d.confidence:.0%})" for d in entity_profile.documents
+    ]
     evidence_gaps = []
     if not documents:
         evidence_gaps.append("No uploaded documents were available to the fallback analysis.")
-    if not external_sources:
-        evidence_gaps.append("No external research sources were returned; independent validation is still required.")
     if not document_scores:
         evidence_gaps.append("No document trust scores were available.")
     if risk_markers:
         evidence_gaps.append("Potential risk language requires human verification: " + ", ".join(risk_markers) + ".")
+    if not external_sources:
+        # Documents are the primary evidence base — missing web corroboration is
+        # NOT an evidence gap against the entity itself.
+        evidence_gaps.append("No external corroboration was returned; uploaded documents remain the primary evidence base.")
 
     uploaded_evidence = []
     for document in documents:
@@ -200,11 +250,14 @@ def build_document_intelligence_fallback(
 
     source_lines = [f"{source.title}: {source.snippet[:220]}" for source in sources[:8]]
     research_summary = (
-        f"Document Intelligence Mode completed for {entity_name}: "
-        f"{len(documents)} uploaded document(s), {len(external_sources)} external research source(s)."
+        f"Document Intelligence Mode completed for {entity_name} ({entity_label}): "
+        f"{len(documents)} uploaded document(s) as the PRIMARY evidence base, "
+        f"{len(external_sources)} external research source(s) corroborative only."
     )
+    if doc_class_lines:
+        research_summary += " Document classification: " + "; ".join(doc_class_lines) + "."
     if source_lines:
-        research_summary += " Research: " + " | ".join(source_lines)
+        research_summary += " Corroborating research: " + " | ".join(source_lines)
     if evidence_gaps:
         research_summary += " Evidence gaps: " + " ".join(evidence_gaps)
 
@@ -220,21 +273,29 @@ def build_document_intelligence_fallback(
         geography=context.country if context else "",
         stage="Not assessed",
         executive_summary=(
-            "AI providers are temporarily unavailable. Document Intelligence Mode used uploaded-document extraction, "
-            "document trust scores, available Tavily sources, and deterministic signals. "
+            f"{entity_name} is assessed as a {entity_label} based on {len(documents)} uploaded document(s) "
+            f"({', '.join(d.doc_class for d in entity_profile.documents[:3]) or 'ingested documents'}) "
+            f"with {doc_evidence_items} extracted evidence item(s). "
+            "Document Intelligence Mode used uploaded-document extraction, document trust scores, "
+            "available research sources, and deterministic signals. Uploaded documents are the "
+            "primary evidence base (Source A); external research is corroborative only. "
             "This is a preliminary evidence summary, not an AI-validated investment recommendation."
         ),
         founder_assessment=(
-            "Founder identity came from the Assessment Context. AI-based founder credibility "
-            "analysis was unavailable; verify identity and track record independently."
+            "Founder identity and role evidence is drawn first from the uploaded documents "
+            + (f"({entity_profile.entity.source} classification: {entity_label}). " if entity_profile.entity.source != "inferred" else "")
+            + "AI-based founder credibility analysis was unavailable; verify identity and track record independently."
         ),
         startup_assessment=(
-            f"Rule-based intake includes {len(documents)} document(s) for the {assessment_type} assessment. "
-            "Claims are limited to extracted document text and recorded metadata."
+            f"{entity_name} classified as {entity_label} (confidence {entity_profile.entity.confidence:.0%}, "
+            f"{entity_profile.entity.source}). Document classification: "
+            + ("; ".join(doc_class_lines) if doc_class_lines else "no uploaded documents")
+            + f". Claims are grounded in {len(documents)} uploaded document(s) — the primary evidence base."
         ),
         market_assessment=(
-            f"{len(external_sources)} external research source(s) were available. "
-            "Market sizing and competitive claims require analyst verification."
+            f"Primary market evidence comes from the uploaded documents ({doc_evidence_items} evidence item(s)). "
+            f"{len(external_sources)} external research source(s) corroborate but never overrule the documented claims. "
+            "Market sizing figures require analyst verification before use in an investment decision."
         ),
         risk_assessment=(
             f"Rule-based risk score: {risk_score:.0f}/100. "
@@ -268,9 +329,13 @@ def build_document_intelligence_fallback(
         sources=sources,
         explainability=[
             "All AI providers unavailable; deterministic Document Intelligence Mode was used.",
+            f"Entity classification: {entity_label} ({entity_profile.entity.source}, confidence {entity_profile.entity.confidence:.0%}) — derived from uploaded documents, not web research.",
+            f"Uploaded evidence is primary (Source A): {len(documents)} document(s), {doc_evidence_items} evidence item(s); external research ({len(external_sources)} source(s)) is corroborative only (Source C).",
             f"Trust score is the mean of {len(document_scores)} stored document trust score(s).",
             f"Research sources: {len(external_sources)}; uploaded documents: {len(documents)}.",
-            "Recommendation is Review Required until an analyst verifies the evidence.",
+            f"Report framework: {entity_profile.report_title} with decision bands "
+            + " / ".join(l for _, _, l in entity_profile.decision_framework.bands)
+            + ".",
         ],
         uploaded_evidence=uploaded_evidence,
     )
@@ -283,6 +348,7 @@ def build_document_intelligence_fallback(
         brief,
         case_id=assessment_id or f"fallback-{user_id or 'local'}",
         workspace_type=workspace_type,
+        entity_profile=profile_to_payload(entity_profile),
     )
     generated_signals = _signals_orchestrator.generate(case, sort=True)
     signal_titles = [
@@ -305,6 +371,8 @@ def build_document_intelligence_fallback(
         "entities": [{"name": entity_name, "label": assessment_type}],
         "evidenceGaps": evidence_gaps,
         "failureType": type(failure).__name__,
+        "entityProfile": profile_to_payload(entity_profile),
+        "sourcePriority": "uploaded_documents_primary",
     }
     return brief, research_payload, signal_titles
 

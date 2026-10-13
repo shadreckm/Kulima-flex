@@ -36,6 +36,7 @@ from kulima.core.assessment.models import (
     ExtractedField,
 )
 from kulima.core.assessment.repository import AssessmentRepository
+from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
 from kulima.core.assessment.service import (
     CONFIRMATION_THRESHOLD,
     apply_extraction,
@@ -277,6 +278,7 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         "website": ctx.website,
         "team": ctx.team,
         "problemStatement": ctx.problem_statement,
+        "entityProfile": dict(ctx.entity_profile or {}),
         "confidence": round(float(ctx.extraction.confidence), 3),
         "extraction": {
             "confidence": round(float(ctx.extraction.confidence), 3),
@@ -390,6 +392,24 @@ def create_assessment(
     )
     ctx.extracted_text = "\n\n".join(text for _, text in texts)[:MAX_STORED_TEXT_CHARS]
     ctx.extracted_text_length = sum(len(text) for _, text in texts)
+
+    # Entity-aware intelligence (Phases 1-2): classify documents and profile
+    # the entity from uploaded evidence BEFORE any research runs.
+    doc_payloads = [
+        {
+            "name": name,
+            "rawSummary": text,
+            "evidence_items": [],
+        }
+        for name, text in texts
+    ]
+    entity_profile = build_entity_profile(
+        getattr(atype, "value", str(atype)),
+        doc_payloads,
+        ctx.extracted_text,
+        entity_name=entity_name or organization_name or "",
+    )
+    ctx.entity_profile = profile_to_payload(entity_profile)
 
     # 3. Persist extraction + lifecycle status.
     apply_extraction(ctx, extraction)

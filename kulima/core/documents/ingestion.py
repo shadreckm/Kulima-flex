@@ -61,10 +61,22 @@ class DocumentIngestionService:
         name = filename.lower()
         if "deck" in name or name.endswith(".pptx"):
             return DocumentType.PITCH_DECK
+        if "business plan" in name or "business_plan" in name:
+            # Phase 1 classification: a business plan is a substantive
+            # planning document — treat it like a report, not generic.
+            return DocumentType.REPORT
+        if "annual report" in name or "annual_report" in name:
+            return DocumentType.REPORT
+        if "strategy" in name:
+            return DocumentType.REPORT
+        if "proposal" in name or "grant" in name:
+            return DocumentType.REPORT
         if "model" in name or name.endswith(".xlsx"):
             return DocumentType.FINANCIAL_MODEL
         if "minutes" in name:
             return DocumentType.BOARD_MINUTES
+        if "policy" in name:
+            return DocumentType.POLICY_DOC
         if name.endswith(".csv") or name.endswith(".xlsx"):
             return DocumentType.DATA_EXPORT
         return DocumentType.GENERIC
@@ -196,15 +208,36 @@ class DocumentIngestionService:
                     import PyPDF2  # type: ignore
 
                     reader = PyPDF2.PdfReader(io.BytesIO(raw_bytes))
-                    chunks: list[Tuple[int | None, str | None, str]] = []
+                    chunks: list[Tuple[int | None, str]] = []
                     for i, page in enumerate(reader.pages):
                         page_text = page.extract_text() or ""
                         if page_text.strip():
                             chunks.append((i + 1, None, page_text))
-                    return chunks
+                    if chunks:
+                        return chunks
+                    # Scanned/image-only PDF with no text layer — fall through
+                    # to the raw-byte decode attempt below rather than failing
+                    # silently (which downstream layers misread as
+                    # "no evidence exists").
                 except Exception as exc:  # pragma: no cover - optional dependency
                     _log.warning("PDF extraction failed for %s: %s", filename, exc)
-                    return []
+
+                # Evidence-priority fallback (Source A protection): a PDF whose
+                # text layer is unreadable may still contain plain text (e.g.
+                # a text file uploaded with a .pdf name). Decode as a last
+                # resort so uploaded documents are never silently empty.
+                try:
+                    fallback_text = raw_bytes.decode("utf-8", errors="ignore")
+                    printable = "".join(ch for ch in fallback_text if ch.isprintable() or ch in "\n\r\t")
+                    if len(printable.strip()) >= 100:
+                        _log.info(
+                            "PDF text layer empty for %s; using raw-decode fallback (%d chars)",
+                            filename, len(printable),
+                        )
+                        return [(None, "Raw text fallback", printable)]
+                except Exception:  # pragma: no cover
+                    pass
+                return []
 
             if ext in {".docx"}:
                 try:

@@ -59,12 +59,23 @@ class IntelligenceOrchestrator:
         user_id: str | None = None,
         sector_hint: str = "",
         research_results: dict[str, list[SourceAttribution]] | None = None,
+        entity_profile: dict | None = None,
+        document_trust_scores: list[float] | None = None,
     ) -> InvestmentBrief:
         """Run the full intelligence pipeline.
 
         ``sector_hint`` is an optional additive refinement sourced from the
         shared Assessment Context (auto-extracted from uploaded documents).
         When empty, behaviour is identical to previous releases.
+
+        ``entity_profile`` (Phase 4/5) steers entity-aware research queries and
+        the decision framework. Uploaded documents remain the primary evidence
+        base (Source A) — external research is corroborative only.
+
+        ``document_trust_scores`` (Phase 7): Trust Engine scores of the run's
+        uploaded documents. When present they are blended into the trust graph
+        score so that a rich document dossier is never drowned out by thin web
+        OSINT coverage (the root cause of "no evidence exists" verdicts).
         """
         def progress(pct: float, message: str) -> None:
             if on_progress:
@@ -75,7 +86,12 @@ class IntelligenceOrchestrator:
 
         progress(0.05, "Initializing Investment Intelligence OS…")
         progress(0.12, "Parallel OSINT sweep — founder · startup · market · risks…")
-        bundle = research_results or self.research.research_bundle(founder, startup, sector_hint)
+        entity_type = "startup"
+        if entity_profile:
+            entity_type = str(entity_profile.get("entityType") or "startup")
+        bundle = research_results or self.research.research_bundle(
+            founder, startup, sector_hint, entity_type=entity_type
+        )
         founder_sources = bundle["founder"]
         startup_sources = ResearchEngine._dedupe(bundle["startup"] + bundle["market"])
         risk_sources = bundle["risks"]
@@ -107,29 +123,40 @@ class IntelligenceOrchestrator:
             integrity_report = None
 
         # Enrich evidence corpus with any document-backed sources associated
-        # with this founder/startup (Phase B: Evidence Integration).  This does
-        # not change scoring or recommendation algorithms; it only allows the
-        # Evidence Integrity Engine to consider documents alongside web OSINT
-        # when present.
+        # with this founder/startup (Phase B: Evidence Integration).
+        #
+        # Entity-aware intelligence (Phase 7 fix): the document SNIPPET is
+        # filled from the document's actual extracted chunks. Previously the
+        # snippet was empty, so agents saw only a filename and concluded
+        # "the business plan has not been parsed / no evidence exists" even
+        # though the full text was stored. Uploaded documents (Source A) are
+        # given the highest confidence so they outrank every web source.
         try:
             doc_repo = DocumentRepository()
             doc_sources: list[SourceAttribution] = []
             for d in doc_repo.get_documents_for_subject(founder, startup, user_id=user_id):
-                # Reconstruct a SourceAttribution using the filename as title
-                # and a synthetic URL; snippet will be filled from the first
-                # available chunk when retrieved later by EIE if needed.
+                chunks = doc_repo.get_chunks_for_document(d.id)
+                chunk_text = " ".join(c.text for c in chunks if c.text and c.text.strip())
                 doc_sources.append(
                     SourceAttribution(
                         title=d.filename,
                         url=f"document://{d.id}",
-                        snippet="",
+                        snippet=chunk_text[:1200],
                         relevance=1.0,
                         source_type="document",
-                        confidence_score=0.8,
+                        # Source A outranks all external web research.
+                        confidence_score=0.98,
                     )
                 )
             if doc_sources:
-                all_sources = ResearchEngine._dedupe(all_sources + doc_sources)
+                # Documents first, then web sources, so corpus ranking keeps
+                # uploaded evidence at the top.
+                all_sources = ResearchEngine._dedupe(doc_sources + all_sources, limit=40)
+                _log.info(
+                    "Document evidence injected: %d doc(s), %d chars of primary text",
+                    len(doc_sources),
+                    sum(len(s.snippet) for s in doc_sources),
+                )
         except Exception:
             # Fail closed: if document integration fails, continue with web
             # sources only so orchestrator behaviour and scoring remain
@@ -207,6 +234,22 @@ class IntelligenceOrchestrator:
         investment_readiness = ready_dims[0].score
         trust_score = trust_graph.trust_score
 
+        # Phase 7 (Source Priority): uploaded documents are the primary
+        # evidence base. Blend their Trust Engine scores into the trust graph
+        # with 60% weight so a solid document dossier is never overruled by
+        # thin external web coverage. Never lowers below the web-only score.
+        if document_trust_scores:
+            doc_mean = sum(document_trust_scores) / len(document_trust_scores)
+            doc_count = len(document_trust_scores)
+            # More documents → more weight on Source A evidence (cap 75%).
+            doc_weight = min(0.75, 0.4 + 0.1 * (doc_count - 1))
+            blended = doc_mean * doc_weight + trust_score * (1 - doc_weight)
+            trust_score = round(max(trust_score, blended), 1)
+            _log.info(
+                "Trust blend: %d document(s) mean %.1f (weight %.0f%%) + web %.1f → %.1f",
+                doc_count, doc_mean, doc_weight * 100, trust_graph.trust_score, trust_score,
+            )
+
         risk_score = clamp(
             parse_qualitative_score(
                 risk_result.metadata.get("composite_risk_score")
@@ -223,6 +266,20 @@ class IntelligenceOrchestrator:
             + investment_readiness * 0.10
             + (100 - risk_score) * 0.05
         )
+
+        # Phase 7 (Source Priority): when a rich document dossier exists its
+        # Trust Engine scores must be reflected in the overall verdict. Blend
+        # the document-trust evidence into the composite so thin agent output
+        # (transient AI quality) can never drown a well-documented entity.
+        if document_trust_scores:
+            doc_mean = sum(document_trust_scores) / len(document_trust_scores)
+            doc_count = len(document_trust_scores)
+            doc_weight = min(0.35, 0.15 + 0.05 * (doc_count - 1))
+            overall = round(clamp(overall * (1 - doc_weight) + doc_mean * doc_weight), 1)
+            _log.info(
+                "Overall blend: %d document(s) mean %.1f (weight %.0f%%) → overall %.1f",
+                doc_count, doc_mean, doc_weight * 100, overall,
+            )
 
         red_flags = (
             founder_result.red_flags
@@ -306,6 +363,7 @@ class IntelligenceOrchestrator:
                     "risk": risk_score,
                 },
                 "recommendation_hint": recommendation.value,
+                "entity_profile": entity_profile or {},
                 "syndicate_majority": syndicate_final.value,
                 "syndicate_thesis": syndicate.consensus_thesis,
                 "syndicate_consensus_score": syndicate.consensus_score,

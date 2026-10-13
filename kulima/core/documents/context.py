@@ -77,7 +77,15 @@ def build_document_context_for_subject(
         return ""
 
     docs = docs[:max_documents]
-    lines: list[str] = ["[DOCUMENTS]"]
+    lines: list[str] = [
+        "[DOCUMENTS — SOURCE A: UPLOADED EVIDENCE (PRIMARY)]",
+        "Uploaded documents are the primary evidence base. Cite them FIRST and",
+        "by name. External web research (Source C) is corroborative only and must",
+        "NEVER overrule these documents unless a material contradiction exists.",
+        "Never conclude 'no evidence exists' or 'unknown entity' when documents",
+        "are listed here — the business plan IS evidence, the annual report IS",
+        "evidence, the proposal IS evidence.",
+    ]
 
     for idx, doc in enumerate(docs, 1):
         label = f"D{idx}"
