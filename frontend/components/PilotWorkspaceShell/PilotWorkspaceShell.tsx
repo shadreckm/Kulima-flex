@@ -122,9 +122,9 @@ export default function PilotWorkspaceShell({
   )
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] flex text-[#101828]">
+    <div className="h-screen overflow-hidden bg-[#F5F8FC] flex text-[#101828]">
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 sticky top-0 h-screen p-4">
+      <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 h-full p-4">
         <NavigationSidebar
           workspace={workspace}
           runId={assessmentCtx?.runId || runId}
@@ -158,9 +158,9 @@ export default function PilotWorkspaceShell({
         </div>
       ) : null}
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* ── Sticky header ─────────────────────────────────────────── */}
-        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#DDE6F0] shadow-saas">
+        <header className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-[#DDE6F0] shadow-saas">
 
           {/* Row 1 — logo / breadcrumb */}
           <div className="px-4 md:px-8 py-3 flex items-center justify-between gap-4 max-w-7xl mx-auto">
@@ -290,8 +290,8 @@ export default function PilotWorkspaceShell({
           ) : null}
         </header>
 
-        {/* Workspace Body */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        {/* Workspace Body — the only scrollable region (sidebar + header stay fixed) */}
+        <main className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {rightRail ? (
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
               <div className="flex flex-col gap-6 min-w-0">{children}</div>

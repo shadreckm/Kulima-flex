@@ -15,6 +15,16 @@ const TYPE_LABELS: Record<EntityType, string> = {
   startup: 'Startup', ngo: 'NGO', government_program: 'Government Programme', development_program: 'Development Programme', tourism_sme: 'Tourism SME', accelerator: 'Accelerator',
 }
 
+/** Entity-aware form copy: placeholders change with the selected assessment type. */
+const TYPE_PLACEHOLDERS: Record<EntityType, { organization: string; lead: string; keywords: string }> = {
+  startup: { organization: 'e.g. Kulima Africa Ltd', lead: 'e.g. CEO / Founder', keywords: 'Fintech, Marketplaces, AgriTech' },
+  ngo: { organization: 'e.g. Emerge Livelihoods Foundation', lead: 'e.g. Executive Director', keywords: 'Livelihoods, Women & Youth, Community' },
+  tourism_sme: { organization: 'e.g. Savanna Trails Lodge', lead: 'e.g. Managing Director', keywords: 'Tourism, Hospitality, Destination' },
+  development_program: { organization: 'e.g. UNDP Resilience Programme', lead: 'e.g. Programme Manager', keywords: 'Outcomes, Beneficiaries, M&E' },
+  government_program: { organization: 'e.g. Ministry of Agriculture Programme', lead: 'e.g. Programme Director', keywords: 'Policy, Public Services, Delivery' },
+  accelerator: { organization: 'e.g. Sahel Horizon Accelerator', lead: 'e.g. Program Lead', keywords: 'Cohorts, Mentorship, Portfolio' },
+}
+
 const FILE_TYPES = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'CSV', 'TXT']
 
 const PIPELINE = [
@@ -100,6 +110,25 @@ function HomeInner() {
   const [keywords, setKeywords] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const resumeHandled = useRef(false)
+
+  // Get Started UX: clicking the CTA activates Upload Mode — the page scrolls
+  // to the dropzone and the CTA label transitions to reflect the upload state.
+  const uploadSectionRef = useRef<HTMLElement | null>(null)
+  const [uploadMode, setUploadMode] = useState(false)
+  useEffect(() => {
+    if (files.length > 0) setUploadMode(true)
+  }, [files.length])
+  function activateUploadMode() {
+    setUploadMode(true)
+    uploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const ctaLabel = busy
+    ? 'Analyzing…'
+    : files.length > 0
+      ? 'Assessment Ready — Confirm & Analyze'
+      : uploadMode
+        ? 'Upload Documents Below'
+        : 'Get Started'
 
   const runIntake = useCallback(async (
     type: EntityType,
@@ -207,11 +236,11 @@ function HomeInner() {
           <a href="#use-cases">Use cases</a>
           <a href="#pricing">Pricing</a>
         </nav>
-        <div className="flex items-center gap-3"><UserMenu /><a href="#upload" className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">Get Started</a></div>
+        <div className="flex items-center gap-3"><UserMenu /><button type="button" onClick={activateUploadMode} className="rounded-lg bg-[#101828] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1D2939]">{ctaLabel}</button></div>
       </header>
 
       {/* ── SECTION 1: HERO — upload is the page's first act ───────────────── */}
-      <section id="upload" className="border-b border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]">
+      <section id="upload" ref={uploadSectionRef} className={`border-b scroll-mt-24 ${uploadMode ? 'border-[#B7E6CC] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#F7FBF8]' : 'border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]'}`}>
         <div className="mx-auto max-w-7xl px-6 pb-16 pt-14 lg:px-10 lg:pb-24 lg:pt-20">
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Africa&apos;s Decision Intelligence Platform</div>
           <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn information into <span className="text-[#159A62]">trusted decisions.</span></h1>
@@ -264,7 +293,7 @@ function HomeInner() {
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organization</div>
                   {showEdit ? (
-                    <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="e.g. EcoRestore Ltd" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                    <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].organization} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
                     <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {organization || 'Detected from documents'}</div>
                   )}
@@ -272,7 +301,7 @@ function HomeInner() {
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
                   {showEdit ? (
-                    <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder="e.g. Project Manager" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                    <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].lead} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
                     <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {founderOrLead || 'Detected from documents'}</div>
                   )}
@@ -280,7 +309,7 @@ function HomeInner() {
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Keywords</div>
                   {showEdit ? (
-                    <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Climate, Waste Management, Tourism" className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                    <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].keywords} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
                     <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs font-semibold text-[#344054]">
                       {(keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : ['Climate', 'Waste Management', 'Tourism', 'Agriculture']).map(k => <span key={k} className="rounded-md bg-[#EAF8F0] px-2 py-0.5 text-[#117A4B]">{k}</span>)}

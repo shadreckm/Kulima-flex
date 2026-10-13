@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
@@ -14,7 +14,7 @@ import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
-  // Assessment Context drives everything — no legacy current-run store.
+  // Assessment Context drives everything â€” no legacy current-run store.
   const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
     route: 'flex',
   })
@@ -54,7 +54,7 @@ function FlexPageInner() {
   if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
-        Checking session…
+        Checking sessionâ€¦
       </div>
     )
   }
@@ -74,7 +74,7 @@ function FlexPageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
+    <div className="h-screen overflow-hidden bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
       <NavigationSidebar
         workspace="AI Analyst Workspace"
         runId={runId}
@@ -99,25 +99,25 @@ function FlexPageInner() {
             {bootState === 'needs_confirmation' ? (
               <>
                 <div className="font-bold text-slate-900">
-                  Extraction confidence is low — confirm the assessment identity once.
+                  Extraction confidence is low â€” confirm the assessment identity once.
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
                   The shared assessment context was created from your upload, but the entity name could
-                  not be extracted with confidence. Confirm it on the intake page — Ask IC and every other
+                  not be extracted with confidence. Confirm it on the intake page â€” Ask IC and every other
                   workspace reuse it automatically.
                 </p>
                 <Link
                   href="/"
                   className="inline-block mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
                 >
-                  Review assessment details →
+                  Review assessment details â†’
                 </Link>
               </>
             ) : bootState === 'error' ? (
               <>
                 <div className="font-bold text-slate-900">Could not start the assessment run.</div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  The shared context is ready — retry starting the intelligence run. Tavily research and
+                  The shared context is ready â€” retry starting the intelligence run. Tavily research and
                   the IC Analyst will work from the extracted entity.
                 </p>
                 {error ? (
@@ -135,10 +135,10 @@ function FlexPageInner() {
               <>
                 <div className="font-bold text-slate-900 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#F79009] animate-pulse" />
-                  Starting your assessment run from the shared context…
+                  Starting your assessment run from the shared contextâ€¦
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  Tavily research and the IC Analyst are driven by the extracted entity —{' '}
+                  Tavily research and the IC Analyst are driven by the extracted entity â€”{' '}
                   <strong className="text-slate-800">
                     {assessmentContext.displayEntity || assessmentContext.entityName || 'Assessment'}
                   </strong>
@@ -169,7 +169,7 @@ function FlexPageInner() {
 
 export default function FlexPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loading…</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loadingâ€¦</div>}>
       <FlexPageInner />
     </Suspense>
   )

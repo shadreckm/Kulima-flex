@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
@@ -13,15 +13,15 @@ import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 
 // Domain config mirrors ContextPanel but for the main-column overview
 const DOMAIN_DISPLAY: Array<{ key: string; label: string; icon: string; description: string }> = [
-  { key: 'trust',           label: 'Trust',        icon: '🛡️', description: 'Source reliability, corroboration, and evidence integrity.' },
-  { key: 'risk',            label: 'Risk',          icon: '⚠️', description: 'Material risks and red flags requiring attention.' },
-  { key: 'opportunity',     label: 'Opportunity',   icon: '🌱', description: 'Growth drivers and upside signals.' },
-  { key: 'market',          label: 'Market',        icon: '📈', description: 'Market size, competition, and positioning.' },
-  { key: 'funding',         label: 'Funding',       icon: '💰', description: 'Funding readiness, burn rate, and capital efficiency.' },
-  { key: 'climate',         label: 'Climate',       icon: '🌤️', description: 'Climate risk, sustainability, and net-zero alignment.' },
-  { key: 'tourism',         label: 'Tourism',       icon: '🧭', description: 'Tourism and destination impact signals.' },
-  { key: 'community_impact',label: 'Community',     icon: '🤝', description: 'Social impact, beneficiary reach, and community outcomes.' },
-  { key: 'environmental',   label: 'Environment',   icon: '🌿', description: 'Environmental compliance and ecological footprint.' },
+  { key: 'trust',           label: 'Trust',        icon: 'ðŸ›¡ï¸', description: 'Source reliability, corroboration, and evidence integrity.' },
+  { key: 'risk',            label: 'Risk',          icon: 'âš ï¸', description: 'Material risks and red flags requiring attention.' },
+  { key: 'opportunity',     label: 'Opportunity',   icon: 'ðŸŒ±', description: 'Growth drivers and upside signals.' },
+  { key: 'market',          label: 'Market',        icon: 'ðŸ“ˆ', description: 'Market size, competition, and positioning.' },
+  { key: 'funding',         label: 'Funding',       icon: 'ðŸ’°', description: 'Funding readiness, burn rate, and capital efficiency.' },
+  { key: 'climate',         label: 'Climate',       icon: 'ðŸŒ¤ï¸', description: 'Climate risk, sustainability, and net-zero alignment.' },
+  { key: 'tourism',         label: 'Tourism',       icon: 'ðŸ§­', description: 'Tourism and destination impact signals.' },
+  { key: 'community_impact',label: 'Community',     icon: 'ðŸ¤', description: 'Social impact, beneficiary reach, and community outcomes.' },
+  { key: 'environmental',   label: 'Environment',   icon: 'ðŸŒ¿', description: 'Environmental compliance and ecological footprint.' },
 ]
 
 function domainScoreTone(score: number): string {
@@ -41,7 +41,7 @@ function SignalsPageInner() {
   const [signalsSummary, setSignalsSummary] = useState<SignalsSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Single intake: the shared Assessment Context drives the run identity —
+  // Single intake: the shared Assessment Context drives the run identity â€”
   // no founder / startup / entity-type re-entry, no legacy current-run store.
   const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
     route: 'signals',
@@ -50,7 +50,7 @@ function SignalsPageInner() {
   if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
-        Checking session…
+        Checking sessionâ€¦
       </div>
     )
   }
@@ -73,7 +73,7 @@ function SignalsPageInner() {
   const status = assessmentContext?.status || null
 
   // MVP reliability: Signals page must render whenever the assessment has
-  // reached complete OR signals data exists — never poll forever. While the
+  // reached complete OR signals data exists â€” never poll forever. While the
   // context carries a signalsSummary (propagated on completion), render the
   // domain grid directly from it.
   const contextSignalsSummary = (assessmentContext?.signalsSummary ?? null) as SignalsSummary | null
@@ -113,7 +113,7 @@ function SignalsPageInner() {
   }, [runId, assessmentComplete])
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
+    <div className="h-screen overflow-hidden bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
       <NavigationSidebar
         workspace="Signals"
         runId={runId}
@@ -127,7 +127,7 @@ function SignalsPageInner() {
         {assessmentContext && runId ? (
           <>
             <ChatShell personaName="Signals Analyst" runId={runId} />
-            {/* Phase 5 + MVP reliability: Signal Domains Overview — renders
+            {/* Phase 5 + MVP reliability: Signal Domains Overview â€” renders
                 whenever signals exist or the assessment is complete. */}
             {showDomains && effectiveSignals ? (
               <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
@@ -202,7 +202,7 @@ function SignalsPageInner() {
                         {/* Domain recommendation */}
                         {domainData?.recommendation ? (
                           <div className="mt-2 pt-2 border-t border-slate-200 text-[10px] text-[#0B5D3B] font-bold">
-                            → {domainData.recommendation}
+                            â†’ {domainData.recommendation}
                           </div>
                         ) : null}
                       </div>
@@ -217,25 +217,25 @@ function SignalsPageInner() {
             {bootState === 'needs_confirmation' ? (
               <>
                 <div className="font-bold text-slate-900">
-                  Extraction confidence is low — confirm the assessment identity once.
+                  Extraction confidence is low â€” confirm the assessment identity once.
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
                   The shared assessment context was created from your upload, but the entity name could
-                  not be extracted with confidence. Confirm it on the intake page — you will not be asked
+                  not be extracted with confidence. Confirm it on the intake page â€” you will not be asked
                   again anywhere else.
                 </p>
                 <Link
                   href="/"
                   className="inline-block mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
                 >
-                  Review assessment details →
+                  Review assessment details â†’
                 </Link>
               </>
             ) : bootState === 'error' ? (
               <>
                 <div className="font-bold text-slate-900">Could not start the assessment run.</div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  The shared context is ready — retry starting the intelligence run. Tavily research and
+                  The shared context is ready â€” retry starting the intelligence run. Tavily research and
                   signals run automatically once started.
                 </p>
                 {error ? (
@@ -253,10 +253,10 @@ function SignalsPageInner() {
               <>
                 <div className="font-bold text-slate-900 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#F79009] animate-pulse" />
-                  Starting your assessment run from the shared context…
+                  Starting your assessment run from the shared contextâ€¦
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  Tavily research and signal generation are driven by the extracted entity —{' '}
+                  Tavily research and signal generation are driven by the extracted entity â€”{' '}
                   <strong className="text-slate-800">
                     {assessmentContext.displayEntity || assessmentContext.entityName || 'Assessment'}
                   </strong>
@@ -275,7 +275,7 @@ function SignalsPageInner() {
               href="/"
               className="inline-block mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
             >
-              Create Assessment →
+              Create Assessment â†’
             </Link>
           </section>
         )}
@@ -287,7 +287,7 @@ function SignalsPageInner() {
 
 export default function SignalsPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loading…</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loadingâ€¦</div>}>
       <SignalsPageInner />
     </Suspense>
   )

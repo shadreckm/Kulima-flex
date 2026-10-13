@@ -5,13 +5,19 @@ const API_BASE = typeof window === 'undefined'
     || ''
   : ''
 
-// Direct backend URL for large file uploads (bypasses Vercel 4.5MB limit)
-const DIRECT_BACKEND_URL = typeof window === 'undefined'
-  ? process.env.KULIMA_BACKEND_URL
-    || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
-    || process.env.NEXT_PUBLIC_API_URL
-    || ''
-  : ''
+// Direct backend URL for large file uploads (bypasses the Vercel 4.5MB
+// function-payload limit). In the browser this MUST resolve to an absolute
+// backend URL — an empty value would silently fall back to the relative
+// /api/v1 proxy and re-introduce 413 FUNCTION_PAYLOAD_TOO_LARGE on Vercel.
+// NEXT_PUBLIC_API_URL is inlined at build time, so it works on the client.
+const DIRECT_BACKEND_URL =
+  (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
+    ? process.env.NEXT_PUBLIC_API_URL
+    : '')
+  || process.env.KULIMA_BACKEND_URL
+  || (process.env.KULIMA_BACKEND_HOSTPORT ? `http://${process.env.KULIMA_BACKEND_HOSTPORT}` : '')
+  || process.env.NEXT_PUBLIC_API_URL
+  || ''
 
 export function withAuth(headers: HeadersInit = {}): HeadersInit {
   const base: Record<string, string> = {}
@@ -273,7 +279,7 @@ export async function createAssessment(
 
 /**
  * Create the shared Assessment Context via direct backend upload.
- * 
+ *
  * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
  * uploads up to 25MB. Use this for large file uploads.
  */
@@ -292,6 +298,12 @@ export async function createAssessmentDirect(
   if (hints.country) form.append('country', hints.country)
   if (hints.keywords) form.append('keywords', hints.keywords)
   if (hints.website) form.append('website', hints.website)
+  if (!DIRECT_BACKEND_URL) {
+    // No absolute backend URL is available: the direct route would be a
+    // relative path through the same proxy with the 4.5MB cap. Surface this
+    // loudly instead of letting the upload die with an opaque 413.
+    throw new Error('Large-file upload is not configured (NEXT_PUBLIC_API_URL missing). Please upload files smaller than 4MB or contact support.')
+  }
   const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/`, {
     method: 'POST',
     headers: withAuth(),
@@ -341,7 +353,7 @@ export async function attachAssessmentDocuments(
 
 /**
  * Attach documents to an existing assessment via direct backend upload.
- * 
+ *
  * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
  * uploads up to 25MB. Use this for large file uploads.
  */
@@ -351,6 +363,9 @@ export async function attachAssessmentDocumentsDirect(
 ): Promise<AssessmentWorkspacePayload> {
   const form = new FormData()
   files.forEach(f => form.append('files', f))
+  if (!DIRECT_BACKEND_URL) {
+    throw new Error('Large-file upload is not configured (NEXT_PUBLIC_API_URL missing). Please upload files smaller than 4MB or contact support.')
+  }
   const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/${encodeURIComponent(assessmentId)}/documents`, {
     method: 'POST',
     headers: withAuth(),
