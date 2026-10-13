@@ -35,6 +35,71 @@ export function withAuth(headers: HeadersInit = {}): HeadersInit {
   return base
 }
 
+// ── Direct-upload authentication ───────────────────────────────────────────
+// Requests that bypass the /api/v1 proxy (large-file uploads to the backend
+// URL directly) must carry the SAME auth context the proxy mints: a backend
+// JWT signed with NEXTAUTH_SECRET and the secret fingerprint header. The
+// token is minted by /api/auth/backend-token from the NextAuth session cookie
+// and cached in-memory until just before expiry.
+let _directAuthToken: { token: string; fingerprint: string; expiresAt: number } | null = null
+let _directAuthPending: Promise<{ token: string; fingerprint: string }> | null = null
+
+async function getDirectAuth(): Promise<{ token: string; fingerprint: string }> {
+  if (_directAuthToken && Date.now() < _directAuthToken.expiresAt - 60_000) {
+    return { token: _directAuthToken.token, fingerprint: _directAuthToken.fingerprint }
+  }
+  if (_directAuthPending) return _directAuthPending
+  _directAuthPending = (async () => {
+    const res = await fetch('/api/auth/backend-token', { cache: 'no-store' })
+    if (!res.ok) {
+      let code: string | null = null
+      let message = `session token could not be refreshed (${res.status})`
+      try {
+        const parsed = await res.json()
+        code = parsed?.code ?? null
+        message = parsed?.message ?? message
+      } catch { /* non-JSON */ }
+      _directAuthPending = null
+      throw new Error(code === 'SESSION_MISSING'
+        ? 'Your session has expired. Please sign in again.'
+        : message)
+    }
+    const data = await res.json() as { token: string; fingerprint: string; expiresIn: number }
+    _directAuthToken = {
+      token: data.token,
+      fingerprint: data.fingerprint,
+      expiresAt: Date.now() + (data.expiresIn || 3600) * 1000,
+    }
+    _directAuthPending = null
+    return { token: data.token, fingerprint: data.fingerprint }
+  })()
+  return _directAuthPending
+}
+
+/**
+ * Auth headers for DIRECT browser→backend requests (bypassing the proxy).
+ * Attaches the minted backend JWT + fingerprint, matching exactly what the
+ * proxy path forwards. Throws a user-readable error when the session is gone.
+ */
+export async function withDirectAuth(headers: HeadersInit = {}): Promise<HeadersInit> {
+  const base: Record<string, string> = {}
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      base[key] = value
+    })
+  } else if (Array.isArray(headers)) {
+    for (const [k, v] of headers) {
+      base[k] = v as string
+    }
+  } else {
+    Object.assign(base, headers as Record<string, string>)
+  }
+  const { token, fingerprint } = await getDirectAuth()
+  base['authorization'] = `Bearer ${token}`
+  base['x-kulima-auth-secret-fingerprint'] = fingerprint
+  return base
+}
+
 async function readResponseText(res: Response): Promise<string> {
   try {
     return await res.text()
@@ -306,7 +371,7 @@ export async function createAssessmentDirect(
   }
   const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/`, {
     method: 'POST',
-    headers: withAuth(),
+    headers: await withDirectAuth(),
     body: form,
   })
   if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'createAssessmentDirect'))
@@ -368,7 +433,7 @@ export async function attachAssessmentDocumentsDirect(
   }
   const res = await fetch(`${DIRECT_BACKEND_URL}/api/v1/assessments/${encodeURIComponent(assessmentId)}/documents`, {
     method: 'POST',
-    headers: withAuth(),
+    headers: await withDirectAuth(),
     body: form,
   })
   if (!res.ok) throw new Error(describeFailure(res, await readResponseText(res), 'attachAssessmentDocumentsDirect'))

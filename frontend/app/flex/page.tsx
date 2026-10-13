@@ -83,7 +83,7 @@ function FlexPageInner() {
         recommendation={assessmentContext?.decision?.recommendation}
         trustScore={assessmentContext?.trustScore}
       />
-      <main className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+      <main className="flex min-h-0 flex-col gap-4 overflow-hidden">
         {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
         {runId ? (
           <>
@@ -92,7 +92,9 @@ function FlexPageInner() {
                 This evaluation run encountered an error. Start a new evaluation or contact support.
               </div>
             ) : null}
-            <ChatShell personaName="IC Analyst" runId={runId} />
+            <div className="flex-1 min-h-0 flex flex-col">
+              <ChatShell personaName="IC Analyst" runId={runId} />
+            </div>
           </>
         ) : assessmentContext?.assessmentId ? (
           <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas text-sm">

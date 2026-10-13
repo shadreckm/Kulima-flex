@@ -123,7 +123,11 @@ function SignalsPageInner() {
         trustScore={assessmentContext?.trustScore}
       />
       <main className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
+        {assessmentContext ? (
+          <div className="flex-shrink-0">
+            <AssessmentSummaryBar context={assessmentContext} status={status} />
+          </div>
+        ) : null}
         {assessmentContext && runId ? (
           <>
             <ChatShell personaName="Signals Analyst" runId={runId} />

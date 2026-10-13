@@ -41,6 +41,15 @@ const authOptions: NextAuthOptions = {
   },
   providers,
   callbacks: {
+    async jwt({ token }) {
+      // Ensure 'sub' is always present so the backend validator can resolve
+      // the user from tokens minted outside the /api/v1 proxy (direct
+      // large-file uploads read this same token shape).
+      if (!token.sub) {
+        token.sub = token.name || token.email || crypto.randomUUID()
+      }
+      return token
+    },
     async session({ session, token }) {
       if (token?.sub) {
         ;(session as any).userId = token.sub
