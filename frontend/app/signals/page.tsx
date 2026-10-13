@@ -122,7 +122,7 @@ function SignalsPageInner() {
         recommendation={assessmentContext?.decision?.recommendation}
         trustScore={assessmentContext?.trustScore}
       />
-      <main className="flex flex-col gap-4">
+      <main className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
         {assessmentContext ? <AssessmentSummaryBar context={assessmentContext} status={status} /> : null}
         {assessmentContext && runId ? (
           <>

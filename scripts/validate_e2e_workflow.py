@@ -149,9 +149,20 @@ if __name__ == "__main__":
     assert st == 200 and decision.get("verdict"), "decision missing"
 
     # 6. Ask IC endpoint (AI Analyst) — must return an answer, not an error.
-    st, ans = api("/api/v1/ask/ic", method="POST", body={"runId": str(run_id), "question": "What evidence supports this assessment?"})
+    st, ans = api("/api/v1/ask/ic", method="POST", body={"runId": str(run_id), "question": "Why is the founder rated this way?"})
     answer = (ans or {}).get("answer") or (ans or {}).get("response") or ""
     print("ask-ic endpoint ->", st, "| answer head:", str(answer)[:110])
     assert st == 200 and answer, "ask IC failed"
 
+    # 7. Demo-leak guard: no AgriNova / OSTX / Demo Mode in user-facing answers.
+    for probe in ("Why is the founder rated this way?", "What evidence supports this assessment?"):
+        st2, ans2 = api("/api/v1/ask/ic", method="POST",
+                        body={"runId": str(run_id), "question": probe})
+        text = json.dumps(ans2)
+        assert "AgriNova" not in text and "OSTX" not in text and "Demo Mode" not in text, \
+            f"DEMO LEAK in answer: {text[:200]}"
+        # The answer must reference this assessment's actual entity.
+        assert "Kulima" in text or "kulima" in text.lower() or "founder" in text.lower(), \
+            f"answer not grounded in this assessment: {text[:200]}"
+    print("demo-leak guard: no AgriNova / OSTX / Demo Mode in any answer")
     print("E2E_WORKFLOW_OK — assessment, signals, decision, ask-ic all serve data")

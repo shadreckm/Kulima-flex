@@ -95,39 +95,15 @@ class IntelligenceRepository:
         with self._connect() as conn:
             self._migrate_schema(conn)
             conn.commit()
-        # Auto-seed OSTX demo dataset if the database is empty (fresh install).
-        self._auto_seed_demo_data()
+        # Demo seeding REMOVED (pilot reliability): the seeded OSTX/pilot
+        # dataset (AgriNova, GreenLink, SolarHarvest) leaked shared demo rows
+        # into user workspaces. No seeding happens on any database anymore.
 
     def _auto_seed_demo_data(self) -> None:
-        """Seed the 3 OSTX Validation Cases on first startup if DB is empty.
-
-        Skips seeding if:
-        - This DB path is already being seeded (recursion guard).
-        - The DB path is not the default production path (i.e. test databases).
-        """
-        # Only auto-seed the default production database, not test temp files.
-        default_path = get_settings().db_path
-        if str(self.db_path) != str(default_path):
-            return
-
-        # Recursion guard — seed_ostx_demo_dataset creates a new repo for the same path.
-        if self.db_path in _seeding_in_progress:
-            return
-        try:
-            existing = self.recent_runs(limit=5)
-            if len(existing) == 0:
-                _seeding_in_progress.add(self.db_path)
-                try:
-                    # Lazy import to avoid circular dependency at module load time.
-                    from scripts.seed_demo_data import seed_ostx_demo_dataset  # noqa: PLC0415
-                    seed_ostx_demo_dataset(db_path=self.db_path)
-                    _log.info("Auto-seeded OSTX demo dataset into empty database.")
-                finally:
-                    _seeding_in_progress.discard(self.db_path)
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("Auto-seed skipped: %s", exc)
-            _seeding_in_progress.discard(self.db_path)
-
+        """DISABLED (pilot reliability): seeded demo data (AgriNova, GreenLink,
+        SolarHarvest, pilot-* runs) leaked into user workspaces via shared
+        NULL-user rows. Demo seeding must never run again."""
+        return None
     def _migrate_schema(self, conn: sqlite3.Connection) -> None:
         """Add Trust Layer flat columns to intelligence_runs if absent.
 
