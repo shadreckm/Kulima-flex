@@ -42,6 +42,57 @@ export function useAssessmentBootstrap(options: Options = {}) {
   const [attempt, setAttempt] = useState(0)
   const startedRef = useRef<string | null>(null)
 
+  // MVP reliability (Issue 4): when a run is attached but the assessment has
+  // not yet reached complete, poll the run status and re-sync the shared
+  // context on completion so Research / Evidence / Signals / Decision / Reports
+  // all refresh automatically — no page stays in a loading state.
+  useEffect(() => {
+    if (authStatus === 'loading') return
+    const ctx = loadAssessmentContext()
+    if (!ctx?.runId) return
+    if (ctx.status === 'complete' || ctx.status === 'completed') return
+    let cancelled = false
+    let ticks = 0
+    const interval = setInterval(async () => {
+      ticks += 1
+      if (ticks > 150) {
+        clearInterval(interval)
+        return
+      }
+      try {
+        const s = await api.getRunStatus(ctx.runId)
+        const st = String(s?.status || '').toLowerCase()
+        if (cancelled) return
+        if (st === 'complete' || st === 'completed' || st === 'failed') {
+          clearInterval(interval)
+          // Re-fetch the full assessment context so research / signals / decision
+          // / reports propagate to every workspace listening on the store.
+          try {
+            if (ctx.assessmentId) {
+              const full = await api.getAssessment(ctx.assessmentId)
+              if (!cancelled && full) {
+                const synced = saveIntakeContext(full)
+                setAssessmentContext(synced)
+              }
+            }
+          } catch {
+            // Best-effort: at minimum record the completed status.
+            if (!cancelled) {
+              const updated = saveIntakeContext({ ...(ctx as unknown as Record<string, any>), status: st })
+              setAssessmentContext(updated)
+            }
+          }
+        }
+      } catch {
+        // Transient errors keep polling until the tick budget is exhausted.
+      }
+    }, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [authStatus, attempt, bootState])
+
   useEffect(() => {
     // Do not run while the session is still resolving — an unauthenticated
     // probe of getActiveAssessment() would fail silently, cache 'none', and

@@ -72,6 +72,46 @@ function SignalsPageInner() {
   const runId = assessmentContext?.runId || null
   const status = assessmentContext?.status || null
 
+  // MVP reliability: Signals page must render whenever the assessment has
+  // reached complete OR signals data exists — never poll forever. While the
+  // context carries a signalsSummary (propagated on completion), render the
+  // domain grid directly from it.
+  const contextSignalsSummary = (assessmentContext?.signalsSummary ?? null) as SignalsSummary | null
+  const effectiveSignals = signalsSummary || contextSignalsSummary
+  const assessmentComplete = !!status && ['complete', 'completed'].includes(String(status).toLowerCase())
+  const showDomains = Boolean(effectiveSignals) || assessmentComplete
+
+  // Refetch the live summary from the run API when a run exists (once, plus a
+  // short retry window if the run has just completed).
+  useEffect(() => {
+    if (!runId) return
+    let cancelled = false
+    let attempts = 0
+    const maxAttempts = assessmentComplete ? 3 : 1
+    async function load() {
+      try {
+        const data = await api.getSignalsSummary(runId as string)
+        if (!cancelled && data) setSignalsSummary(data)
+      } catch {
+        // Context-level signalsSummary remains as the rendering source.
+      }
+    }
+    load().then(() => {
+      const timer = setInterval(() => {
+        attempts += 1
+        if (cancelled || attempts >= maxAttempts) {
+          clearInterval(timer)
+          return
+        }
+        load()
+      }, 4000)
+      return () => clearInterval(timer)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [runId, assessmentComplete])
+
   return (
     <div className="min-h-screen bg-[#F5F8FC] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_360px] gap-6">
       <NavigationSidebar
@@ -87,23 +127,24 @@ function SignalsPageInner() {
         {assessmentContext && runId ? (
           <>
             <ChatShell personaName="Signals Analyst" runId={runId} />
-            {/* Phase 5: Signal Domains Overview — always visible when signals loaded */}
-            {signalsSummary ? (
+            {/* Phase 5 + MVP reliability: Signal Domains Overview — renders
+                whenever signals exist or the assessment is complete. */}
+            {showDomains && effectiveSignals ? (
               <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#DDE6F0]">
                   <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Signal Domains</h2>
                   <div className="flex items-center gap-2 text-[10px] font-bold">
-                    {signalsSummary.critical > 0 && <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">{signalsSummary.critical} Critical</span>}
-                    {signalsSummary.high > 0 && <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">{signalsSummary.high} High</span>}
-                    {signalsSummary.medium > 0 && <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200">{signalsSummary.medium} Medium</span>}
+                    {effectiveSignals.critical > 0 && <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">{effectiveSignals.critical} Critical</span>}
+                    {effectiveSignals.high > 0 && <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">{effectiveSignals.high} High</span>}
+                    {effectiveSignals.medium > 0 && <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200">{effectiveSignals.medium} Medium</span>}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {DOMAIN_DISPLAY.map(({ key, label, icon, description }) => {
-                    const domainData = signalsSummary.domains?.[key]
+                  const domainData = effectiveSignals.domains?.[key]
                     const signals = domainData?.signals ?? [
-                      ...(signalsSummary.topRisks || []),
-                      ...(signalsSummary.topOpportunities || []),
+                      ...(effectiveSignals.topRisks || []),
+                      ...(effectiveSignals.topOpportunities || []),
                     ].filter(s => (s.category || '').toLowerCase().includes(key.replace('_', '')))
                     const score = domainData?.score
                     const summary = domainData?.summary

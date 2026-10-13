@@ -36,6 +36,7 @@ const PIPELINE_ITEMS = [
   { label: 'Signals',     href: '/signals' },
   { label: 'Decision',    href: '/decision' },
   { label: 'Reports',     href: '/reports' },
+  { label: 'AI Analyst',  href: '/flex' },
 ]
 
 const SECONDARY_ITEMS = [

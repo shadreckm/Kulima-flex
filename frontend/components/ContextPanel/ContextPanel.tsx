@@ -11,6 +11,17 @@ interface ContextPanelProps {
   status?: string | null
 }
 
+/**
+ * MVP reliability: the backend reports ``complete`` while the pipeline and
+ * some legacy callers report ``completed`` — accept both so no page polls
+ * forever once the assessment has actually finished.
+ */
+export function assessmentIsDone(status?: string | null): boolean {
+  if (!status) return false
+  const s = String(status).toLowerCase()
+  return s === 'complete' || s === 'completed'
+}
+
 export default function ContextPanel({ type, runId, status }: ContextPanelProps) {
   const [flexData, setFlexData] = useState<DecisionSnapshot | null>(null)
   const [signalsData, setSignalsData] = useState<SignalsSummary | null>(null)
@@ -21,7 +32,11 @@ export default function ContextPanel({ type, runId, status }: ContextPanelProps)
     let cancelled = false
 
     async function loadFlex() {
-      if (!runId || status !== 'completed') {
+      // MVP reliability: fetch whenever a run exists — the API returns data as
+      // soon as the run has produced it, so the panel is never gated behind a
+      // status string. Also poll briefly while running so the snapshot appears
+      // automatically when the assessment reaches COMPLETE.
+      if (!runId) {
         setFlexData(null)
         return
       }
@@ -38,7 +53,7 @@ export default function ContextPanel({ type, runId, status }: ContextPanelProps)
     }
 
     async function loadSignals() {
-      if (!runId || status !== 'completed') {
+      if (!runId) {
         setSignalsData(null)
         return
       }
@@ -89,7 +104,7 @@ function FlexSnapshotView({ runId, status, loading, error, data }: SnapshotProps
     return <div className="text-xs text-gray-500">Run an analysis to see the decision snapshot.</div>
   }
 
-  if (status && status !== 'completed') {
+  if (status && !assessmentIsDone(status)) {
     return <div className="text-xs text-gray-500">Analysis in progress… Decision snapshot will appear when complete.</div>
   }
 
@@ -191,7 +206,7 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
     return <div className="text-xs text-gray-500">Select or create an evaluation to inspect signal intelligence.</div>
   }
 
-  if (status && status !== 'completed') {
+  if (status && !assessmentIsDone(status)) {
     return <div className="text-xs text-gray-500">Analysis in progress… Signals will appear when complete.</div>
   }
 

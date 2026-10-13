@@ -49,12 +49,24 @@ _FALLBACK_MODEL = {
 }
 
 # Gemini model ladder: preferred tier first, degraded tier on failover or
-# lightweight tasks. Google deprecates 2.x models for new API keys, so the
-# current generation is used and any configured GEMINI_MODEL is honoured.
+# lightweight tasks. Pilot-load testing (MVP reliability) shows:
+#   gemini-3.8-flash          → works, occasionally 503 (overloaded)
+#   gemini-3.1-flash-lite     → most reliable under load
+#   gemini-3.1-pro-preview    → 429 on this account tier
+#   gemini-2.5-* / 3.5/3.6-*  → 503/404 for new API keys
 _GEMINI_LADDER = {
-    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-2.5-pro": "gemini-3.8-flash",
     "gemini-2.5-flash": "gemini-3.8-flash",
+    "gemini-3.8-flash": "gemini-3.1-flash-lite",
+    "gemini-3.8-pro": "gemini-3.8-flash",
 }
+
+# Ordered retry ladder for Gemini model-level failover (newest → proven-lite).
+_GEMINI_MODEL_LADDER = (
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+)
 
 # Phase 4 Groq preferred model aliases
 _GROQ_ALIASES = {
@@ -245,7 +257,9 @@ class AIProviderManager:
     def _client_for(self, provider: str) -> OpenAI:
         if provider not in self._clients:
             base_url = _BASE_URLS.get(provider)  # openai uses default
-            timeout = self.timeout if provider not in ("huggingface", "gemini") else min(self.timeout, 30)
+            # Gemini free/live tier responses regularly exceed 30s under load;
+            # the MVP-reliability cap is 60s so real completions are not cut.
+            timeout = self.timeout if provider not in ("huggingface", "gemini") else min(self.timeout, 60)
             self._clients[provider] = OpenAI(
                 api_key=self._keys[provider],
                 base_url=base_url,
@@ -279,9 +293,9 @@ class AIProviderManager:
             model = _GEMINI_LADDER.get(model, model)
             if fallback_count > 0 or task in ("classify", "extract", "summarize"):
                 model = _GEMINI_LADDER.get(model, model)
-                model = model.replace("gemini-3.1-pro-preview", "gemini-3.8-flash").replace(
-                    "gemini-2.5-pro", "gemini-2.5-flash"
-                )
+                # Lightweight tasks use the proven-lite tier directly.
+                if task in ("classify", "extract", "summarize"):
+                    model = "gemini-3.1-flash-lite"
             return model
 
         # Phase 5: OpenRouter model resolution
@@ -342,12 +356,29 @@ class AIProviderManager:
                     # request minimal for maximum compatibility.
                     extra["max_tokens"] = None
                     extra = {k: v for k, v in extra.items() if v is not None}
-                response = client.chat.completions.create(
-                    model=model,
-                    temperature=temperature,
-                    messages=messages,
-                    **extra,
+                # MVP reliability: Gemini model-level failover ladder. A 503
+                # "model overloaded" on gemini-3.8-flash must not burn the whole
+                # tier — retry the proven-lite Gemini models in-place first.
+                model_ladder = (
+                    _GEMINI_MODEL_LADDER if provider == "gemini" else (model,)
                 )
+                response = None
+                ladder_errors: list[str] = []
+                for ladder_model in model_ladder:
+                    try:
+                        response = client.chat.completions.create(
+                            model=ladder_model,
+                            temperature=temperature,
+                            messages=messages,
+                            **extra,
+                        )
+                        model = ladder_model
+                        break
+                    except Exception as ladder_exc:  # noqa: BLE001
+                        ladder_errors.append(f"{ladder_model}: {ladder_exc}")
+                        if ladder_model == model_ladder[-1]:
+                            raise
+                        continue
                 text = (response.choices[0].message.content or "").strip()
                 if not text:
                     raise ValueError("empty response")
@@ -367,6 +398,13 @@ class AIProviderManager:
                         on_provider(provider)
                     except Exception:  # noqa: BLE001
                         pass
+                # MVP reliability: structured per-run provider log.
+                _log.info(
+                    "PROVIDER_TRACE success provider=%s model=%s task=%s fallback=%d "
+                    "latency=%.2fs ladder_errors=%s",
+                    provider, model, task or "default", fallback_count,
+                    result.response_time, ladder_errors or "none",
+                )
                 # Phase 10 Observability logging
                 _log.info(
                     "llm_call_served",
@@ -426,6 +464,13 @@ class AIProviderManager:
                     except Exception:  # noqa: BLE001 — retry failed, keep failover
                         pass
                 errors.append({"provider": provider, "errorType": kind, "message": str(exc)[:200]})
+                # MVP reliability: structured per-run provider failure log.
+                _log.warning(
+                    "PROVIDER_TRACE failure provider=%s model=%s task=%s error_type=%s "
+                    "detail=%s ladder_errors=%s",
+                    provider, model, task or "default", kind, str(exc)[:160],
+                    ladder_errors or "none",
+                )
                 _log.warning(
                     "provider_failover",
                     extra={
