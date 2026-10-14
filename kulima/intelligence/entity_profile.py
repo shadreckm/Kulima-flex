@@ -147,9 +147,9 @@ _ENTITY_TEXT_HINTS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("foundation", ("foundation", "endowment", "philanthropic")),
     ("research_institution", ("research institute", "research institution", "university", "think tank", "polytechnic", "institute of")),
     ("social_enterprise", ("social enterprise", "social business", "hybrid model", "impact-first", "non-profit business model")),
-    ("ngo", ("non-governmental", "ngo", "nonprofit", "non-profit", "charity", "civil society", "community-based organization")),
+    ("development_program", ("development program", "development programme", "donor-funded", "bilateral", "multi-donor", "undp", "usaid", "dfid", "fao", "world bank project", "giz", "eu-funded", "meal team", "meal teams", "development intelligence")),
+    ("ngo", ("non-governmental", "ngo", "ngos", "nonprofit", "non-profit", "charity", "civil society", "community-based organization", "ngo consortium", "ngo consortia")),
     ("government_program", ("ministry", "government of", "national program", "public sector", "state department", "county government")),
-    ("development_program", ("development program", "development programme", "donor-funded", "bilateral", "multi-donor", "undp", "usaid", "dfid", "fao", "world bank project", "giz", "eu-funded")),
     ("tourism_sme", ("tourism", "safari", "lodge", "hospitality", "tour operator", "travel", "destination", "visitor")),
     ("startup", ("startup", "start-up", "venture", "seed round", "series a", "saas", "b2b", "business plan")),
 )

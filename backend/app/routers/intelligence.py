@@ -332,8 +332,14 @@ async def download_report(
             _raise_billing_block(exc)
     brief = _load_brief_model(run_id, current.user_id, org_id=current.org_id)
     body, media_type, ext = _report_payload(brief, report_kind, format)
+    try:
+        from kulima.export import _entity_report_label
+        _label = _entity_report_label(brief, "Investment Memo")
+    except Exception:
+        _label = "Investment Memo"
+    _label_file = _label.replace(" ", "_").replace("—", "-")
     filename_map = {
-        "memo": f"Kulima_IC_Memo_{run_id}.{ext}",
+        "memo": f"Kulima_{_label_file}_{run_id}.{ext}",
         "report": f"Kulima_Full_IC_Report_{run_id}.{ext}",
         "signals": f"Kulima_Signals_Report_{run_id}.{ext}",
         "due-diligence": f"Kulima_Due_Diligence_Summary_{run_id}.{ext}",

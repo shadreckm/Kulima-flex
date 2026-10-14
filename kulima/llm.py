@@ -2,8 +2,8 @@
 
 Business workflows (agents, Ask IC, Ask Signals, memo) keep calling
 LLMClient.complete / complete_json unchanged, but every call now runs the
-failover chain OpenAI → Groq → OpenRouter → HuggingFace. Provider-specific
-logic no longer lives in the business layer (Phase 1).
+failover chain OpenAI → Groq → Gemini → OpenRouter → HuggingFace.
+Provider-specific logic no longer lives in the business layer (Phase 1).
 """
 
 from __future__ import annotations

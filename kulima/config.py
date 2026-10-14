@@ -1,4 +1,4 @@
-"""Central configuration for Kulima FLEX VC Brain."""
+"""Central configuration for Kulima FLEX (Decision Intelligence Platform)."""
 
 from __future__ import annotations
 

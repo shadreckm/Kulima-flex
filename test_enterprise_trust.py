@@ -318,6 +318,7 @@ def test_research_engine_sanitizes_query_before_egress():
     from kulima.research import ResearchEngine
 
     engine = ResearchEngine.__new__(ResearchEngine)  # bypass Tavily client construction
+    engine._disabled = False  # set explicitly since __init__ is bypassed
     engine.client = MagicMock()
     engine.client.search.return_value = {"results": []}
     engine.max_results = 5

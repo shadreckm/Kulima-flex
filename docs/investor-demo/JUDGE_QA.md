@@ -1,6 +1,6 @@
-# Top 20 Difficult Investor / Judge Questions
+# Top 20 Difficult Investor / Judge Questions (ARCHIVED)
 
-Best possible answers for OSTX presentation. Keep answers crisp; point to live product surfaces when possible.
+Best possible answers for pilot presentations. Keep answers crisp; point to live product surfaces when possible.
 
 ---
 
@@ -68,3 +68,6 @@ Best possible answers for OSTX presentation. Keep answers crisp; point to live p
 
 ## Bonus closer if asked “Why you, why now?”
 > Africa’s early-stage market is expanding faster than diligence capacity. The winners will be systems that can reject bad evidence quickly and package good evidence for IC. Kulima is built for that exact bottleneck.
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

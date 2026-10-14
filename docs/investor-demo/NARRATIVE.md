@@ -1,6 +1,6 @@
-# Investor Demo Narrative
+# Investor Demo Narrative (ARCHIVED — seeded OSTX dataset retired)
 
-How Kulima OS differentiates the three OSTX validation cases.
+How Kulima FLEX differentiated the three retired validation cases.
 
 ---
 
@@ -93,3 +93,6 @@ SolarHarvest has **non-corroborated foundational claims** — the kind that shou
 
 **Narrative arc:**  
 Show that Kulima does not flatten Africa deals into a single score — it separates **conviction**, **caution**, and **rejection** using evidence integrity + syndicate debate.
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

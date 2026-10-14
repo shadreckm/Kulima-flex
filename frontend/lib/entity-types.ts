@@ -1,6 +1,6 @@
 /**
  * Entity-based evaluation intake types.
- * Kulima OS evaluates any organisation type, not just startups.
+ * Kulima FLEX evaluates any organisation type, not just startups.
  *
  * The five canonical assessment types collected by the single intake engine
  * (landing page) are: Startup, NGO, Government Program, Development Program,

@@ -1,6 +1,6 @@
-# OSTX Investor Demo Pack
+# Investor Demo Pack (ARCHIVED — seeded OSTX dataset retired)
 
-**Product:** Kulima OS  
+**Product:** Kulima FLEX
 **Audience:** Judges, investors, pilot users  
 **Mode:** Offline-ready validation dataset (no OpenAI credits required)
 
@@ -167,3 +167,6 @@ Additional seeded cases for pilots (not OSTX extremes):
 4. **Reports** — download PDF/TXT from stored brief
 5. **Analytics** — cohort KPIs from persisted runs only
 6. **Flex Decision Snapshot** — verdict / confidence / reliability / risks / next action
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

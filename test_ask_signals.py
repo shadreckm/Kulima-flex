@@ -34,7 +34,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kulima.core.cases.models import Case, CaseSubject, CaseType
+from kulima.core.cases.models import Case, CaseSubject, CaseType, WorkspaceType
 from kulima.models import (
     Claim,
     ClaimType,
@@ -84,6 +84,7 @@ def _make_case(
     return Case(
         id="case-001",
         case_type=CaseType.RISK,
+        workspace_type=WorkspaceType.STARTUP,
         subject=subject,
         created_at=datetime(2025, 6, 1),
         sources=sources,
@@ -600,6 +601,7 @@ class TestMinimalCase:
         return Case(
             id="bare-001",
             case_type=CaseType.RISK,
+            workspace_type=WorkspaceType.STARTUP,
             subject=CaseSubject(id="s", name="Bare Subject", kind="program"),
         )
 
@@ -651,14 +653,14 @@ class TestAnswerCallsLLM:
         """Returns (system_prompt, user_prompt) captured from the mock."""
         captured: dict = {}
 
-        def fake_complete(system: str, user: str, temperature: float = 0.2) -> str:
+        def fake_complete(system: str, user: str, temperature: float = 0.2, history=None) -> str:
             captured["system"] = system
             captured["user"] = user
             return "Mocked analyst response."
 
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.side_effect = fake_complete
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.side_effect = fake_complete
             answer_ask_signals_question(
                 _make_case(), _make_signals(3), question, history
             )
@@ -666,16 +668,16 @@ class TestAnswerCallsLLM:
         return captured["system"], captured["user"]
 
     def test_llm_called_once(self):
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = "response"
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = "response"
             answer_ask_signals_question(_make_case(), _make_signals(1), "test?")
-        instance.complete.assert_called_once()
+        manager.chat.assert_called_once()
 
     def test_returns_string(self):
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = "analyst response"
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = "analyst response"
             result = answer_ask_signals_question(
                 _make_case(), _make_signals(1), "What is the top risk?"
             )
@@ -691,13 +693,13 @@ class TestAnswerCallsLLM:
         assert "[CASE]" in user
 
     def test_temperature_is_0_2(self):
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = "ok"
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = "ok"
             answer_ask_signals_question(_make_case(), [], "test?")
-        _, kwargs = instance.complete.call_args
+        _, kwargs = manager.chat.call_args
         # temperature can come as positional arg[2] or kwarg
-        call_args = instance.complete.call_args
+        call_args = manager.chat.call_args
         temp = call_args[1].get("temperature", call_args[0][2] if len(call_args[0]) > 2 else None)
         assert temp == 0.2
 
@@ -712,13 +714,13 @@ class TestHistoryTruncation:
         ]
         captured: dict = {}
 
-        def fake_complete(system: str, user: str, temperature: float = 0.2) -> str:
+        def fake_complete(system: str, user: str, temperature: float = 0.2, history=None) -> str:
             captured["user"] = user
             return "ok"
 
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.side_effect = fake_complete
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.side_effect = fake_complete
             answer_ask_signals_question(_make_case(), [], "?", history)
 
         # Only last 8 messages should appear — msg 12..19
@@ -726,18 +728,18 @@ class TestHistoryTruncation:
         assert "msg 12" in captured["user"] or "msg 19" in captured["user"]
 
     def test_none_history_does_not_raise(self):
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = "ok"
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = "ok"
             answer_ask_signals_question(_make_case(), [], "test?", None)
-        instance.complete.assert_called_once()
+        manager.chat.assert_called_once()
 
     def test_empty_history_does_not_raise(self):
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = "ok"
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = "ok"
             answer_ask_signals_question(_make_case(), [], "test?", [])
-        instance.complete.assert_called_once()
+        manager.chat.assert_called_once()
 
 
 # ── Test 18 — EI grounding appended to system prompt ─────────────────────────
@@ -746,13 +748,13 @@ class TestEIGroundingInSystemPrompt:
     def _capture_system(self, with_ei: bool) -> str:
         captured: dict = {}
 
-        def fake_complete(system: str, user: str, temperature: float = 0.2) -> str:
+        def fake_complete(system: str, user: str, temperature: float = 0.2, history=None) -> str:
             captured["system"] = system
             return "ok"
 
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.side_effect = fake_complete
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.side_effect = fake_complete
             answer_ask_signals_question(
                 _make_case(with_ei=with_ei), [], "test?"
             )
@@ -781,13 +783,13 @@ class TestTrustGraphGroundingInSystemPrompt:
     def _capture_system(self, with_graph: bool) -> str:
         captured: dict = {}
 
-        def fake_complete(system: str, user: str, temperature: float = 0.2) -> str:
+        def fake_complete(system: str, user: str, temperature: float = 0.2, history=None) -> str:
             captured["system"] = system
             return "ok"
 
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.side_effect = fake_complete
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.side_effect = fake_complete
             answer_ask_signals_question(
                 _make_case(with_graph=with_graph), [], "test?"
             )
@@ -827,9 +829,9 @@ class TestSyntheticEndToEnd:
             "Before acting, verify: [SG1] recommended action."
         )
 
-        with patch("kulima.signals.ask_signals.LLMClient") as MockLLM:
-            instance = MockLLM.return_value
-            instance.complete.return_value = mocked_response
+        with patch("kulima.signals.ask_signals.AIProviderManager") as MockMgr:
+            manager = MockMgr.instance.return_value
+            manager.chat.return_value = mocked_response
             result = answer_ask_signals_question(
                 case, signals, "What are the top 3 risks?"
             )

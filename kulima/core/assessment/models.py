@@ -88,6 +88,13 @@ class DocumentIntelligence(BaseModel):
     objectives: List[str] = Field(default_factory=list)
     outcomes: List[str] = Field(default_factory=list)
     risks: List[str] = Field(default_factory=list)
+    # Phase 1: structured document-section extraction — what the uploaded
+    # document actually contains, keyed by canonical section category.
+    sections: Dict[str, List[str]] = Field(default_factory=dict)
+
+    @property
+    def detected_section_keys(self) -> List[str]:
+        return [k for k, v in self.sections.items() if v]
 
 
 class AssessmentExtraction(BaseModel):

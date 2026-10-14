@@ -1,7 +1,7 @@
 """Tests for the 9 Signal Domains and Document/Tavily Extraction."""
 
 import pytest
-from kulima.core.cases.models import Case, CaseSubject, CaseType
+from kulima.core.cases.models import Case, CaseSubject, CaseType, WorkspaceType
 from kulima.models import SourceAttribution, TrustGraph
 from kulima.signals.models import SignalCategory, SignalLevel
 from kulima.signals.orchestrator import SignalsOrchestrator
@@ -22,6 +22,7 @@ def _create_sample_case(sources=None, uploaded_evidence=None, trust_score=85.0):
     return Case(
         id="case-test-domain-signals",
         case_type=CaseType.INVESTMENT,
+        workspace_type=WorkspaceType.STARTUP,
         subject=subject,
         sources=sources or [],
         trust_graph=graph,

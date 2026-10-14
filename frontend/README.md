@@ -1,4 +1,4 @@
-Kulima Frontend Prototype (Phase 1)
+Kulima FLEX Frontend (Next.js + TypeScript + Tailwind)
 
 This is a mock Next.js + TypeScript + Tailwind prototype for the Chat-First UX.
 

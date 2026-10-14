@@ -1,6 +1,6 @@
 # Architecture
 
-**Kulima FLEX VC Brain — System Architecture**
+**Kulima FLEX — System Architecture**
 
 ---
 

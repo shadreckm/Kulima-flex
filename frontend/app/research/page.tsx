@@ -132,7 +132,7 @@ function ResearchPageInner() {
             <section role="status" aria-live="polite" className="rounded-[12px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               <div className="flex items-center gap-2 font-bold">
                 <span>📄</span>
-                <span>Document Intelligence Mode — OpenAI unavailable</span>
+                <span>Document Intelligence Mode — no live AI provider served this run</span>
               </div>
               <p className="mt-1 text-xs leading-5 text-amber-800">
                 {data.research?.message || 'Research is grounded in uploaded documents, extraction, trust scoring, and available external sources. Live OSINT is inactive.'}

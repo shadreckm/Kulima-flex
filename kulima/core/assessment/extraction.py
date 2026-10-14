@@ -191,6 +191,50 @@ _RISK_KEYWORDS = (
 
 _MAX_LIST_ITEMS = 12
 
+# ── Phase 1: structured document-section extraction ──────────────────────
+# Business-document sections detected deterministically (no AI required),
+# so reasoning is driven by what the uploaded document actually contains.
+
+_SECTION_PATTERN_TEXT = (
+    "executive summary|executive summ|summary|problem statement|challenge|"
+    "solution|proposed solution|our solution|product|offering|"
+    "business model|revenue model|business model canvas|value proposition|go-to-market|"
+    "financial model|financial plan|financials|projections|financial projections|"
+    "customer discovery|customer segments|target customers|target market|"
+    "market validation|market analysis|market research|market opportunity|"
+    "roadmap|milestones|implementation plan|timeline|workplan|work plan|"
+    "funding ask|funding request|investment ask|capital requirements?|use of funds|"
+    "impact strategy|theory of change|impact framework|social impact|"
+    "monitoring framework|monitoring and evaluation|m&e|logframe|logical framework|"
+    "results framework|outcomes|results|indicators|targets|"
+    "budget|financial summary|cost estimate|partnerships?|partners|stakeholders|"
+    "governance|board|management team|organisational structure|organizational structure|institutional arrangements"
+)
+
+_DOCUMENT_SECTIONS_RE = re.compile(
+    rf"(?:^|\n)\s*({ _SECTION_PATTERN_TEXT })\s*[:\-–]?\s*([^\n]{{3,400}})",
+    re.IGNORECASE,
+)
+
+# Maps document section titles → canonical Phase 1 categories.
+_SECTION_CATEGORY_MAP: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("executive_summary", ("executive summary", "executive summ", "summary")),
+    ("problem", ("problem", "problem statement", "challenge")),
+    ("solution", ("solution", "proposed solution", "our solution", "product", "offering")),
+    ("business_model", ("business model", "revenue model", "business model canvas", "value proposition", "go-to-market")),
+    ("financial_model", ("financial model", "financial plan", "financials", "projections", "financial projections")),
+    ("customer_discovery", ("customer discovery", "customer segments", "target customers", "target market")),
+    ("market_validation", ("market validation", "market analysis", "market research", "market opportunity")),
+    ("roadmap", ("roadmap", "milestones", "implementation plan", "timeline", "workplan", "work plan")),
+    ("funding_ask", ("funding ask", "funding request", "investment ask", "capital requirement", "use of funds")),
+    ("impact_strategy", ("impact strategy", "theory of change", "impact framework", "social impact")),
+    ("monitoring_framework", ("monitoring framework", "monitoring and evaluation", "m&e", "logframe", "logical framework", "results framework")),
+    ("outcomes", ("outcomes", "results", "indicators", "targets")),
+    ("budget", ("budget", "financial summary", "cost estimate")),
+    ("partnerships", ("partnership", "partner", "stakeholder")),
+    ("governance", ("governance", "board", "management team", "organisational structure", "organizational structure", "institutional arrangements")),
+)
+
 
 def _clean(value: str, limit: int = 80) -> str:
     """Normalise whitespace, strip trailing punctuation, clamp length."""
@@ -395,7 +439,38 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
         objectives=_section_values(_OBJECTIVE_SECTION_RE),
         outcomes=_section_values(_OUTCOME_SECTION_RE),
         risks=risks,
+        sections=_extract_sections(raw),
     )
+
+
+def _extract_sections(text: str) -> Dict[str, List[str]]:
+    """Phase 1: structured section extraction from an uploaded document.
+
+    Detects Executive Summary, Problem, Solution, Business Model, Financial
+    Model, Customer Discovery, Market Validation, Roadmap, Funding Ask,
+    Impact Strategy, Monitoring Framework, Outcomes, Budget, Partnerships and
+    Governance sections deterministically — the report reasons from what the
+    document actually contains, never from a hardcoded template.
+    """
+    sections: Dict[str, List[str]] = {}
+    for match in _DOCUMENT_SECTIONS_RE.finditer(text or ""):
+        heading = " ".join(match.group(1).split()).lower()
+        heading = heading.rstrip(" :-–")
+        content = " ".join(match.group(2).split())
+        if len(content) < 3:
+            continue
+        category = None
+        for cat, needles in _SECTION_CATEGORY_MAP:
+            if any(heading == n or heading.startswith(n) for n in needles):
+                category = cat
+                break
+        if not category:
+            continue
+        bucket = sections.setdefault(category, [])
+        if content not in bucket:
+            bucket.append(content)
+        sections[category] = bucket[:_MAX_LIST_ITEMS]
+    return sections
 
 
 def _extract_project_lead(text: str):

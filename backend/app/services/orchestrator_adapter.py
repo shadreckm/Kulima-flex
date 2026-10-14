@@ -682,10 +682,22 @@ def _sync_assessment(
         research = research or {}
         # Phase 10: record which provider tier served this run so the workspace
         # can display the intelligence layer that produced these results.
+        # Phase 10/11 consistency contract: the workspace must always be able to
+        # show provider selected (chain head), provider used (actual server),
+        # and which tiers failed — from a single authoritative source.
         if not research.get("providerUsed"):
             try:
                 last = AIProviderManager.instance().last_result
-                research["providerUsed"] = last.provider if last else "document_intelligence"
+                if last is not None:
+                    research["providerUsed"] = last.provider
+                    # Per-tier failure log — surfaces provider failed/succeeded
+                    # consistently alongside providerUsed in every workspace.
+                    if last.errors:
+                        research["providerErrors"] = last.errors
+                    research.setdefault("providerFallbackTriggered", last.fallback_triggered)
+                    research.setdefault("providerFallbackCount", last.fallback_count)
+                else:
+                    research["providerUsed"] = "document_intelligence"
             except Exception:
                 research["providerUsed"] = "document_intelligence"
         # Phase 8: when research carries no summary (Tavily unavailable, no

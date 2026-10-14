@@ -1,7 +1,8 @@
 """
-Kulima FLEX — AI Investment Intelligence Operating System for Africa
-====================================================================
-Executive dashboard + multi-agent diligence + Twin Syndicate breakthrough.
+Kulima FLEX — Decision Intelligence Platform
+============================================
+Kulima Africa Ltd — Food Everywhere, For Everyone, At All Times.
+Workflow: Information → Evidence → Trust → Signals → Decisions → Reports.
 """
 
 from __future__ import annotations
@@ -64,7 +65,7 @@ from kulima.portfolio_intelligence import (
 )
 
 st.set_page_config(
-    page_title="Kulima FLEX VC Brain",
+    page_title="Kulima FLEX — Decision Intelligence Platform",
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",

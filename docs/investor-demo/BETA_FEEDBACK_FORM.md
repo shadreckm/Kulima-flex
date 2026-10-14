@@ -1,6 +1,6 @@
 # Public Beta Feedback Form
 
-Use this form for OSTX mentors, judges, NGOs, investors, and accelerator testers.
+Use this form for pilot mentors, judges, NGOs, investors, and accelerator testers.
 
 **Channel options (pick one):**
 1. In-product: Kulima OS → **Feedback** workspace (per-run rating + comment)
@@ -91,3 +91,6 @@ Recommend (Y/N):
 2. Tag each note: `bug` / `ux` / `value` / `trust`
 3. Fix only credibility blockers before public sharing waves
 4. Keep a running “Top 5 pilot quotes” for OSTX / investors
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

@@ -1,7 +1,7 @@
-# Pre-Launch Deployment & Public Demo Validation
+# Pre-Launch Deployment & Public Demo Validation (ARCHIVED)
 
-**Date:** 2026-08-15  
-**Product:** Kulima OS  
+**Date:** 2026-08-15
+**Product:** Kulima FLEX
 **Scope:** Deploy readiness only — no new features, no UI redesign, no methodology changes.
 
 ---
@@ -186,3 +186,6 @@ In-product: `/feedback` rating + comment (use comment template).
 ### Final recommendation
 **NO-GO for unrestricted public sharing today.**  
 **GO for controlled OSTX / investor demos** after completing the Render root-Docker deploy + Vercel env parity + smoke checklist (≈ hours, not weeks).
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

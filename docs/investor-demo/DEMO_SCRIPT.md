@@ -1,6 +1,6 @@
-# OSTX 5-Minute Demo Script
+# 5-Minute Demo Script (ARCHIVED — seeded OSTX dataset retired)
 
-Goal: prove Kulima OS can run an end-to-end IC workflow offline, differentiate three deals, and export decision artifacts.
+Goal: prove Kulima FLEX can run an end-to-end decision workflow offline, differentiate three deals, and export decision artifacts.
 
 **Prep (60 seconds before stage):**
 1. Sign in to Kulima OS
@@ -123,3 +123,6 @@ Goal: prove Kulima OS can run an end-to-end IC workflow offline, differentiate t
 1. Streamlit surface (`app.py`) with seeded `founders.db`
 2. Narrate from `docs/investor-demo/NARRATIVE.md`
 3. Show pre-downloaded AgriNova memo PDF from Reports if already cached
+
+> **⚠️ ARCHIVED (Pilot Reliability Phase)** — This document describes the retired seeded OSTX/AgriNova demo dataset. Seeded demo data was removed from Kulima FLEX: every assessment now runs from user-uploaded documents (Source A). Kept for historical reference only; do not use for pilot materials.
+

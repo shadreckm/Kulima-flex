@@ -1,6 +1,8 @@
 # Kulima FLEX
 
-**An Investment Intelligence Operating System for African Venture Capital.**
+**Decision Intelligence Platform — Evidence-to-Decision Infrastructure.**
+
+By **Kulima Africa Ltd** · Mission: *Food Everywhere, For Everyone, At All Times.*
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/built%20with-Streamlit-FF4B4B.svg)](https://streamlit.io/)
@@ -17,7 +19,7 @@
 
 ## The Problem
 
-African venture capital is analytically underserved. Pre-investment diligence on an African startup can take weeks of unstructured research, produce inconsistent outputs across analysts, and still miss critical founder and market signals that are embedded in local context — mobile money rails, cross-border FX dynamics, regulatory fragmentation, and trust networks built outside traditional Western data sources.
+Decision-makers across Africa — investors, development agencies, government reviewers, NGO program officers, and impact funders — work from fragmented, unstructured evidence. Diligence and program reviews take weeks, produce inconsistent outputs, and still miss critical signals embedded in local context — mobile money rails, cross-border FX dynamics, regulatory fragmentation, and trust networks built outside traditional Western data sources.
 
 Kulima FLEX is built to close that gap.
 
@@ -25,9 +27,9 @@ Kulima FLEX is built to close that gap.
 
 ## What Kulima FLEX Does
 
-Kulima FLEX is a multi-agent Investment Intelligence Operating System that transforms a founder name and startup name into a complete IC-ready analysis in minutes.
+Kulima FLEX is a multi-agent **Decision Intelligence Platform** and **Evidence-to-Decision Infrastructure** that turns uploaded documents and signals into a decision-ready analysis in minutes.
 
-It does not replace an investor's judgment. It prepares the evidence so that judgment can be applied faster, more consistently, and with greater confidence.
+It supports startups, NGOs, development programs, government programs, Tourism SMEs and other institutional entities — not only venture deals.
 
 **A single analysis run produces:**
 
@@ -440,4 +442,4 @@ For security disclosures, please email the maintainers directly rather than open
 
 ---
 
-*Kulima FLEX — Investment Intelligence for Africa's next generation of venture capital.*
+*Kulima FLEX — Decision Intelligence Platform. Evidence-to-Decision Infrastructure by Kulima Africa Ltd.*

@@ -56,6 +56,24 @@ _log = logging.getLogger(__name__)
 
 _repo = AssessmentRepository()
 
+
+def _last_provider_errors() -> Optional[list[dict[str, Any]]]:
+    """Per-tier provider failure log from the manager's last result (may be None)."""
+    try:
+        last = AIProviderManager.instance().last_result
+        return list(last.errors) if last is not None and last.errors else None
+    except Exception:
+        return None
+
+
+def _last_provider_meta(key: str) -> Any:
+    """Fallback metadata (fallback_triggered / fallback_count) from the last result."""
+    try:
+        last = AIProviderManager.instance().last_result
+        return getattr(last, key) if last is not None else None
+    except Exception:
+        return None
+
 # Cap the stored extracted text so the context payload stays reasonable even
 # for very large uploads (full text remains available in document chunks).
 MAX_STORED_TEXT_CHARS = 200_000
@@ -266,6 +284,15 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         # Phase 10/11 observability: which provider tier produced results.
         "providerUsed": provider_used,
         "providerLabel": provider_label,
+        # Provider failed/succeeded log — surfaced from the manager's last
+        # result so every workspace can show the full provider story.
+        "providerErrors": (
+            (research_payload.get("providerErrors") or None)
+            if research_payload.get("providerErrors") is not None
+            else _last_provider_errors()
+        ),
+        "providerFallbackTriggered": _last_provider_meta("fallback_triggered"),
+        "providerFallbackCount": _last_provider_meta("fallback_count"),
         "requiresConfirmation": ctx.requires_confirmation,
         "confidenceThreshold": CONFIRMATION_THRESHOLD,
         "displayEntity": display_entity(ctx),

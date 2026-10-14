@@ -461,6 +461,7 @@ def answer_ask_ic_question(
         """
     ).strip()
     # Multi-provider: routes through AIProviderManager failover chain
-    # (OpenAI → Groq → OpenRouter → HuggingFace). Provider failures never
-    # surface to users — orchestrator_adapter falls back to doc intelligence.
+    # (OpenAI → Groq → Gemini → OpenRouter → HuggingFace). Provider failures
+    # never surface to users — orchestrator_adapter falls back to Document
+    # Intelligence Mode.
     return LLMClient().manager.chat(system=system, user=user, history=history, temperature=0.2)

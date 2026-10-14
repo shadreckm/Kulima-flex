@@ -68,6 +68,10 @@ export type AssessmentContext = {
   /** Phase 11: which provider tier served the run (🤖 OpenAI / ⚡ Groq / 🌐 OpenRouter / 🧠 HuggingFace / 📄 Document Intelligence). */
   providerUsed?: string
   providerLabel?: string
+  /** Provider failure log: [{provider, error, kind?}] — provider failed/succeeded consistency. */
+  providerErrors?: Array<{ provider?: string; error?: string; [k: string]: unknown }> | null
+  providerFallbackTriggered?: boolean | null
+  providerFallbackCount?: number | null
   requiresConfirmation?: boolean
   confidenceThreshold?: number
   displayEntity?: string

@@ -203,16 +203,22 @@ class TestAnswerAskIcQuestionWithEI:
     """Grounding rules are appended to the system prompt when evidence_integrity is set."""
 
     def _capture_system(self, brief) -> str:
-        """Call answer_ask_ic_question and capture the system prompt used."""
+        """Call answer_ask_ic_question and capture the system prompt used.
+
+        Multi-provider routing goes through AIProviderManager (LLMClient().manager.chat),
+        so the provider manager is mocked rather than the LLMClient facade itself.
+        """
         captured = {}
 
-        def fake_complete(system, user, temperature=0.2):
+        def fake_chat(system, user, history=None, temperature=0.2):
             captured["system"] = system
             return "Mocked IC answer."
 
         with patch("kulima.ask_ic.LLMClient") as MockLLM:
             instance = MockLLM.return_value
-            instance.complete.side_effect = fake_complete
+            manager = MagicMock()
+            manager.chat.side_effect = fake_chat
+            instance.manager = manager
             from kulima.ask_ic import answer_ask_ic_question
 
             answer_ask_ic_question(brief, "What is the evidence quality?")

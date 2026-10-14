@@ -1,5 +1,5 @@
 /*
-Standalone SSE streaming test script for Kulima OS Web.
+Standalone SSE streaming test script for Kulima FLEX.
 Run with: node frontend/test-stream.js
 */
 

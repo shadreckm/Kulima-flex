@@ -1,8 +1,8 @@
-# Kulima OS Web — Deployment Guide (Closed Beta / Public Demo)
+# Kulima FLEX — Deployment Guide
 
 This guide describes the current Vercel + Render deployment. The staged Render frontend and Supabase migration analysis is in [render-supabase-migration.md](render-supabase-migration.md); do not cut over until its auth, database, storage, and workflow gates pass.
 
-This document describes how to deploy **Kulima OS Web** with:
+This document describes how to deploy **Kulima FLEX** with:
 
 - **Frontend:** Next.js app on Vercel (`frontend/`)
 - **Backend:** FastAPI app on Render (repo-root Docker image)
@@ -25,7 +25,7 @@ Do not change intelligence methodology or redesign UI for deployment.
   - Health: `GET /api/v1/health`
   - SQLite via `KULIMA_DB_PATH`
   - Uploads under `backend/uploads` (mount to persistent disk in production)
-  - Offline demo fallback + OSTX seed when DB is empty / LLM fails
+  - Document Intelligence Mode fallback when all AI providers fail
 
 ---
 
@@ -35,7 +35,7 @@ Do not change intelligence methodology or redesign UI for deployment.
 
 ```env
 NEXTAUTH_SECRET="must-match-frontend"
-OPENAI_API_KEY="sk-..."          # optional for browsing seeded demos; required for live analysis
+OPENAI_API_KEY="sk-..."          # optional; Document Intelligence Mode covers outages
 TAVILY_API_KEY=""                # optional
 KULIMA_DB_PATH="/data/kulima.db"
 ALLOWED_ORIGINS="https://kulima-flex.vercel.app,https://your-custom-domain.com"
@@ -72,11 +72,7 @@ NEXT_PUBLIC_API_URL="https://YOUR-RENDER-SERVICE.onrender.com"
 3. Attach a **persistent disk** at `/data` (SQLite survival).
 4. Health check path: `/api/v1/health`
 5. Set env vars from §2.1 — especially matching `NEXTAUTH_SECRET` and `ALLOWED_ORIGINS`.
-6. After first boot, confirm auto-seed created OSTX cases, or run:
-   ```bash
-   python scripts/seed_demo_data.py --refresh --prepare-demo
-   ```
-   (inside a one-off shell with `PYTHONPATH=/app`)
+6. Verify first boot created the empty database schema (no demo data is seeded — all evidence comes from user uploads).
 
 **Do not** deploy with `backend/Dockerfile` alone — it omits `kulima/` and `scripts/`.
 
@@ -88,18 +84,18 @@ NEXT_PUBLIC_API_URL="https://YOUR-RENDER-SERVICE.onrender.com"
 2. Build: `npm run build` · Output: `.next`
 3. Set env vars from §2.2
 4. Redeploy after backend URL is known
-5. Smoke: sign in → Dashboard → Runs → open AgriNova → Evidence / Reports / Analytics
+5. Smoke: sign in → Dashboard → upload documents → open your assessment → Evidence / Reports / Analytics
 
 `vercel.json` is optional for Next 13 App Router.
 
 ---
 
-## 5. Public demo without OpenAI credits
+## 5. Public demo without AI provider credits
 
-Supported today (after login + seeded DB):
+Supported today (after login):
 
-1. Browse demo runs
-2. Open AgriNova / GreenLink / SolarHarvest
+1. Upload your own documents (business plans, proposals, annual reports)
+2. Run an assessment — Document Intelligence Mode handles provider outages
 3. View Signals summary, Evidence, Analytics
 4. Download Reports (PDF/TXT)
 5. Submit Feedback
@@ -115,8 +111,8 @@ Not guaranteed offline:
 
 1. `GET https://<api>/api/v1/health` → `{ "status": "ok" }`
 2. Visit frontend → Sign in works
-3. Runs list shows shared OSTX demos
-4. Evidence loads integrity grade for AgriNova
+3. Upload documents and run a fresh assessment
+4. Evidence loads integrity grade for the uploaded documents
 5. Reports PDF downloads
 6. Analytics shows Evidence Coverage / Signal Coverage
 7. Feedback submit returns success

@@ -1,4 +1,4 @@
-"""Intelligence Orchestrator — multi-agent pipeline for Kulima FLEX VC Brain."""
+"""Intelligence Orchestrator — multi-agent pipeline for Kulima FLEX."""
 
 from __future__ import annotations
 
@@ -166,16 +166,28 @@ class IntelligenceOrchestrator:
         progress(0.30, "Parallel agents — Founder ∥ Startup intelligence…")
         from concurrent.futures import ThreadPoolExecutor
 
+        # Source A (uploaded documents) is the PRIMARY evidence base. Every
+        # agent receives the entity profile so its reasoning is anchored on
+        # uploaded evidence before any web/OSINT material (Source C).
+        agent_context = {
+            "entity_profile": entity_profile or {},
+            "document_trust_scores": document_trust_scores or [],
+        }
+
         with ThreadPoolExecutor(max_workers=2) as pool:
             f_fut = pool.submit(
-                self.founder_agent.run, founder, startup, founder_sources
+                self.founder_agent.run,
+                founder,
+                startup,
+                founder_sources,
+                dict(agent_context),
             )
             s_fut = pool.submit(
                 self.startup_agent.run,
                 founder,
                 startup,
                 startup_sources,
-                {"skip_market_research": True},
+                {"skip_market_research": True, **agent_context},
             )
             founder_result = f_fut.result()
             startup_result = s_fut.result()
@@ -190,6 +202,7 @@ class IntelligenceOrchestrator:
                 {
                     "founder_summary": founder_result.summary,
                     "startup_summary": startup_result.summary,
+                    **agent_context,
                 },
             )
             r_fut = pool.submit(
@@ -197,7 +210,7 @@ class IntelligenceOrchestrator:
                 founder,
                 startup,
                 all_sources,
-                {"risk_sources": risk_sources},
+                {"risk_sources": risk_sources, **agent_context},
             )
             t_fut = pool.submit(
                 self.trust_engine.build, founder, startup, all_sources

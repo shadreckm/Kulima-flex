@@ -285,10 +285,15 @@ def doc_intelligence_ask_ic_answer(
         )
 
     elif any(k in q for k in ("report", "export", "memo", "download", "pdf")):
+        try:
+            from kulima.export import _entity_report_label
+            _memo_label = _entity_report_label(brief, "Investment Memo")
+        except Exception:
+            _memo_label = "Investment Memo"
         body = (
             f"**Available Reports for {brief.startup_name}:**\n\n"
             f"The following reports have been generated and are available for download:\n"
-            f"- Investment Memo (PDF/TXT)\n"
+            f"- {_memo_label} (PDF/TXT)\n"
             f"- Full IC Report (PDF/TXT)\n"
             f"- Signals Report (PDF/TXT)\n"
             f"- Due Diligence Summary (PDF/TXT)\n"
