@@ -1,4 +1,4 @@
-# Kulima FLEX VC Brain
+# Kulima FLEX
 
 **An Investment Intelligence Operating System for African Venture Capital.**
 
