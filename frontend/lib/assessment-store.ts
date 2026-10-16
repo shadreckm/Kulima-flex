@@ -448,6 +448,26 @@ export function clearAssessmentContext(): void {
   window.dispatchEvent(new CustomEvent(CONTEXT_EVENT_NAME, { detail: null }))
 }
 
+/**
+ * Switch the active Assessment Context to another assessment (Conversation UX).
+ *
+ * Loads the target assessment's full workspace payload from the backend,
+ * persists it as the active context, and notifies every listener. The
+ * AI Analyst and all workspaces react: conversations, messages, decision
+ * snapshot, trust score and signals all reload from the new assessment.
+ */
+export async function switchAssessmentContext(assessmentId: string): Promise<AssessmentContext | null> {
+  if (typeof window === 'undefined' || !assessmentId) return null
+  try {
+    const { getAssessmentWorkspace } = await import('./api')
+    const payload = await getAssessmentWorkspace(assessmentId)
+    const ctx = saveIntakeContext(payload)
+    return ctx
+  } catch {
+    return null
+  }
+}
+
 export function onAssessmentContextChanged(handler: (ctx: AssessmentContext | null) => void): () => void {
   if (typeof window === 'undefined') return () => {}
   const listener = (e: Event) => handler((e as CustomEvent).detail)

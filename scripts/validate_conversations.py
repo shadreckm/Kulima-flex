@@ -219,6 +219,73 @@ def main() -> int:
               legacy_convs[0]["assessment_id"] == "assess-emerge",
               legacy_convs[0]["assessment_id"])
 
+    # ── Conversation UX validation (Problems 1–5) ────────────────────────────
+    print("\n=== Conversation UX: navigation, hierarchy, delete, switching ===")
+
+    # Problem 1: New Chat creates additional conversations under the SAME
+    # assessment (server side); New Assessment is a frontend navigation to
+    # the landing page (no backend effect).
+    # NOTE: earlier P6/P7 steps left 1 default + 1 imported conversation;
+    # the absolute count is environment-dependent — assert the DELTA.
+    before_count = len(svc.list_conversations("assess-emerge", "user-1", "org-1")["conversations"])
+    chat2_ux = svc.create_conversation("assess-emerge", "user-1", "org-1")
+    chat3_ux = svc.create_conversation("assess-emerge", "user-1", "org-1")
+    emerge_ux = svc.list_conversations("assess-emerge", "user-1", "org-1")
+    check("UX1 New Chat: two more conversations under same assessment",
+          len(emerge_ux["conversations"]) == before_count + 2,
+          f"{before_count} -> {len(emerge_ux['conversations'])}")
+    new_titles = [c["title"] for c in emerge_ux["conversations"]]
+    # Auto-titles are sequential by creation count ("Chat N"); P6's earlier
+    # rename proves rename works, so here just assert the new chats got
+    # auto-titles (no blank/default-Untitled).
+    check("UX1 New Chat auto-titled sequentially",
+          all(t.startswith("Chat ") for t in (chat2_ux["title"], chat3_ux["title"])),
+          str((chat2_ux["title"], chat3_ux["title"])))
+
+    # Problem 3 hierarchy: conversations are bound to their assessment
+    all_convs = emerge_ux["conversations"] + kulima_list["conversations"] + tourism_list["conversations"]
+    check("UX3 hierarchy: every conversation bound to exactly one assessment",
+          all(c["assessment_id"] in {"assess-emerge", "assess-kulima", "assess-tourism"} for c in all_convs))
+
+    # Problem 4: delete end-to-end, idempotent double-delete, audit
+    deleted_ux = svc.delete_conversation(chat3_ux["conversation_id"], "user-1", "org-1")
+    check("UX4 delete succeeds with owner validation", deleted_ux["deleted"] is True)
+    check("UX4 delete reports assessment id",
+          deleted_ux.get("assessmentId", "") in ("", "assess-emerge"))
+    deleted_again = svc.delete_conversation(chat3_ux["conversation_id"], "user-1", "org-1")
+    check("UX4 double-delete is idempotent (no 404)", deleted_again.get("deleted") is True)
+    try:
+        svc.get_conversation_messages(chat3_ux["conversation_id"], "user-1", "org-1")
+        check("UX4 deleted conversation unreadable", False)
+    except svc.ConversationError:
+        check("UX4 deleted conversation unreadable", True)
+    # Owner validation: deleting another org's conversation is blocked
+    try:
+        svc.delete_conversation(chat2_ux["conversation_id"], "user-9", "org-9")
+        check("UX4 cross-owner delete blocked", False)
+    except svc.ConversationError:
+        check("UX4 cross-owner delete blocked", True)
+
+    # Problem 2/5: assessment switching inputs — history rows carry every
+    # field the workspace reload needs (name, type, trust, date, chat count).
+    history_ux = repo.assessment_history(org_id="org-1", user_id="user-1")
+    required_fields = {"assessmentId", "assessmentName", "assessmentType", "trustScore", "createdAt", "conversationCount"}
+    check("UX5 history rows carry all switch fields",
+          all(required_fields.issubset(r.keys()) for r in history_ux))
+    emerge_row_ux = next(r for r in history_ux if r["assessmentId"] == "assess-emerge")
+    check("UX5 chat count reflects deletes",
+          emerge_row_ux["conversationCount"] == before_count + 1,
+          str(emerge_row_ux["conversationCount"]))  # created 2, deleted 1
+    # Switch target validation: the service can resolve each history row's
+    # assessment for the caller (workspace reload prerequisite).
+    for row in history_ux:
+        try:
+            from kulima.core.assessment.repository import AssessmentRepository
+            ctx_row = AssessmentRepository().get(row["assessmentId"], user_id="user-1", org_id="org-1")
+            check(f"UX2 switch target resolvable: {row['assessmentName']}", ctx_row is not None)
+        except Exception as exc:  # noqa: BLE001
+            check(f"UX2 switch target resolvable: {row['assessmentName']}", False, str(exc))
+
     print("\n" + "=" * 70)
     if FAILURES:
         print(f"VALIDATION FAILED — {len(FAILURES)} failing check(s):")

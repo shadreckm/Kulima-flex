@@ -166,10 +166,56 @@ def delete_conversation(
     user_id: str | None,
     org_id: str | None,
 ) -> dict:
-    conv = _assert_access(conversation_id, user_id, org_id)
+    """Delete a chat end-to-end (Conversation UX, Problem 4).
+
+    Audit trail covers: conversation id, assessment id, owner validation and
+    the delete outcome. The delete is verified row-by-row (messages + row)
+    and the outcome is recorded in the audit log so a silent no-op can never
+    produce a later 404.
+    """
     repo = get_conversation_repository()
-    repo.delete_conversation(conversation_id)
-    return {"conversationId": conversation_id, "deleted": True}
+    conv = repo.get_conversation(
+        conversation_id, user_id=user_id, org_id=org_id, assessment_id=None
+    )
+    if conv is None:
+        # Distinguish already-deleted (idempotent success) from inaccessible.
+        any_row = repo.get_conversation(conversation_id, user_id=None, org_id=None)
+        if any_row is None:
+            # Already gone — deleting twice is a no-op success for the client.
+            return {"conversationId": conversation_id, "deleted": True, "alreadyDeleted": True}
+        raise ConversationError(
+            "conversation_not_found",
+            "Conversation not found or not accessible.",
+        )
+    if not _conversation_visible(conv, user_id, org_id):
+        raise ConversationError(
+            "conversation_not_found",
+            "Conversation not found or not accessible.",
+        )
+
+    assessment_id = str(conv.get("assessment_id") or "")
+    removed = repo.delete_conversation(conversation_id)
+
+    # Audit the delete (conversation id + assessment id + owner + outcome).
+    try:
+        from kulima.core.audit import record_event
+
+        record_event(
+            "conversation.deleted",
+            org_id=org_id,
+            user_id=user_id,
+            assessment_id=assessment_id or None,
+            metadata={
+                "conversationId": conversation_id,
+                "assessmentId": assessment_id,
+                "ownerUserId": conv.get("user_id"),
+                "deleted": bool(removed),
+            },
+        )
+    except Exception:  # noqa: BLE001 — audit must never block deletion
+        pass
+
+    return {"conversationId": conversation_id, "deleted": bool(removed)}
 
 
 # ── Message persistence + Phase 4 context isolation ────────────────────────

@@ -93,7 +93,12 @@ function FlexPageInner() {
               </div>
             ) : null}
             <div className="flex-1 min-h-0 flex flex-col">
-              <ChatShell personaName="IC Analyst" runId={runId} assessmentId={assessmentContext?.assessmentId || null} />
+              <ChatShell
+                personaName="IC Analyst"
+                runId={runId}
+                assessmentId={assessmentContext?.assessmentId || null}
+                assessmentName={assessmentContext?.displayEntity || assessmentContext?.entityName || null}
+              />
             </div>
           </>
         ) : assessmentContext?.assessmentId ? (

@@ -11,7 +11,23 @@ interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: 
 import * as api from '../../lib/api'
 import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
 
-export default function ChatShell({ personaName, initialMessages, recommendationCard, runId, assessmentId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null; /** Assessment Context id — scopes every conversation (Phases 1–4). */ assessmentId?: string | null }) {
+export default function ChatShell({
+  personaName,
+  initialMessages,
+  recommendationCard,
+  runId,
+  assessmentId,
+  assessmentName,
+}: {
+  personaName: string
+  initialMessages?: Message[]
+  recommendationCard?: any
+  runId?: string | null
+  /** Assessment Context id — scopes every conversation (Phases 1–4). */
+  assessmentId?: string | null
+  /** Display name of the active assessment (sidebar header). */
+  assessmentName?: string | null
+}) {
   const [messages, setMessages] = useState<Message[]>(() => initialMessages || [])
   const [conversations, setConversations] = useState<api.AnalystConversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -79,16 +95,59 @@ export default function ChatShell({ personaName, initialMessages, recommendation
     setActiveConversationId(conversationId)
   }
 
-  function handleAssessmentSwitch(nextAssessmentId: string) {
-    if (nextAssessmentId === assessmentId) return
-    // Full context switch: clear local chat state; the conversation effect
-    // refetches only the target assessment's conversations (Phase 4).
+  async function refreshConversations() {
+    if (!assessmentId) return
+    try {
+      const res = await api.listConversations(assessmentId)
+      const convs = res.conversations || []
+      setConversations(convs)
+      // Keep the current selection when it still exists; otherwise fall back
+      // to the most recent conversation (handles the delete flow cleanly).
+      setActiveConversationId(prev => {
+        if (prev && convs.some(c => c.conversationId === prev)) return prev
+        return convs[0] ? convs[0].conversationId : null
+      })
+    } catch {
+      // best-effort refresh
+    }
+  }
+
+  // Problem 2/5: clicking an assessment loads the FULL workspace context —
+  // conversations → messages → decision snapshot → trust score → signals —
+  // by switching the shared Assessment Context. Every workspace listening on
+  // the context store (ContextPanel, Decision, Signals, Reports) reloads.
+  async function handleAssessmentSwitch(nextAssessmentId: string) {
+    if (!nextAssessmentId || nextAssessmentId === assessmentId) return
+    // Clear local chat state first so the target assessment's data loads fresh.
     setMessages([])
     setActiveConversationId(null)
     setConversations([])
-    window.dispatchEvent(
-      new CustomEvent('kulima:switch-assessment', { detail: { assessmentId: nextAssessmentId } }),
-    )
+    const { switchAssessmentContext } = await import('../../lib/assessment-store')
+    await switchAssessmentContext(nextAssessmentId)
+    // assessmentId prop changes when the context store updates; the effect
+    // refetches conversations + messages for the new assessment.
+  }
+
+  // Problem 1: [+ New Chat] — another conversation under the SAME assessment.
+  async function handleNewChat() {
+    if (!assessmentId) return
+    try {
+      const conv = await api.createConversation(assessmentId)
+      setConversations(prev => [conv, ...prev])
+      setActiveConversationId(conv.conversationId)
+    } catch (err) {
+      console.error('create conversation failed', err)
+    }
+  }
+
+  // Problem 1: [+ New Assessment] — landing page / upload workflow.
+  function handleNewAssessment() {
+    // Clear the active context so the landing page starts a clean intake;
+    // previous assessments remain reachable in the sidebar history.
+    import('../../lib/assessment-store').then(({ clearAssessmentContext }) => {
+      clearAssessmentContext()
+      window.location.href = '/'
+    })
   }
 
   // Scroll lock: detect user scroll
@@ -272,14 +331,19 @@ export default function ChatShell({ personaName, initialMessages, recommendation
 
   return (
     <div className="flex-1 min-h-0 flex gap-3">
-      {/* Phase 2/5/6: conversation sidebar */}
+      {/* Conversation UX: assessments primary, chats secondary */}
       {assessmentId ? (
-        <div className="hidden md:flex w-[230px] shrink-0">
+        <div className="hidden md:flex w-[240px] shrink-0">
           <ConversationSidebar
             assessmentId={assessmentId}
+            assessmentName={assessmentName}
             activeConversationId={activeConversationId}
+            conversations={conversations}
             onSelectConversation={selectConversation}
             onAssessmentSwitch={handleAssessmentSwitch}
+            onCreateConversation={handleNewChat}
+            onNewAssessment={handleNewAssessment}
+            onConversationChanged={refreshConversations}
           />
         </div>
       ) : null}
