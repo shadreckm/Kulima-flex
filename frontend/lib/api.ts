@@ -601,14 +601,176 @@ export function askICStream(runId: string, question: string, history: Array<any>
   }
 }
 
-export async function askSignals(runId: string, question: string, history: Array<any> = []): Promise<{ answer: string }> {
+export async function askSignals(runId: string, question: string, history: Array<any> = [], conversationId?: string | null, assessmentId?: string | null): Promise<{ answer: string }> {
   const res = await fetch(`${API_BASE}/api/v1/ask/signals`, {
     method: 'POST',
     headers: withAuth({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ runId, question, history }),
+    body: JSON.stringify({ runId, question, history, conversationId, assessmentId }),
   })
   if (!res.ok) throw new Error(`askSignals failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ answer: string }>(res, 'askSignals')
+}
+
+// ── Assessment-aware conversations (Phases 1–6) ────────────────────────────
+
+export interface AnalystConversation {
+  conversationId: string
+  assessmentId: string
+  runId: string | null
+  title: string
+  isDefault: boolean
+  messageCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AnalystAssessmentHistoryRow {
+  assessmentId: string
+  runId: string | null
+  assessmentName: string
+  assessmentType: string
+  trustScore: number | null
+  status: string
+  createdAt: string
+  updatedAt: string
+  conversationCount: number
+}
+
+export async function askICWithConversation(
+  runId: string,
+  question: string,
+  history: Array<any> = [],
+  conversationId?: string | null,
+  assessmentId?: string | null,
+): Promise<{ answer: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/ask/ic`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ runId, question, history, conversationId, assessmentId }),
+  })
+  if (!res.ok) throw new Error(`askIC failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ answer: string }>(res, 'askIC')
+}
+
+export function askICStreamWithConversation(
+  runId: string,
+  question: string,
+  history: Array<any> = [],
+  conversationId?: string | null,
+  assessmentId?: string | null,
+) {
+  const url = `${API_BASE}/api/v1/ask/ic/stream`
+  const controller = new AbortController()
+  const listeners: { [k: string]: Array<(ev: any) => void> } = { delta: [], complete: [], error: [] }
+  let closed = false
+
+  queueMicrotask(async () => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: withAuth({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ runId, question, history, conversationId, assessmentId }),
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        listeners.error.forEach(fn => fn(new Error(`stream failed: ${res.status} ${text}`)))
+        return
+      }
+      const reader = res.body!.getReader()
+      const dec = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        let idx = buf.indexOf('\n\n')
+        while (idx !== -1) {
+          const raw = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const lines = raw.split(/\r?\n/)
+          let ev: string | null = null
+          let data = ''
+          for (const line of lines) {
+            if (line.startsWith('event:')) ev = line.slice(6).trim()
+            else if (line.startsWith('data:')) data += line.slice(5)
+          }
+          if (ev) {
+            listeners[ev]?.forEach(fn => fn({ data }))
+          }
+          idx = buf.indexOf('\n\n')
+        }
+      }
+      listeners.complete.forEach(fn => fn({ data: '{}' }))
+    } catch (err) {
+      if (!closed) listeners.error.forEach(fn => fn(err))
+    }
+  })
+
+  return {
+    addEventListener: (name: string, handler: (ev: any) => void) => {
+      if (!listeners[name]) listeners[name] = []
+      listeners[name].push(handler)
+    },
+    close: () => {
+      closed = true
+      controller.abort()
+    },
+  }
+}
+
+export async function listConversations(assessmentId: string): Promise<{ assessmentId: string; conversations: AnalystConversation[] }> {
+  const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(assessmentId)}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`listConversations failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'listConversations')
+}
+
+export async function createConversation(assessmentId: string, title?: string): Promise<AnalystConversation> {
+  const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(assessmentId)}`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ title }),
+  })
+  if (!res.ok) throw new Error(`createConversation failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'createConversation')
+}
+
+export async function getConversationMessages(assessmentId: string, conversationId: string): Promise<{ conversation: AnalystConversation; messages: Array<{ id: number; role: string; content: string; createdAt: string }> }> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/conversations/${encodeURIComponent(assessmentId)}/${encodeURIComponent(conversationId)}`,
+    { headers: withAuth() },
+  )
+  if (!res.ok) throw new Error(`getConversationMessages failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'getConversationMessages')
+}
+
+export async function renameConversation(conversationId: string, title: string): Promise<{ conversationId: string; title: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'PATCH',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ title }),
+  })
+  if (!res.ok) throw new Error(`renameConversation failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'renameConversation')
+}
+
+export async function deleteConversation(conversationId: string): Promise<{ conversationId: string; deleted: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'DELETE',
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`deleteConversation failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'deleteConversation')
+}
+
+export async function getAssessmentChatHistory(limit = 50): Promise<{ assessments: AnalystAssessmentHistoryRow[] }> {
+  const res = await fetch(`${API_BASE}/api/v1/conversations/history?limit=${limit}`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getAssessmentChatHistory failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse(res, 'getAssessmentChatHistory')
 }
 
 export function askSignalsStream(runId: string, question: string, history: Array<any> = []) {

@@ -17,6 +17,7 @@ from .routers import (
     intelligence,
     ask_ic,
     ask_signals,
+    conversations,
     documents,
     outcomes,
     assessments,
@@ -98,6 +99,7 @@ app.include_router(assessments.router, prefix="/api/v1/assessments", tags=["asse
 app.include_router(intelligence.router, prefix="/api/v1/intelligence", tags=["intelligence"])
 app.include_router(ask_ic.router, prefix="/api/v1/ask", tags=["ask_ic"])
 app.include_router(ask_signals.router, prefix="/api/v1/ask", tags=["ask_signals"])
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(outcomes.router, prefix="/api/v1/outcomes", tags=["outcomes"])
 app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])

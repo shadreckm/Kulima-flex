@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import MessageList from '../MessageList/MessageList'
 import Composer from '../Composer/Composer'
+import ConversationSidebar from '../ConversationSidebar/ConversationSidebar'
 import { Card } from '../shadcn/Card'
 import { Button } from '../shadcn/Button'
 import { Badge } from '../shadcn/Badge'
@@ -10,9 +11,10 @@ interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: 
 import * as api from '../../lib/api'
 import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
 
-export default function ChatShell({ personaName, initialMessages, recommendationCard, runId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null }) {
-  const storageKey = `kulima_messages_${personaName.replace(/\s+/g, '_')}`
+export default function ChatShell({ personaName, initialMessages, recommendationCard, runId, assessmentId }: { personaName: string; initialMessages?: Message[]; recommendationCard?: any; runId?: string | null; /** Assessment Context id — scopes every conversation (Phases 1–4). */ assessmentId?: string | null }) {
   const [messages, setMessages] = useState<Message[]>(() => initialMessages || [])
+  const [conversations, setConversations] = useState<api.AnalystConversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [typing, setTyping] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
@@ -30,20 +32,64 @@ export default function ChatShell({ personaName, initialMessages, recommendation
     ? [{ role: 'system', content: useCaseCtx }]
     : []
 
+  // ── Phase 2/3: load conversations scoped to THIS assessment only ─────────
+  // Never loads another assessment's chats (Phase 4 isolation is enforced
+  // server-side; the sidebar list is keyed by assessmentId).
   useEffect(() => {
-    // load persisted messages
-    try {
-      const raw = localStorage.getItem(storageKey)
-      if (raw) setMessages(JSON.parse(raw))
-    } catch (e) {
-      // ignore
+    if (!assessmentId) {
+      setConversations([])
+      setActiveConversationId(null)
+      return
     }
-  }, [])
+    let cancelled = false
+    api.listConversations(assessmentId)
+      .then(res => {
+        if (cancelled) return
+        const convs = res.conversations || []
+        setConversations(convs)
+        const preferred = convs[0] || null
+        setActiveConversationId(preferred ? preferred.conversationId : null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [assessmentId])
 
+  // Load the selected conversation's server-persisted messages.
   useEffect(() => {
-    // persist
-    try { localStorage.setItem(storageKey, JSON.stringify(messages)) } catch (e) {}
-  }, [messages])
+    if (!assessmentId || !activeConversationId) {
+      if (!activeConversationId) setMessages([])
+      return
+    }
+    let cancelled = false
+    api.getConversationMessages(assessmentId, activeConversationId)
+      .then(res => {
+        if (cancelled) return
+        const serverMessages: Message[] = (res.messages || []).map(m => ({
+          id: `srv_${m.id}`,
+          role: (m.role === 'user' ? 'user' : 'assistant') as Message['role'],
+          content: m.content,
+        }))
+        setMessages(serverMessages)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [assessmentId, activeConversationId])
+
+  function selectConversation(conversationId: string) {
+    setActiveConversationId(conversationId)
+  }
+
+  function handleAssessmentSwitch(nextAssessmentId: string) {
+    if (nextAssessmentId === assessmentId) return
+    // Full context switch: clear local chat state; the conversation effect
+    // refetches only the target assessment's conversations (Phase 4).
+    setMessages([])
+    setActiveConversationId(null)
+    setConversations([])
+    window.dispatchEvent(
+      new CustomEvent('kulima:switch-assessment', { detail: { assessmentId: nextAssessmentId } }),
+    )
+  }
 
   // Scroll lock: detect user scroll
   useEffect(() => {
@@ -133,11 +179,11 @@ export default function ChatShell({ personaName, initialMessages, recommendation
       let receivedText = ''
       try {
         if (personaName.toLowerCase().includes('ic')) {
-          stream = api.askICStream(runId, text, contextHistory)
+          stream = api.askICStreamWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
         } else if (personaName.toLowerCase().includes('signal')) {
           stream = api.askSignalsStream(runId, text, contextHistory)
         } else {
-          stream = api.askICStream(runId, text, contextHistory)
+          stream = api.askICStreamWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
         }
       } catch (e) {
         stream = null
@@ -167,6 +213,10 @@ export default function ChatShell({ personaName, initialMessages, recommendation
           setIsStreaming(false)
           setTyping(false)
           try { stream.close() } catch (e) {}
+          // Refresh sidebar counters after the exchange completes.
+          if (assessmentId) {
+            api.listConversations(assessmentId).then(res => setConversations(res.conversations || [])).catch(() => {})
+          }
         }
         const onError = (err: any) => {
           console.error('stream error', err)
@@ -186,9 +236,9 @@ export default function ChatShell({ personaName, initialMessages, recommendation
         return
       }
 
-      // Fallback: non-streaming API
+      // Fallback: non-streaming API (conversation-bound)
       try {
-        const res = personaName.toLowerCase().includes('signal') ? await api.askSignals(runId, text, contextHistory) : await api.askIC(runId, text, contextHistory)
+        const res = await api.askICWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
         if (res?.answer) {
           simulateSSEStreaming(res.answer)
         } else {
@@ -218,50 +268,69 @@ export default function ChatShell({ personaName, initialMessages, recommendation
     setHasNewMessages(false)
   }
 
-  return (
-    <Card className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-      <header className="p-4 border-b border-[#DDE6F0] flex items-center justify-between bg-white">
-        <div>
-          <h2 className="text-sm font-extrabold text-slate-900">{personaName}</h2>
-          <p className="text-xs text-slate-500">
-            {runId
-              ? `Evaluation context loaded${useCaseCtx ? ` · ${loadUseCase()?.label ?? ''}` : ''}`
-              : 'No evaluation selected'}
-          </p>
-        </div>
-        {recommendationCard ? (
-          <div className="flex items-center gap-3">
-            <Badge className="bg-green-100 text-green-800">{recommendationCard.verdict}</Badge>
-            <div className="text-xs text-gray-600">Score: {recommendationCard.score}</div>
-          </div>
-        ) : null}
-      </header>
+  const activeConversation = conversations.find(c => c.conversationId === activeConversationId) || null
 
-      <div ref={containerRef} className="flex-1 p-4 overflow-auto scroll-area" style={{ minHeight: 0 }}>
-        <MessageList messages={messages} streamingMessageId={streamingMessageId} showCursor={isStreaming} />
-        {typing && (
-          <div className="mt-3">
-            <div className="kulima-message-assistant inline-block p-2 opacity-90">
-              <TypingDots />
+  return (
+    <div className="flex-1 min-h-0 flex gap-3">
+      {/* Phase 2/5/6: conversation sidebar */}
+      {assessmentId ? (
+        <div className="hidden md:flex w-[230px] shrink-0">
+          <ConversationSidebar
+            assessmentId={assessmentId}
+            activeConversationId={activeConversationId}
+            onSelectConversation={selectConversation}
+            onAssessmentSwitch={handleAssessmentSwitch}
+          />
+        </div>
+      ) : null}
+
+      <Card className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
+        <header className="p-4 border-b border-[#DDE6F0] flex items-center justify-between bg-white">
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900">
+              {personaName}
+              {activeConversation ? <span className="text-slate-400 font-medium"> — {activeConversation.title}</span> : null}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {runId
+                ? `Assessment context loaded${activeConversation ? ` · ${activeConversation.title}` : ''}`
+                : 'No evaluation selected'}
+            </p>
+          </div>
+          {recommendationCard ? (
+            <div className="flex items-center gap-3">
+              <Badge className="bg-green-100 text-green-800">{recommendationCard.verdict}</Badge>
+              <div className="text-xs text-gray-600">Score: {recommendationCard.score}</div>
             </div>
+          ) : null}
+        </header>
+
+        <div ref={containerRef} className="flex-1 p-4 overflow-auto scroll-area" style={{ minHeight: 0 }}>
+          <MessageList messages={messages} streamingMessageId={streamingMessageId} showCursor={isStreaming} />
+          {typing && (
+            <div className="mt-3">
+              <div className="kulima-message-assistant inline-block p-2 opacity-90">
+                <TypingDots />
+              </div>
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+
+        {/* New messages floating button */}
+        {!autoScroll && hasNewMessages && (
+          <div className="absolute left-1/2 transform -translate-x-1/2 bottom-20">
+            <Button onClick={scrollToLatest} className="shadow">↓ New messages</Button>
           </div>
         )}
-        <div ref={endRef} />
-      </div>
 
-      {/* New messages floating button */}
-      {!autoScroll && hasNewMessages && (
-        <div className="absolute left-1/2 transform -translate-x-1/2 bottom-20">
-          <Button onClick={scrollToLatest} className="shadow">↓ New messages</Button>
+        <div id="documents" className="kulima-composer sticky bottom-0 bg-white border-t">
+          <div className="p-3">
+            <Composer onSend={handleSend} runId={runId} />
+          </div>
         </div>
-      )}
-
-      <div id="documents" className="kulima-composer sticky bottom-0 bg-white border-t">
-        <div className="p-3">
-          <Composer onSend={handleSend} runId={runId} />
-        </div>
-      </div>
-    </Card>
+      </Card>
+    </div>
   )
 }
 

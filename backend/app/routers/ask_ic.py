@@ -6,6 +6,7 @@ from ..services import assessment_adapter
 from ..core.auth import OrgContext, require_permission
 from ..core.rate_limit import check_rate_limit
 from ..services.demo_chat import doc_intelligence_ask_ic_answer
+from ..services.conversation_service import ConversationError
 from kulima.core.billing.service import BillingBlocked, assert_feature
 from kulima.core.orgs.models import Permission
 import asyncio
@@ -24,6 +25,70 @@ def _enforce_ask_ic_feature(current: OrgContext) -> None:
         assert_feature(current.org_id, "ask_ic")
     except BillingBlocked as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
+
+
+def _resolve_conversation_history(
+    req: AskRequest,
+    current: OrgContext,
+) -> tuple[list[dict], str | None]:
+    """Phase 4 context isolation for Ask IC.
+
+    When the request carries a conversationId, the conversation's assessment
+    must match the run's assessment. History is then loaded from the
+    conversation store (server-side, authoritative) instead of trusting the
+    client payload. Returns (history, conversation_id).
+    """
+    conversation_id = getattr(req, "conversationId", None)
+    if not conversation_id:
+        return (req.history or []), None
+    try:
+        from ..services import conversation_service
+
+        result = conversation_service.get_conversation_messages(
+            conversation_id, current.user_id, current.org_id
+        )
+        conv = result.get("conversation") or {}
+        messages = result.get("messages") or []
+
+        # The run must belong to the conversation's assessment.
+        req_assessment = getattr(req, "assessmentId", None)
+        if req_assessment and conv.get("assessment_id") != req_assessment:
+            raise ConversationError(
+                "context_mismatch",
+                "Conversation does not belong to this assessment.",
+            )
+
+        # Persist the new user question into the conversation.
+        conversation_service.append_message(
+            conversation_id, "user", req.question, current.user_id, current.org_id
+        )
+
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in messages
+            if m.get("role") in ("user", "assistant")
+        ]
+        return history, conversation_id
+    except ConversationError as conv_exc:
+        raise HTTPException(status_code=404, detail={"error": True, "message": str(conv_exc)})
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — isolation failure must not kill the answer
+        _log.warning("Conversation history resolution failed (%s); using client history.", exc)
+        return (req.history or []), None
+
+
+def _persist_assistant_answer(conversation_id: str | None, answer: str, current: OrgContext) -> None:
+    if not conversation_id:
+        return
+    try:
+        from ..services import conversation_service
+
+        conversation_service.append_message(
+            conversation_id, "assistant", answer, current.user_id, current.org_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Assistant answer persistence failed: %s", exc)
 
 _DOC_INTEL_WAIT_ANSWER = (
     "**📄 Document Intelligence Mode**\n\n"
@@ -83,13 +148,17 @@ async def post_ask_ic(req: AskRequest, current: OrgContext = Depends(require_per
     # Run still processing — return Document Intelligence Mode answer from whatever is stored
     if info.get("status") != "completed":
         answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
+        history, conversation_id = _resolve_conversation_history(req, current)
+        _persist_assistant_answer(conversation_id, answer, current)
         return {"answer": answer}
 
+    history, conversation_id = _resolve_conversation_history(req, current)
     try:
-        answer = ask_ic(req.runId, req.question, req.history, user_id=current.user_id)
+        answer = ask_ic(req.runId, req.question, history, user_id=current.user_id)
     except Exception as exc:
         _log.warning("ask_ic live failed in router (%s) — activating Document Intelligence Mode.", exc)
         answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
+    _persist_assistant_answer(conversation_id, answer, current)
     return {"answer": answer}
 
 
@@ -106,12 +175,16 @@ async def post_ask_ic_stream(req: AskRequest, current: OrgContext = Depends(requ
     # Run still processing — stream Document Intelligence Mode answer
     if info.get('status') != 'completed':
         answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
+        history, conversation_id = _resolve_conversation_history(req, current)
+        _persist_assistant_answer(conversation_id, answer, current)
     else:
+        history, conversation_id = _resolve_conversation_history(req, current)
         try:
-            answer = ask_ic(req.runId, req.question, req.history, user_id=current.user_id)
+            answer = ask_ic(req.runId, req.question, history, user_id=current.user_id)
         except Exception as exc:
             _log.warning("ask_ic live failed in stream router (%s) — activating Document Intelligence Mode.", exc)
             answer = _make_doc_intel_fallback(req.runId, req.question, current.user_id, current.org_id)
+        _persist_assistant_answer(conversation_id, answer, current)
 
     async def event_stream():
         # Simple tokenizer by words + spaces to keep whitespace

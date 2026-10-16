@@ -759,6 +759,21 @@ def _sync_assessment(
             },
         )
 
+        # Phase 3 (assessment-aware conversations): when a new assessment
+        # completes, provision its own default AI Analyst conversation.
+        # Previous assessments' chats are never loaded into it.
+        try:
+            from .conversation_service import ensure_assessment_conversation
+
+            ensure_assessment_conversation(
+                str(assessment_id),
+                run_id=str(ctx.run_id) if ctx and ctx.run_id else None,
+                user_id=(ctx.created_by if ctx else None),
+                org_id=org_id,
+            )
+        except Exception as conv_exc:  # noqa: BLE001 — chat provisioning must not fail the run
+            _log.warning("Default conversation provisioning failed for %s: %s", assessment_id, conv_exc)
+
         # Audit (Phase 4): signals + decision generation per assessment.
         if signals:
             record_event(

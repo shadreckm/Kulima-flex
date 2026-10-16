@@ -35,6 +35,21 @@ class AskRequest(BaseModel):
     runId: str
     question: str
     history: Optional[List[dict]] = Field(default_factory=list)
+    # Assessment-aware conversations (Phases 1–4): optional conversation
+    # binding. When present the run is cross-checked against the
+    # conversation's assessment so context can never leak across assessments.
+    conversationId: Optional[str] = None
+    assessmentId: Optional[str] = None
+
+
+class ConversationCreateRequest(BaseModel):
+    """Phase 6: create a new conversation inside an assessment."""
+    title: Optional[str] = None
+
+
+class ConversationRenameRequest(BaseModel):
+    """Phase 6: rename a conversation."""
+    title: str
 
 
 class AssessmentPatchRequest(BaseModel):
