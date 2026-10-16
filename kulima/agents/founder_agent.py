@@ -25,7 +25,9 @@ SOURCE PRIORITY (critical):
 3. External web research (Source C) is corroborative only. NEVER allow a web source to overrule an uploaded document.
 The entity profile, track record, and leadership evidence in the uploaded documents ARE founder evidence.
 If the uploaded documents establish identity, roles, and history, the founder is NOT 'unknown' and has NOT
-'no operational history'. State uncertainty only where the documents themselves are silent.
+'no operational history'. If external verification is absent but uploaded documents contain founder details,
+say "Founder not independently verified" instead of "No founder information" or "Unknown founder".
+State uncertainty only where the documents themselves are silent.
 Return JSON with keys:
 summary (string),
 scores: [{name, score 0-100, rationale, confidence 0-1}],

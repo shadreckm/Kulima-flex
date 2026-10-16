@@ -199,6 +199,36 @@ _ROADMAP_SECTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CUSTOMER_DISCOVERY_RE = re.compile(
+    r"(?:^|\n)\s*(?:customer discovery|customer research|user research|market research|"
+    r"customer interviews|user interviews|customer validation|customer insights)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_PILOTS_RE = re.compile(
+    r"(?:^|\n)\s*(?:pilot|pilots|pilot program|pilot project|pilot phase|beta|beta test|"
+    r"trial|trial period|mvp|minimum viable product)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_PARTNERSHIPS_RE = re.compile(
+    r"(?:^|\n)\s*(?:partnership|partner|strategic partner|alliance|collaboration|joint venture|"
+    r"distribution partner|channel partner)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_REVENUE_INDICATORS_RE = re.compile(
+    r"(?:^|\n)\s*(?:revenue|revenue stream|revenue model|monetization|pricing|ar?r|mrr|"
+    r"monthly recurring revenue|annual recurring revenue|sales| bookings|churn)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_TRACTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:traction|growth|users|customers|active users|adoption|metrics|kpi|"
+    r"key performance indicator|performance|usage|engagement)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
 _BULLET_SPLIT_RE = re.compile(r"[;•·]|\s+[–-]\s+", re.IGNORECASE)
 
 _RISK_KEYWORDS = (
@@ -451,6 +481,16 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
 
     roadmaps = _section_values(_ROADMAP_SECTION_RE, split_items=True)
 
+    customer_discovery = _section_values(_CUSTOMER_DISCOVERY_RE, split_items=True)
+
+    pilots = _section_values(_PILOTS_RE, split_items=True)
+
+    partnerships = _section_values(_PARTNERSHIPS_RE, split_items=True)
+
+    revenue_indicators = _section_values(_REVENUE_INDICATORS_RE, split_items=True)
+
+    traction = _section_values(_TRACTION_RE, split_items=True)
+
     risks = _section_values(_RISK_SECTION_RE, split_items=True)
     for kw in _RISK_KEYWORDS:
         if len(risks) >= _MAX_LIST_ITEMS:
@@ -472,6 +512,11 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
         funding_asks=funding_asks,
         revenue_models=revenue_models,
         roadmaps=roadmaps,
+        customer_discovery=customer_discovery,
+        pilots=pilots,
+        partnerships=partnerships,
+        revenue_indicators=revenue_indicators,
+        traction=traction,
         sections=_extract_sections(raw),
     )
 
@@ -629,7 +674,7 @@ def merge_extractions(extractions: Iterable[AssessmentExtraction]) -> Assessment
             candidate = getattr(extraction, field_name)
             setattr(merged, field_name, best_field(current, candidate))
         rich = extraction.intelligence
-        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks", "funding_asks", "revenue_models", "roadmaps"):
+        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks", "funding_asks", "revenue_models", "roadmaps", "customer_discovery", "pilots", "partnerships", "revenue_indicators", "traction"):
             existing = getattr(merged_intelligence, key)
             for item in getattr(rich, key):
                 if item not in existing:

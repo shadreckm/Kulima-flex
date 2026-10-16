@@ -365,16 +365,16 @@ def entity_decision(score: float, entity_type: str) -> Tuple[str, str]:
 # ── Phase 6: Entity-adaptive report titles ───────────────────────────────
 
 ENTITY_REPORT_TITLES: Dict[str, str] = {
-    "startup": "Startup Assessment Report",
-    "ngo": "NGO Capacity Report",
-    "development_program": "Development Program Review",
-    "government_program": "Government Program Review",
+    "startup": "Investment Committee Report",
+    "ngo": "Institutional Capacity Report",
+    "development_program": "Program Performance Review",
+    "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
-    "research_institution": "Research Institution Review",
-    "social_enterprise": "Social Enterprise Impact Report",
-    "foundation": "Foundation Program Review",
-    "cooperative": "Cooperative Assessment Report",
-    "farmer_organization": "Farmer Organization Review",
+    "research_institution": "Institutional Capacity Report",
+    "social_enterprise": "Investment Committee Report",
+    "foundation": "Institutional Capacity Report",
+    "cooperative": "Investment Committee Report",
+    "farmer_organization": "Program Performance Review",
 }
 
 

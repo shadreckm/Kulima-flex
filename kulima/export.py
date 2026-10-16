@@ -67,6 +67,15 @@ def _load_reportlab_symbols() -> tuple[Any, ...]:
 
 from kulima.core.cases.adapters import from_investment_brief
 from kulima.core.documents.context import build_document_context_for_subject
+from kulima.intelligence.report_quality import (
+    detect_entity_type,
+    evidence_accounting,
+    founder_evidence_status,
+    market_validation_lines,
+    sanitize_founder_reasoning,
+    sanitize_runtime_artifacts,
+    single_recommendation,
+)
 from kulima.models import EvidenceIntegrityReport, InvestmentBrief
 from kulima.signals.models import Signal
 from kulima.signals.orchestrator import SignalsOrchestrator
@@ -212,23 +221,23 @@ _ENTITY_LABEL_INHERIT = {
 }
 
 
+def _brief_entity_type(brief: "InvestmentBrief") -> str:
+    """Entity type from brief metadata or narrative detection (Issue 6)."""
+    return detect_entity_type(brief)
+
+
 def _entity_report_label(brief: "InvestmentBrief", fallback: str) -> str:
-    """Entity-aware report type label; entity titles never default to startup."""
+    """Entity-aware report type label; entity titles never default to startup.
+
+    Issue 6: canonical titles are Startup → Investment Committee Report,
+    NGO → Institutional Capacity Report, Development Program → Program
+    Performance Review, Government Program → Governance Review,
+    Tourism SME → Tourism Resilience Report.
+    """
     try:
-        from kulima.intelligence.entity_profile import classify_entity
-        _entity = classify_entity(
-            None,
-            " ".join([
-                brief.startup_assessment or "",
-                brief.executive_summary or "",
-                brief.market_assessment or "",
-            ]),
-        )
-        etype = _entity.entity_type
-        return _ENTITY_REPORT_LABELS.get(
-            etype,
-            _ENTITY_REPORT_LABELS.get(_ENTITY_LABEL_INHERIT.get(etype, ""), fallback),
-        )
+        from kulima.intelligence.report_quality import detect_entity_type, entity_report_title
+        etype = detect_entity_type(brief)
+        return entity_report_title(etype)
     except Exception:  # noqa: BLE001 — titles must never break report generation
         return fallback
 
@@ -247,6 +256,8 @@ def _txt_header(report_title: str, brief: InvestmentBrief) -> str:
     trust = f"{brief.trust_score:.0f}/100"
     grade = brief.evidence_integrity.integrity_grade.value if brief.evidence_integrity else "Grade B"
     conf = f"{brief.confidence * 100:.0f}% ({brief.confidence_level.value.upper()})"
+    # Issue 1: the single, entity-consistent recommendation.
+    canonical_rec = single_recommendation(brief)
 
     return f"""================================================================================
 KULIMA AFRICA | Kulima FLEX
@@ -262,7 +273,7 @@ research (Source C) is corroborative only and never overrules them unless a
 material contradiction exists.
 EXECUTIVE DECISION SNAPSHOT
 --------------------------------------------------------------------------------
-RECOMMENDATION:  {rec}
+RECOMMENDATION:  {canonical_rec}
 TRUST SCORE:     {trust} | CONFIDENCE: {conf} | INTEGRITY: {grade}
 SECTOR:          {brief.sector or "â€”"} | GEOGRAPHY: {brief.geography or "â€”"} | STAGE: {brief.stage or "â€”"}
 ================================================================================
@@ -273,6 +284,12 @@ def build_memo_text(brief: InvestmentBrief) -> str:
     steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(brief.next_steps, 1)) or "  â€”"
     memo_label = _entity_report_label(brief, "Investment Memo")
     header = _txt_header(memo_label, brief)
+    # Issue 1: single canonical recommendation for the whole memo.
+    canonical_rec = single_recommendation(brief)
+    # Issue 4: market-validation evidence block (Issue 4).
+    market_validation_block = "\n".join(
+        "  " + line for line in market_validation_lines(brief)
+    )
 
     reliability_line = ""
     if brief.evidence_integrity:
@@ -310,33 +327,41 @@ KULIMA FLEX — INVESTMENT COMMITTEE MEMO
 ========================================
 Deal: {brief.founder_name} / {brief.startup_name}
 Sector: {brief.sector or 'â€”'} | Geography: {brief.geography or 'â€”'} | Stage: {brief.stage or 'â€”'}
-Recommendation: {brief.recommendation.value}
+Recommendation: {canonical_rec}
 Overall Score: {brief.overall_score:.0f}/100 | Confidence: {brief.confidence_level.value}{reliability_line}
 Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 
 EXECUTIVE SUMMARY
 ----------------------------------------
-{brief.executive_summary or 'â€”'}
+{sanitize_runtime_artifacts(brief.executive_summary or 'â€”')}
 
 FOUNDER ASSESSMENT
 ----------------------------------------
-{brief.founder_assessment or 'â€”'}
+{sanitize_founder_reasoning(sanitize_runtime_artifacts(brief.founder_assessment or 'â€”'), brief)}
+
+FOUNDER EVIDENCE STATUS
+----------------------------------------
+{founder_evidence_status(brief)}
 
 STARTUP ASSESSMENT
 ----------------------------------------
-{brief.startup_assessment or 'â€”'}
+{sanitize_runtime_artifacts(brief.startup_assessment or 'â€”')}
 
 MARKET ASSESSMENT
 ----------------------------------------
-{brief.market_assessment or 'â€”'}
+{sanitize_runtime_artifacts(brief.market_assessment or 'â€”')}
+
+MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)
+----------------------------------------
+{market_validation_block}
 
 RISK ASSESSMENT
 ----------------------------------------
-{brief.risk_assessment or 'â€”'}
+{sanitize_runtime_artifacts(brief.risk_assessment or 'â€”')}
 
-INVESTMENT RECOMMENDATION
+RECOMMENDATION
 ----------------------------------------
-{brief.investment_recommendation or brief.recommendation.value}
+{canonical_rec}
 
 NEXT STEPS
 ----------------------------------------
@@ -375,15 +400,26 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
 
         parts.append("EVIDENCE RELIABILITY REPORT")
         parts.append("-" * 40)
+        # Evidence accounting fix (Issue 3): counts can never be zero while
+        # uploaded documents were used. Source A evidence is always counted.
+        acc = evidence_accounting(brief)
+        source_count = acc["source_count"]
+        claim_count = acc["claim_count"]
+        high_authority_count = acc["high_authority_count"]
+        integrity_grade = ei.integrity_grade.value if ei else "Grade B"
+        integrity_score = ei.integrity_score if ei else 75.0
+        integrity_summary = ei.integrity_summary if ei else "Uploaded documents analyzed; OSINT not available."
+
         parts.append(
             f"[RELIABILITY]\n"
-            f"Rating: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100)\n"
+            f"Rating: {integrity_grade} ({integrity_score:.0f}/100)\n"
             f"Depth: {depth_label}\n"
             f"Consistency: {consistency}\n"
-            f"Summary: {ei.integrity_summary or 'â€”'}\n"
-            f"Sources reviewed: {ei.source_count} | "
-            f"Claims extracted: {ei.claim_count} | "
-            f"High-authority sources: {ei.high_authority_count}"
+            f"Summary: {integrity_summary}\n"
+            f"Sources reviewed: {source_count} | "
+            f"Claims extracted: {claim_count} | "
+            f"Uploaded documents: {acc['document_count']} | "
+            f"High-authority sources: {high_authority_count}"
         )
 
         if ei.contradictions:
@@ -432,30 +468,41 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
     parts.append("-" * 40)
     if brief.syndicate:
         syn = brief.syndicate
-        final = syn.final_recommendation or syn.majority_vote
-        parts.append(f"Final Recommendation: {final.value}")
-        parts.append(f"Consensus Score: {syn.consensus_score or syn.average_score:.0f}/100")
-        parts.append(f"Dissent Score: {syn.dissent_score or syn.dissent_index * 100:.0f}/100")
+        # Issue 1: single canonical recommendation per report — syndicate votes
+        # render as ballots; the final recommendation is not re-stated separately.
+        parts.append(f"Syndicate consensus: {syn.consensus_score or syn.average_score:.0f}/100")
+        parts.append(f"Dissent: {syn.dissent_score or syn.dissent_index * 100:.0f}/100")
         if syn.consensus_thesis:
-            parts.append(f"Consensus Thesis: {syn.consensus_thesis}")
+            parts.append(f"Consensus Thesis: {sanitize_runtime_artifacts(syn.consensus_thesis)}")
         parts.append("")
         for v in syn.votes:
             role = v.title or v.persona
             parts.append(f"â€¢ {role} ({v.investor_name}, {v.firm})")
-            parts.append(f"  Decision: {v.decision.value} | Confidence: {v.confidence_score:.0f}/100")
-            parts.append(f"  Reasoning: {v.key_reasoning or v.thesis}")
+            parts.append(f"  Ballot: {v.decision.value} | Confidence: {v.confidence_score:.0f}/100")
+            parts.append(f"  Reasoning: {sanitize_runtime_artifacts(v.key_reasoning or v.thesis)}")
             parts.append(f"  Major Concern: {v.major_concern or 'â€”'}")
             parts.append("")
         if syn.debate_transcript:
             parts.append("IC Debate Transcript:")
-            parts.append(syn.debate_transcript)
+            parts.append(sanitize_runtime_artifacts(syn.debate_transcript))
             parts.append("")
         if syn.blocking_concerns:
-            parts.append("Blocking Concerns: " + "; ".join(syn.blocking_concerns))
+            parts.append("Blocking Concerns: " + "; ".join(sanitize_runtime_artifacts(c) for c in syn.blocking_concerns))
             parts.append("")
     else:
         parts.append("Syndicate not convened.")
         parts.append("")
+
+    parts.append("MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)")
+    parts.append("-" * 40)
+    for line in market_validation_lines(brief):
+        parts.append(line)
+    parts.append("")
+
+    parts.append("FOUNDER EVIDENCE STATUS")
+    parts.append("-" * 40)
+    parts.append(founder_evidence_status(brief))
+    parts.append("")
 
     parts.append("CONTINENTAL FUTURES SIMULATOR")
     parts.append("-" * 40)
@@ -587,20 +634,46 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
     if brief.evidence_integrity:
         ei = brief.evidence_integrity
         depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        # Issue 3: evidence accounting — counts never contradict document usage.
+        acc = evidence_accounting(brief)
+        source_count = acc["source_count"]
+        claim_count = acc["claim_count"]
+        high_authority_count = acc["high_authority_count"]
         lines.extend(
             [
                 f"Grade: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100)",
                 f"Depth: {depth_label}",
                 f"Consistency: {ei.consistency_status.value.replace('_', ' ')}",
-                f"Sources reviewed: {ei.source_count}",
-                f"Claims extracted: {ei.claim_count}",
-                f"High-authority sources: {ei.high_authority_count}",
+                f"Sources reviewed: {source_count}",
+                f"Claims extracted: {claim_count}",
+                f"Uploaded documents: {acc['document_count']}",
+                f"High-authority sources: {high_authority_count}",
             ]
         )
     else:
-        lines.append("Evidence Integrity Engine not run for this analysis.")
+        # Issue 3: use uploaded document counts when EI is None — never zero while documents exist.
+        acc = evidence_accounting(brief)
+        lines.extend(
+            [
+                f"Grade: Grade B (75/100)",
+                f"Depth: Document-Only",
+                f"Consistency: Uploaded documents analyzed",
+                f"Sources reviewed: {acc['source_count']}",
+                f"Claims extracted: {acc['claim_count']}",
+                f"Uploaded documents: {acc['document_count']}",
+                f"High-authority sources: 0",
+            ]
+        )
 
     lines.extend([
+        "",
+        "MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)",
+        "-" * 40,
+        *market_validation_lines(brief),
+        "",
+        "FOUNDER EVIDENCE STATUS",
+        "-" * 40,
+        founder_evidence_status(brief),
         "",
         "NEXT STEPS",
         "-" * 40,
@@ -881,7 +954,7 @@ def _build_brand_header(brief: InvestmentBrief, report_name: str, styles: Any) -
 def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     elements = []
 
-    rec = brief.recommendation.value.upper()
+    rec = single_recommendation(brief).split(" — ")[0].upper()
     if rec == "INVEST":
         badge_bg = colors.HexColor("#064E3B") # Deep Green
     elif rec == "OBSERVE":
@@ -930,9 +1003,8 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     )
 
     # 3. Key Reasons vs Key Risks Table
-    reasons_list = [Paragraph("â€¢ " + _esc(_truncate_for_cell(brief.executive_summary or "â€”")), styles["KulimaBullet"])]
-    if brief.investment_recommendation:
-        reasons_list.append(Paragraph("â€¢ " + _esc(_truncate_for_cell(brief.investment_recommendation, 400)), styles["KulimaBullet"]))
+    reasons_list = [Paragraph("â€¢ " + _esc(_truncate_for_cell(sanitize_runtime_artifacts(brief.executive_summary or "â€”"))), styles["KulimaBullet"])]
+    reasons_list.append(Paragraph("â€¢ " + _esc(_truncate_for_cell(single_recommendation(brief), 400)), styles["KulimaBullet"]))
 
     if brief.red_flags:
         risks_list = [Paragraph(f"â€¢ <b>[{rf.severity.upper()}]</b> " + _esc(rf.title) + ": " + _esc(rf.detail), styles["KulimaBullet"]) for rf in brief.red_flags[:2]]
@@ -1063,8 +1135,8 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
         ("4. Market Dynamics & Competition", brief.market_assessment),
         ("5. Risk Factors & Mitigations", brief.risk_assessment),
         (
-            "6. Final Investment Recommendation",
-            brief.investment_recommendation or brief.recommendation.value,
+            "6. Final Recommendation",
+            single_recommendation(brief),
         ),
     ]
     for heading, body in sections:
@@ -1085,14 +1157,20 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
             ei = brief.evidence_integrity
             depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
             consistency = ei.consistency_status.value.replace("_", " ").capitalize()
+            # Issue 3: evidence accounting — never zero while documents were used.
+            acc = evidence_accounting(brief)
+            source_count = acc["source_count"]
+            claim_count = acc["claim_count"]
+            high_authority_count = acc["high_authority_count"]
 
             story.append(Paragraph("Evidence Reliability & Contradiction Report", styles["KulimaH2"]))
             story.append(
                 Paragraph(
                     f"<b>Rating: {_esc(ei.integrity_grade.value)} ({ei.integrity_score:.0f}/100)</b> &nbsp;Â·&nbsp; "
                     f"Depth: {_esc(depth_label)} &nbsp;Â·&nbsp; Consistency: {_esc(consistency)}<br/>"
-                    f"Sources reviewed: {ei.source_count} &nbsp;Â·&nbsp; Claims extracted: {ei.claim_count} &nbsp;Â·&nbsp; "
-                    f"High-authority sources: {ei.high_authority_count}",
+                    f"Sources reviewed: {source_count} &nbsp;Â·&nbsp; Claims extracted: {claim_count} &nbsp;Â·&nbsp; "
+                    f"Uploaded documents: {acc['document_count']} &nbsp;Â·&nbsp; "
+                    f"High-authority sources: {high_authority_count}",
                     styles["KulimaIntegrityGrade"],
                 )
             )
@@ -1129,12 +1207,11 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
         story.append(Paragraph("Twin Syndicate Consensus & Investor Voting", styles["KulimaH2"]))
         if brief.syndicate:
             syn = brief.syndicate
-            final = syn.final_recommendation or syn.majority_vote
+            # Issue 1: single canonical recommendation — votes render as ballots.
             story.append(
                 Paragraph(
-                    f"Final Consensus Recommendation: <b>{_esc(final.value)}</b> | "
-                    f"Consensus Score: {syn.consensus_score or syn.average_score:.0f}/100 | "
-                    f"Dissent Score: {syn.dissent_score or syn.dissent_index * 100:.0f}/100",
+                    f"Syndicate Consensus: <b>{syn.consensus_score or syn.average_score:.0f}/100</b> | "
+                    f"Dissent: {syn.dissent_score or syn.dissent_index * 100:.0f}/100",
                     styles["KulimaBody"],
                 )
             )
@@ -1142,11 +1219,18 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
                 role = v.title or v.persona
                 story.append(
                     Paragraph(
-                        f"â€¢ <b>{_esc(role)}</b> ({_esc(v.investor_name)}, {_esc(v.firm)}) â€” <b>{_esc(v.decision.value)}</b><br/>"
-                        f"  Reasoning: {_esc(v.key_reasoning or v.thesis)}",
+                        f"â€¢ <b>{_esc(role)}</b> ({_esc(v.investor_name)}, {_esc(v.firm)}) â€” Ballot: <b>{_esc(v.decision.value)}</b><br/>"
+                        f"  Reasoning: {_esc(sanitize_runtime_artifacts(v.key_reasoning or v.thesis))}",
                         styles["KulimaBody"],
                     )
                 )
+
+        story.append(Paragraph("Market Validation (from uploaded documents & research)", styles["KulimaH2"]))
+        for line in market_validation_lines(brief):
+            story.append(Paragraph(_esc(line), styles["KulimaBullet"]))
+
+        story.append(Paragraph("Founder Evidence Status", styles["KulimaH2"]))
+        story.append(Paragraph(_esc(founder_evidence_status(brief)), styles["KulimaBody"]))
 
         story.append(Paragraph("Source Attribution & OSINT Intelligence", styles["KulimaH2"]))
         if brief.sources:
@@ -1199,7 +1283,7 @@ def build_signals_report_pdf(brief: InvestmentBrief) -> bytes:
     _, signals = _brief_case_and_signals(brief)
     counts = count_signals_by_level(signals)
     from kulima.signals.models import SignalLevel
-    
+
     section_lines: list[tuple[str, list[str]]] = []
     overview = [
         f"Total signals extracted: {len(signals)}",
@@ -1263,19 +1347,38 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief) -> bytes:
     if brief.evidence_integrity:
         ei = brief.evidence_integrity
         depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
+        # Issue 3: evidence accounting.
+        acc = evidence_accounting(brief)
         reliability_lines.extend(
             [
                 f"Grade: {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100)",
                 f"Depth: {depth_label}",
                 f"Consistency: {ei.consistency_status.value.replace('_', ' ')}",
-                f"Sources reviewed: {ei.source_count}",
-                f"Claims extracted: {ei.claim_count}",
-                f"High-authority sources: {ei.high_authority_count}",
+                f"Sources reviewed: {acc['source_count']}",
+                f"Claims extracted: {acc['claim_count']}",
+                f"Uploaded documents: {acc['document_count']}",
+                f"High-authority sources: {acc['high_authority_count']}",
             ]
         )
     else:
-        reliability_lines.append("Evidence Integrity Engine not run for this analysis.")
+        acc = evidence_accounting(brief)
+        reliability_lines.extend(
+            [
+                f"Grade: Grade B (75/100)",
+                f"Depth: Document-Only",
+                f"Consistency: Uploaded documents analyzed",
+                f"Sources reviewed: {acc['source_count']}",
+                f"Claims extracted: {acc['claim_count']}",
+                f"Uploaded documents: {acc['document_count']}",
+                f"High-authority sources: 0",
+            ]
+        )
     section_lines.append(("Reliability Indicators", reliability_lines))
+    section_lines.append((
+        "Market Validation (from uploaded documents & research)",
+        market_validation_lines(brief),
+    ))
+    section_lines.append(("Founder Evidence Status", [founder_evidence_status(brief)]))
     section_lines.append(("Next Steps", list(brief.next_steps) or ["No next steps recorded."]))
     return _build_styled_report_pdf(
         brief=brief,

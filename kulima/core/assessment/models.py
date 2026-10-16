@@ -92,6 +92,12 @@ class DocumentIntelligence(BaseModel):
     funding_asks: List[str] = Field(default_factory=list)
     revenue_models: List[str] = Field(default_factory=list)
     roadmaps: List[str] = Field(default_factory=list)
+    # Market validation and traction indicators
+    customer_discovery: List[str] = Field(default_factory=list)
+    pilots: List[str] = Field(default_factory=list)
+    partnerships: List[str] = Field(default_factory=list)
+    revenue_indicators: List[str] = Field(default_factory=list)
+    traction: List[str] = Field(default_factory=list)
     # Phase 1: structured document-section extraction — what the uploaded
     # document actually contains, keyed by canonical section category.
     sections: Dict[str, List[str]] = Field(default_factory=dict)

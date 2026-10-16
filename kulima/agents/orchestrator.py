@@ -425,6 +425,14 @@ class IntelligenceOrchestrator:
             f"(most likely: {future.most_likely_case or 'Base Case'})."
         )
 
+        # Issue 4: surface agent-extracted market-validation categories in the brief.
+        _mv = startup_result.metadata.get("market_validation") or {}
+        if isinstance(_mv, dict) and _mv:
+            explainability.append(
+                "Market validation extracted from uploaded documents: "
+                + ", ".join(sorted(_mv.keys())) + "."
+            )
+
         progress(1.0, "Intelligence complete — IC pack ready.")
         brief_out = InvestmentBrief(
             founder_name=founder,

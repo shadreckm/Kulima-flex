@@ -128,7 +128,9 @@ Return ONLY valid JSON with these exact keys:
                 temperature=0.55,
             )
             decision = _parse_syndicate_decision(
-                str(data.get("decision") or data.get("vote") or "Observe")
+                data.get("decision") or data.get("vote") or "Observe"
+                if isinstance(data, dict)
+                else "Observe"
             )
             confidence = _clamp(
                 float(
@@ -176,7 +178,9 @@ Return ONLY valid JSON with these exact keys:
                 concerns=[concern] if concern else [],
                 conditions=[],
             )
-        except Exception as exc:
+        except Exception:
+            # Issue 5: never leak Python exception text into reports. The vote
+            # degrades to a cautious OBSERVE ballot with neutral wording.
             return InvestorVote(
                 archetype_id=archetype["id"],
                 investor_name=archetype["name"],
@@ -188,9 +192,16 @@ Return ONLY valid JSON with these exact keys:
                 confidence_score=40.0,
                 conviction=0.4,
                 score=40.0,
-                key_reasoning=f"Abstaining pending model recovery: {exc}",
+                key_reasoning=(
+                    "Ballot degraded to a cautious observe position: full model "
+                    "reasoning was unavailable for this seat. Deterministic "
+                    "evidence scoring still applies."
+                ),
                 major_concern="Insufficient signal to underwrite",
-                thesis=f"Abstaining pending model recovery: {exc}",
+                thesis=(
+                    "Ballot degraded to a cautious observe position: full model "
+                    "reasoning was unavailable for this seat."
+                ),
                 concerns=["Insufficient signal to underwrite"],
                 conditions=[],
             )
@@ -262,3 +273,58 @@ Return ONLY valid JSON with these exact keys:
         mean = sum(vals) / len(vals)
         var = sum((x - mean) ** 2 for x in vals) / len(vals)
         return math.sqrt(var)
+
+
+def _parse_syndicate_decision(raw: object) -> Recommendation:
+    """Parse a syndicate decision into a Recommendation enum — never raises (Issue 5).
+
+    Accepts any model output shape (str, int, dict, None, garbage) and always
+    returns a valid ballot: INVEST / PASS / OBSERVE. Unparseable values fall
+    back to OBSERVE so the IC never dies on an unexpected LLM payload.
+    """
+    try:
+        if raw is None:
+            return Recommendation.OBSERVE
+        # Models sometimes return nested structures or ints.
+        if isinstance(raw, dict):
+            raw = raw.get("decision") or raw.get("vote") or raw.get("choice")
+        if isinstance(raw, bool):
+            return Recommendation.INVEST if raw else Recommendation.PASS
+        if isinstance(raw, (int, float)):
+            # Numeric ballot encoding: 2=invest, 1=observe, 0=pass.
+            try:
+                idx = int(raw)
+            except (ValueError, OverflowError):
+                return Recommendation.OBSERVE
+            return {0: Recommendation.PASS, 1: Recommendation.OBSERVE, 2: Recommendation.INVEST}.get(
+                idx, Recommendation.OBSERVE
+            )
+        text = str(raw).strip()
+        if not text:
+            return Recommendation.OBSERVE
+        # Tolerate JSON-in-string payloads like '"Invest"' or '{"decision": "Invest"}'.
+        if text.startswith(("{", '"')):
+            import json as _json
+            try:
+                parsed = _json.loads(text)
+                if isinstance(parsed, dict):
+                    parsed = parsed.get("decision") or parsed.get("vote") or parsed.get("choice")
+                text = str(parsed or "").strip()
+            except (ValueError, TypeError):
+                text = text.strip('"\' ')
+        normalized = text.strip().lower().strip(".!")
+        # Word-alias matching (substring-tolerant for chatty model outputs).
+        if any(alias in normalized for alias in ("invest", "fund", "approve", "accept", "commit", "co-invest", "yes")):
+            return Recommendation.INVEST
+        if any(alias in normalized for alias in ("pass", "reject", "decline", "no deal", "no-vote", "abstain-no")):
+            return Recommendation.PASS
+        if any(alias in normalized for alias in ("observe", "review", "hold", "watch", "monitor", "maybe", "consider", "abstain")):
+            return Recommendation.OBSERVE
+        return Recommendation.OBSERVE
+    except Exception:  # noqa: BLE001 — parsing must never break the syndicate
+        return Recommendation.OBSERVE
+
+
+def _clamp(value: float, min_val: float, max_val: float) -> float:
+    """Clamp a value between min and max bounds."""
+    return max(min_val, min(max_val, value))

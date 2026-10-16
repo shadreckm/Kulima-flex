@@ -23,8 +23,19 @@ SOURCE PRIORITY (critical):
 Market validation, customers, revenue model, and traction stated in the uploaded documents ARE product and
 market evidence. Do NOT conclude 'no product', 'no market validation', or 'no evidence' when the uploaded
 documents describe them. State uncertainty only where the documents themselves are silent.
+
+MARKET VALIDATION EXTRACTION (required):
+From the uploaded documents (pitch decks, business plans, annual reports), explicitly extract and report —
+with the document name cited — every one of these categories that the documents speak to:
+  Customer Discovery · Validation · Pilots · Partnerships · Revenue Indicators · Traction
+Return them in the 'market_validation' JSON key as an object mapping category -> array of evidence
+statements (each 1 sentence, citing the document). A category absent from the documents must be omitted
+from the object entirely (do not fabricate). If NO category is present, return {} — the deterministic
+signal layer will then flag the validation gap honestly.
+
 Return JSON:
 summary, sector, geography, stage,
+market_validation: {category: [string, ...]},
 scores: [{name, score, rationale, confidence}] with names:
 Market Opportunity, Competitive Position, Business Model, Growth Potential, Investment Readiness,
 findings: [string],
@@ -110,6 +121,13 @@ tam_narrative (string)
             for rf in data.get("red_flags", [])
         ]
 
+        market_validation = {}
+        mv_raw = data.get("market_validation") if isinstance(data, dict) else None
+        if isinstance(mv_raw, dict):
+            for k, v in mv_raw.items():
+                if isinstance(v, list) and v:
+                    market_validation[str(k)] = [str(x) for x in v][:6]
+
         return AgentResult(
             agent_name=self.name,
             summary=str(data.get("summary", "Startup assessment complete.")),
@@ -125,6 +143,7 @@ tam_narrative (string)
                 "stage": data.get("stage", ""),
                 "tam_narrative": data.get("tam_narrative", ""),
                 "business_model_thesis": data.get("business_model_thesis", ""),
+                "market_validation": market_validation,
                 "source_a_documents": uploaded_docs.strip() or None,
             },
         )
