@@ -52,10 +52,14 @@ function ResearchPageInner() {
   const sources: any[] = data?.research?.sources ?? []
   const findings: string[] = data?.research?.tavily_findings ?? (data?.research?.summary ? [data.research.summary] : [])
   const entities: any[] = data?.research?.entities ?? (data?.displayEntity ? [{ name: data.displayEntity, label: data.assessmentTypeLabel }] : [])
-  const progress = data?.research?.progress ?? (status === 'complete' || status === 'completed' ? 100 : (status === 'running' ? 50 : 20))
+  const researchSummary: string = data?.research?.summary ?? data?.research?.synthesis ?? ''
+
+  // Phase 2: Research completion is only when actual usable output exists
+  const hasUsableResearch = researchSummary && researchSummary.length > 50 && (sources.length > 0 || findings.length > 0)
+  const progress = data?.research?.progress ?? (hasUsableResearch ? 100 : (status === 'running' ? 50 : 20))
 
   // Calculate progress steps (typed for AssessmentProgress)
-  const pipelineDone = status === 'complete' || status === 'completed'
+  const pipelineDone = hasUsableResearch
   const progressSteps: Array<{ key: string; label: string; status: 'complete' | 'pending' | 'in_progress' }> = [
     { key: 'created', label: 'Assessment Created', status: 'complete' },
     { key: 'research', label: 'Research Complete', status: pipelineDone ? 'complete' : (status === 'running' ? 'in_progress' : 'pending') },
@@ -64,7 +68,6 @@ function ResearchPageInner() {
     { key: 'decision', label: 'Decision Ready', status: pipelineDone ? 'complete' : 'pending' },
     { key: 'report', label: 'Report Ready', status: pipelineDone ? 'complete' : 'pending' },
   ]
-  const researchSummary: string = data?.research?.summary ?? data?.research?.synthesis ?? ''
   const docIntelMode: boolean = data?.research?.mode === 'document_intelligence'
   const docIntelFindings: string[] = data?.research?.document_findings ?? (docIntelMode && data?.extractedTextPreview ? [data.extractedTextPreview] : [])
 
@@ -153,11 +156,11 @@ function ResearchPageInner() {
                   <span>{entities.length} entit{entities.length !== 1 ? 'ies' : 'y'}</span>
                 </div>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider border ${
-                  status === 'complete' || status === 'completed' ? 'bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]' :
+                  hasUsableResearch ? 'bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]' :
                   status === 'running' ? 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]' :
                   'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
                 }`}>
-                  {String(status)}
+                  {hasUsableResearch ? 'COMPLETE' : String(status).toUpperCase()}
                 </span>
               </div>
             </div>

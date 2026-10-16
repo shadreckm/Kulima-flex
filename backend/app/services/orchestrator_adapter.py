@@ -719,6 +719,15 @@ def _sync_assessment(
                 trust_score=trust_score,
             )
             research.setdefault("mode", "document_intelligence")
+        # Phase 2: Only mark research as completed when usable output exists
+        research_summary = research.get("summary") or (brief.executive_summary if brief else "")
+        research_sources = research.get("sources") or ([source.model_dump(mode="json") for source in brief.sources] if brief else [])
+        research_findings = research.get("tavily_findings") or ([source.snippet for source in brief.sources if source.snippet] if brief else [])
+        has_usable_research = research_summary and len(research_summary) > 50 and (len(research_sources) > 0 or len(research_findings) > 0)
+
+        research_status = "completed" if has_usable_research else ("running" if status == "running" else "pending")
+        research_progress = 100 if has_usable_research else (50 if status == "running" else 20)
+
         AssessmentRepository().update_outputs(
             assessment_id,
             trust_score=trust_score,
@@ -726,15 +735,15 @@ def _sync_assessment(
             decision=decision or None,
             status=AssessmentStatus.COMPLETE,
             research=research or {
-                "status": "completed",
+                "status": research_status,
                 "mode": "ai_assisted",
                 "sourceCount": len(brief.sources) if brief else 0,
                 "documentCount": len(documents) if ctx else 0,
-                "sources": [source.model_dump(mode="json") for source in brief.sources] if brief else [],
-                "tavily_findings": [source.snippet for source in brief.sources if source.snippet] if brief else [],
+                "sources": research_sources,
+                "tavily_findings": research_findings,
                 "entities": [{"name": ctx.organization_name or ctx.startup_name, "label": ctx.type_label()}] if ctx else [],
-                "summary": brief.executive_summary if brief else "Research completed.",
-                "progress": 100,
+                "summary": research_summary or "Research in progress.",
+                "progress": research_progress,
                 "providerUsed": research.get("providerUsed", "document_intelligence"),
             },
         )

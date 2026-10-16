@@ -61,6 +61,58 @@ _brief_repo = IntelligenceRepository()
 _ingestion_service = DocumentIngestionService()
 
 
+# ── Phase 3: PDF/Binary Sanitization ────────────────────────────────────────────
+
+
+def _sanitize_extracted_text(text: str) -> str:
+    """Filter PDF metadata and binary fragments from extracted text.
+
+    Prevents %PDF markers, CreationDate, Creator:, xref, obj, streams,
+    Mozilla metadata, and raw binary fragments from entering research,
+    signals, reports, and decision logic.
+    """
+    if not text:
+        return text
+
+    # Remove PDF-specific markers
+    pdf_patterns = [
+        "%PDF-",
+        "CreationDate:",
+        "Creator:",
+        "Producer:",
+        "Author:",
+        "Subject:",
+        "Keywords:",
+        "xref",
+        "obj",
+        "endobj",
+        "stream",
+        "endstream",
+        "startxref",
+        "trailer",
+        "Root",
+        "Info",
+        "Size",
+    ]
+
+    lines = text.split("\n")
+    filtered_lines = []
+    for line in lines:
+        line_lower = line.lower()
+        # Skip lines containing PDF metadata markers
+        if any(pattern.lower() in line_lower for pattern in pdf_patterns):
+            continue
+        # Skip lines that look like binary fragments (many non-printable chars)
+        if len([c for c in line if ord(c) < 32 or ord(c) > 126]) > len(line) * 0.3:
+            continue
+        # Skip Mozilla/Adobe metadata
+        if any(k in line_lower for k in ("mozilla/", "adobe pdf", "acrobat", "distiller")):
+            continue
+        filtered_lines.append(line)
+
+    return "\n".join(filtered_lines)
+
+
 def _calculate_trust_engine_scores(
     filename: str,
     doc_type: DocumentType,
@@ -385,7 +437,7 @@ def save_uploaded_file(
     # STEP 2: Extract Metadata & Ingest Chunks
     adapter = UploadFileAdapter(filename, content)
     bundles = _ingestion_service.ingest_files([adapter], uploaded_by=user_id)
-    
+
     extracted_text = ""
     chunks_count = 0
     doc_type = DocumentType.GENERIC
@@ -394,6 +446,8 @@ def save_uploaded_file(
         doc_type = bundle.document.doc_type
         chunks_count = len(bundle.chunks)
         extracted_text = "\n\n".join(ch.text for ch in bundle.chunks if ch.text)
+        # Phase 3: Filter PDF metadata and binary fragments
+        extracted_text = _sanitize_extracted_text(extracted_text)
         # Persist chunks
         _doc_repo.save_chunks(bundle.chunks)
 

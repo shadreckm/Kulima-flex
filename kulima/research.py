@@ -65,11 +65,7 @@ class ResearchEngine:
     ) -> list[SourceAttribution]:
         if self._disabled or self.client is None:
             return []
-        africa_boost = (
-            " Africa startup founder venture funding market"
-            if self.africa_focus
-            else ""
-        )
+        africa_boost = " Africa" if self.africa_focus else ""
         # Phase 6 — Tavily safety choke point. Every outbound query passes
         # through the guard so uploaded-document contents, financial figures,
         # contact details and other sensitive strings never leave the platform.
@@ -93,11 +89,14 @@ class ResearchEngine:
         for item in results:
             url = item.get("url") or ""
             relevance = float(item.get("score") or 0.5)
+            snippet = self._summarize_snippet(item.get("content") or "")
+            if not snippet:
+                continue
             sources.append(
                 SourceAttribution(
                     title=item.get("title") or "Untitled Source",
                     url=url,
-                    snippet=self._summarize_snippet(item.get("content") or ""),
+                    snippet=snippet,
                     relevance=relevance,
                     source_type=self._source_type(url),
                     confidence_score=self._confidence_score(url, relevance),
@@ -105,22 +104,50 @@ class ResearchEngine:
             )
         return self._rank_sources(sources)
 
-    def research_founder(self, founder: str, startup: str) -> list[SourceAttribution]:
-        queries = [
-            f"{founder} {startup} founder entrepreneur biography funding",
-            f"{founder} LinkedIn X Twitter reputation leadership previous companies",
-            f"{founder} {startup} investor announcement interview Africa",
-            f"{founder} {startup} awards accelerator board profile",
-        ]
+    def research_founder(
+        self,
+        founder: str,
+        startup: str,
+        *,
+        entity_type: str = "startup",
+    ) -> list[SourceAttribution]:
+        if (entity_type or "startup") == "startup":
+            queries = [
+                f"{founder} {startup} founder entrepreneur biography funding",
+                f"{founder} LinkedIn X Twitter reputation leadership previous companies",
+                f"{founder} {startup} investor announcement interview Africa",
+                f"{founder} {startup} awards accelerator board profile",
+            ]
+        else:
+            queries = [
+                f"{founder} {startup} director leadership biography",
+                f"{founder} {startup} programme program organization profile",
+                f"{founder} {startup} interview Africa",
+                f"{founder} {startup} awards board profile",
+            ]
         return self._dedupe(self._multi(queries))
 
-    def research_startup(self, founder: str, startup: str) -> list[SourceAttribution]:
-        queries = [
-            f"{startup} company product business model customers Africa",
-            f"{startup} competitors market size traction revenue funding",
-            f"{startup} {founder} startup launch growth customers",
-            f"{startup} funding round investors valuation Africa",
-        ]
+    def research_startup(
+        self,
+        founder: str,
+        startup: str,
+        *,
+        entity_type: str = "startup",
+    ) -> list[SourceAttribution]:
+        if (entity_type or "startup") == "startup":
+            queries = [
+                f"{startup} company product business model customers Africa",
+                f"{startup} competitors market size traction revenue funding",
+                f"{startup} {founder} startup launch growth customers",
+                f"{startup} funding round investors valuation Africa",
+            ]
+        else:
+            queries = [
+                f"{startup} organization programmes programs services Africa",
+                f"{startup} partners beneficiaries outcomes impact",
+                f"{startup} {founder} organization profile",
+                f"{startup} annual report strategy implementation",
+            ]
         return self._dedupe(self._multi(queries))
 
     def research_market(
@@ -139,10 +166,16 @@ class ResearchEngine:
             entity_research_queries(entity_type, startup, sector_hint, country)
         )
         # Always append the generic market sweep for coverage.
-        entity_queries += [
-            f"{startup} {sector_hint} Africa market opportunity TAM SAM regulation",
-            f"{sector_hint or startup} Africa competition market size",
-        ]
+        if (entity_type or "startup") == "startup":
+            entity_queries += [
+                f"{startup} {sector_hint} Africa market opportunity TAM SAM regulation",
+                f"{sector_hint or startup} Africa competition market size",
+            ]
+        else:
+            entity_queries += [
+                f"{startup} {sector_hint} Africa implementation partners outcomes",
+                f"{sector_hint or startup} Africa programme landscape",
+            ]
         return self._dedupe(self._multi(entity_queries))
 
     def research_risks(self, founder: str, startup: str) -> list[SourceAttribution]:

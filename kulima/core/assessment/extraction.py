@@ -181,6 +181,24 @@ _BUDGET_SECTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_FUNDING_ASK_RE = re.compile(
+    r"(?:^|\n)\s*(?:funding ask|funding request|investment ask|capital (?:requirement|needed)|"
+    r"seeking|raise|round|investment sought)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_REVENUE_MODEL_RE = re.compile(
+    r"(?:^|\n)\s*(?:revenue model|business model|income model|monetization|"
+    r"how we make money|pricing model|revenue streams?)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
+_ROADMAP_SECTION_RE = re.compile(
+    r"(?:^|\n)\s*(?:roadmap|milestones|implementation plan|timeline|workplan|work plan|"
+    r"phase|phases|key milestones|go-live)\s*[:\-–]?\s*([^\n]{3,300})",
+    re.IGNORECASE,
+)
+
 _BULLET_SPLIT_RE = re.compile(r"[;•·]|\s+[–-]\s+", re.IGNORECASE)
 
 _RISK_KEYWORDS = (
@@ -208,7 +226,8 @@ _SECTION_PATTERN_TEXT = (
     "monitoring framework|monitoring and evaluation|m&e|logframe|logical framework|"
     "results framework|outcomes|results|indicators|targets|"
     "budget|financial summary|cost estimate|partnerships?|partners|stakeholders|"
-    "governance|board|management team|organisational structure|organizational structure|institutional arrangements"
+    "governance|board|management team|organisational structure|organizational structure|institutional arrangements|"
+    "programs?|projects?|activities?|services?|products?|beneficiaries|customers?|clients?"
 )
 
 _DOCUMENT_SECTIONS_RE = re.compile(
@@ -233,6 +252,11 @@ _SECTION_CATEGORY_MAP: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("budget", ("budget", "financial summary", "cost estimate")),
     ("partnerships", ("partnership", "partner", "stakeholder")),
     ("governance", ("governance", "board", "management team", "organisational structure", "organizational structure", "institutional arrangements")),
+    ("programs", ("program", "programme", "programs", "programmes", "activities", "interventions")),
+    ("services", ("service", "services", "offerings", "deliverables")),
+    ("products", ("product", "products", "solution", "solutions")),
+    ("beneficiaries", ("beneficiary", "beneficiaries", "target beneficiaries", "target population")),
+    ("customers", ("customer", "customers", "client", "clients", "user", "users")),
 )
 
 
@@ -421,6 +445,12 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
             budgets.append(val)
     budgets = budgets[:_MAX_LIST_ITEMS]
 
+    funding_asks = _section_values(_FUNDING_ASK_RE)
+
+    revenue_models = _section_values(_REVENUE_MODEL_RE)
+
+    roadmaps = _section_values(_ROADMAP_SECTION_RE, split_items=True)
+
     risks = _section_values(_RISK_SECTION_RE, split_items=True)
     for kw in _RISK_KEYWORDS:
         if len(risks) >= _MAX_LIST_ITEMS:
@@ -439,6 +469,9 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
         objectives=_section_values(_OBJECTIVE_SECTION_RE),
         outcomes=_section_values(_OUTCOME_SECTION_RE),
         risks=risks,
+        funding_asks=funding_asks,
+        revenue_models=revenue_models,
+        roadmaps=roadmaps,
         sections=_extract_sections(raw),
     )
 
@@ -596,7 +629,7 @@ def merge_extractions(extractions: Iterable[AssessmentExtraction]) -> Assessment
             candidate = getattr(extraction, field_name)
             setattr(merged, field_name, best_field(current, candidate))
         rich = extraction.intelligence
-        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks"):
+        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks", "funding_asks", "revenue_models", "roadmaps"):
             existing = getattr(merged_intelligence, key)
             for item in getattr(rich, key):
                 if item not in existing:

@@ -14,6 +14,13 @@ class DueDiligenceAgent(BaseAgent):
     SYSTEM = """You are a McKinsey + top-tier VC diligence lead for African investments.
 Produce an IC-ready diligence readout covering team, product, traction proxies, legal/regulatory,
 capital structure unknowns, and go-to-market realism.
+
+SOURCE PRIORITY (critical):
+1. Uploaded documents (Source A) are the PRIMARY evidence base — cite them FIRST and by name.
+2. Connected systems (Source B) next.
+3. External web research (Source C) is corroborative only. NEVER allow a web source to overrule an uploaded document unless there is a material contradiction — if one exists, state it explicitly.
+Never conclude that 'no evidence exists' or that the entity is 'unknown' when uploaded documents are present. The business plan IS evidence. The annual report IS evidence. The proposal IS evidence.
+
 Return JSON:
 summary,
 scores: [{name, score, rationale, confidence}] names:
@@ -32,6 +39,8 @@ diligence_grade (A|B|C|D)
         context: dict | None = None,
     ) -> AgentResult:
         context = context or {}
+        entity_profile = context.get("entity_profile") or {}
+        uploaded_docs = self._uploaded_evidence_block(entity_profile)
         # Prefer orchestrator-provided OSINT — avoid duplicate Tavily round-trips
         pooled = ResearchEngine._dedupe(list(sources or []))
         corpus = ResearchEngine.evidence_corpus(pooled)
@@ -45,7 +54,7 @@ diligence_grade (A|B|C|D)
         try:
             data = self.llm.complete_json(
                 system=self.SYSTEM,
-                user=f"Founder: {founder}\nStartup: {startup}\nPrior agents:{prior}\n\nEvidence:\n{corpus}",
+                user=f"Founder: {founder}\nStartup: {startup}\n\n{uploaded_docs}Prior agents:{prior}\nEvidence (Source C OSINT, corroborative only):\n{corpus}",
             )
         except Exception as exc:
             import logging
@@ -114,5 +123,27 @@ diligence_grade (A|B|C|D)
             metadata={
                 "diligence_grade": data.get("diligence_grade", "C"),
                 "open_questions": data.get("open_questions", []),
+                "source_a_documents": uploaded_docs.strip() or None,
             },
         )
+
+    @staticmethod
+    def _uploaded_evidence_block(entity_profile: dict) -> str:
+        """Render uploaded-document evidence (Source A) ahead of OSINT evidence."""
+        docs = entity_profile.get("documentClassifications") or []
+        if not docs:
+            return ""
+        lines = ["Uploaded Document Evidence (Source A, PRIMARY — cite these first by name):"]
+        for d in docs:
+            filename = d.get("filename", "unnamed document")
+            doc_class = d.get("docClass", "document")
+            summary = d.get("summary", "")
+            line = f"- {doc_class}: {filename}"
+            if summary:
+                line += f" — {summary}"
+            lines.append(line)
+        extracted = entity_profile.get("extractedInsights") or {}
+        if extracted:
+            insights = "\n".join(f"- {k}: {v}" for k, v in extracted.items() if v)
+            lines.append(f"Extracted entity facts from Source A:\n{insights}")
+        return "\n".join(lines) + "\n\n"

@@ -211,6 +211,9 @@ class DocumentIngestionService:
                     chunks: list[Tuple[int | None, str]] = []
                     for i, page in enumerate(reader.pages):
                         page_text = page.extract_text() or ""
+                        from kulima.core.documents.text_clean import sanitize_extracted_text
+
+                        page_text = sanitize_extracted_text(page_text)
                         if page_text.strip():
                             chunks.append((i + 1, None, page_text))
                     if chunks:
@@ -229,9 +232,12 @@ class DocumentIngestionService:
                 try:
                     fallback_text = raw_bytes.decode("utf-8", errors="ignore")
                     printable = "".join(ch for ch in fallback_text if ch.isprintable() or ch in "\n\r\t")
+                    from kulima.core.documents.text_clean import sanitize_extracted_text
+
+                    printable = sanitize_extracted_text(printable)
                     if len(printable.strip()) >= 100:
                         _log.info(
-                            "PDF text layer empty for %s; using raw-decode fallback (%d chars)",
+                            "PDF text layer empty for %s; using sanitized raw-decode fallback (%d chars)",
                             filename, len(printable),
                         )
                         return [(None, "Raw text fallback", printable)]

@@ -126,3 +126,88 @@ async def start_assessment_run(
         raise _handle_error(exc)
 
 
+@router.get("/run/{run_id}")
+async def resolve_assessment_from_run(
+    run_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Resolve the assessment_id from a run_id (numeric or UUID).
+
+    This enables legacy run-based feedback to be resolved to the correct Assessment Context.
+    """
+    try:
+        # Try to resolve through the assessment adapter
+        result = assessment_adapter.resolve_assessment_from_run(run_id, current.user_id, org_id=current.org_id)
+        if result:
+            return {"assessment_id": result}
+        raise HTTPException(
+            status_code=404,
+            detail={"error": True, "message": f"Run ID {run_id} not found or not associated with an assessment."},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.get("/{assessment_id}/feedback")
+async def get_assessment_feedback(
+    assessment_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Get all feedback entries for a specific assessment."""
+    check_rate_limit(current.user_id, "assessment:feedback_get")
+    try:
+        records = assessment_adapter.get_feedback_for_assessment(
+            assessment_id, user_id=current.user_id, org_id=current.org_id
+        )
+        return {
+            "feedback": [
+                {
+                    "id": r.id,
+                    "runId": r.run_id,
+                    "userName": r.user_name,
+                    "rating": r.rating,
+                    "comment": r.comment,
+                    "createdAt": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in records
+            ],
+            "total": len(records),
+            "assessmentId": assessment_id,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.post("/{assessment_id}/feedback")
+async def save_assessment_feedback(
+    assessment_id: str,
+    payload: dict,
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Save feedback for a specific assessment."""
+    check_rate_limit(current.user_id, "assessment:feedback")
+    rating = payload.get("rating")
+    comment = payload.get("comment", "")
+    user_name = payload.get("userName", current.user_id)
+
+    if rating is None:
+        raise HTTPException(status_code=400, detail={"error": True, "message": "rating is required"})
+
+    try:
+        feedback_id = assessment_adapter.save_feedback_for_assessment(
+            assessment_id,
+            user_name,
+            rating,
+            comment,
+            user_id=current.user_id,
+            org_id=current.org_id,
+        )
+        if not feedback_id:
+            raise HTTPException(status_code=500, detail={"error": True, "message": "feedback could not be saved"})
+        return {"ok": True, "assessmentId": assessment_id, "rating": rating, "feedbackId": feedback_id}
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+

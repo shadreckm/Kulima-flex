@@ -797,6 +797,32 @@ export async function deleteRun(runId: number | string): Promise<{ ok: boolean; 
 }
 
 export async function submitRunFeedback(runId: number | string, payload: RunFeedbackPayload): Promise<{ ok: boolean; runId: number | string; rating: number }> {
+  // Try to resolve assessmentId from runId first
+  let resolvedAssessmentId: string | null = null
+  try {
+    const workspaceRes = await fetch(`${API_BASE}/api/v1/assessment-workspace/run/${encodeURIComponent(String(runId))}`, {
+      headers: withAuth(),
+    })
+    if (workspaceRes.ok) {
+      const workspace = await parseJsonResponse<{ assessment_id: string }>(workspaceRes, 'resolveAssessmentFromRun')
+      resolvedAssessmentId = workspace.assessment_id
+    }
+  } catch (e) {
+    // If resolution fails, fall back to legacy run-based endpoint
+  }
+
+  if (resolvedAssessmentId) {
+    // Use assessment-centric endpoint
+    const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(resolvedAssessmentId)}/feedback`, {
+      method: 'POST',
+      headers: withAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) throw new Error(`submitRunFeedback failed: ${res.status} ${await readResponseText(res)}`)
+    return parseJsonResponse<{ ok: boolean; runId: number | string; rating: number }>(res, 'submitRunFeedback')
+  }
+
+  // Fallback to legacy run-based endpoint
   const res = await fetch(`${API_BASE}/api/v1/intelligence/${encodeURIComponent(String(runId))}/feedback`, {
     method: 'POST',
     headers: withAuth({ 'Content-Type': 'application/json' }),
@@ -841,6 +867,29 @@ export async function listAllFeedback(limit = 100): Promise<{ feedback: Feedback
   })
   if (!res.ok) throw new Error(`listAllFeedback failed: ${res.status} ${await readResponseText(res)}`)
   return parseJsonResponse<{ feedback: FeedbackRecord[]; total: number }>(res, 'listAllFeedback')
+}
+
+// ── Assessment-Centric Feedback ───────────────────────────────────────────────────────────────
+
+export async function submitAssessmentFeedback(
+  assessmentId: string,
+  payload: RunFeedbackPayload,
+): Promise<{ ok: boolean; assessmentId: string; rating: number }> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}/feedback`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(`submitAssessmentFeedback failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ ok: boolean; assessmentId: string; rating: number }>(res, 'submitAssessmentFeedback')
+}
+
+export async function getAssessmentFeedback(assessmentId: string): Promise<{ feedback: FeedbackRecord[]; total: number; assessmentId: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/assessments/${encodeURIComponent(assessmentId)}/feedback`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getAssessmentFeedback failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ feedback: FeedbackRecord[]; total: number; assessmentId: string }>(res, 'getAssessmentFeedback')
 }
 
 // ── Outcome Tracking & Decision Learning ─────────────────────────────────────

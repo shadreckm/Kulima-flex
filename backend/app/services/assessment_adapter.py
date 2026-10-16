@@ -911,3 +911,89 @@ def remove_collaborator(
         metadata={"targetUser": target_user},
     )
     return {"removed": True, "assessmentId": assessment_id}
+
+
+# ── Run → Assessment Resolution (Feedback Phase 1) ────────────────────────
+
+
+def resolve_assessment_from_run(
+    run_id: str,
+    user_id: Optional[str],
+    *,
+    org_id: Optional[str] = None,
+) -> Optional[str]:
+    """Resolve the assessment_id from a run_id (numeric or UUID).
+
+    This enables legacy run-based feedback to be resolved to the correct Assessment Context.
+    """
+    try:
+        # First try direct lookup by run_id
+        ctx = _repo.get_by_run_id(run_id, user_id=user_id, org_id=org_id)
+        if ctx:
+            return ctx.assessment_id
+        # If run_id is numeric, try legacy integer lookup
+        if str(run_id).isdigit():
+            ctx = _repo.get_by_run_id(int(run_id), user_id=user_id, org_id=org_id)
+            if ctx:
+                return ctx.assessment_id
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("resolve_assessment_from_run failed: %s", exc)
+    return None
+
+
+# ── Assessment Feedback (Feedback Phase 1) ────────────────────────────────────
+
+
+def get_feedback_for_assessment(
+    assessment_id: str,
+    user_id: Optional[str],
+    *,
+    org_id: Optional[str] = None,
+) -> list:
+    """Get all feedback entries for a specific assessment."""
+    from kulima.db import IntelligenceRepository
+
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+
+    # If the assessment has a linked run, fetch feedback from the run
+    if ctx.run_id:
+        try:
+            db_id = _int_run_id(ctx.run_id)
+            if db_id:
+                return IntelligenceRepository().get_feedback_for_run(db_id, user_id=user_id, org_id=org_id)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return []
+
+
+def save_feedback_for_assessment(
+    assessment_id: str,
+    user_name: str,
+    rating: int,
+    comment: str,
+    user_id: Optional[str],
+    *,
+    org_id: Optional[str] = None,
+) -> Optional[int]:
+    """Save feedback for a specific assessment."""
+    from kulima.db import IntelligenceRepository
+
+    ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
+    if ctx is None:
+        raise AssessmentError("assessment_not_found", "Assessment context not found.")
+
+    # If the assessment has a linked run, save feedback to the run
+    if ctx.run_id:
+        try:
+            db_id = _int_run_id(ctx.run_id)
+            if db_id:
+                return IntelligenceRepository().save_feedback(
+                    db_id, user_name, rating, comment, user_id=user_id, org_id=org_id
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("save_feedback_for_assessment failed: %s", exc)
+
+    return None
