@@ -138,6 +138,11 @@ _ASSESSMENT_TYPE_TO_ENTITY = {
     "development_program": "development_program",
     "government_program": "government_program",
     "tourism_sme": "tourism_sme",
+    "research_institution": "research_institution",
+    "foundation": "foundation",
+    "cooperative": "cooperative",
+    "social_enterprise": "social_enterprise",
+    "farmer_organization": "farmer_organization",
 }
 
 # Text evidence that refines the declared type into a sub-entity.

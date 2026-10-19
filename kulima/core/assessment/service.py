@@ -30,6 +30,11 @@ _ORGANISATION_TYPES = {
     AssessmentType.GOVERNMENT_PROGRAM,
     AssessmentType.DEVELOPMENT_PROGRAM,
     AssessmentType.TOURISM_SME,
+    AssessmentType.RESEARCH_INSTITUTION,
+    AssessmentType.FOUNDATION,
+    AssessmentType.COOPERATIVE,
+    AssessmentType.SOCIAL_ENTERPRISE,
+    AssessmentType.FARMER_ORGANIZATION,
     AssessmentType.ACCELERATOR,
 }
 
@@ -39,6 +44,11 @@ _FALLBACK_ENTITY_NAMES = {
     AssessmentType.GOVERNMENT_PROGRAM: "Unnamed Government Program",
     AssessmentType.DEVELOPMENT_PROGRAM: "Unnamed Development Program",
     AssessmentType.TOURISM_SME: "Unnamed Tourism Business",
+    AssessmentType.RESEARCH_INSTITUTION: "Unnamed Research Institution",
+    AssessmentType.FOUNDATION: "Unnamed Foundation",
+    AssessmentType.COOPERATIVE: "Unnamed Cooperative",
+    AssessmentType.SOCIAL_ENTERPRISE: "Unnamed Social Enterprise",
+    AssessmentType.FARMER_ORGANIZATION: "Unnamed Farmer Organization",
     AssessmentType.ACCELERATOR: "Unnamed Programme",
 }
 
@@ -48,6 +58,11 @@ _FALLBACK_LEADS = {
     AssessmentType.GOVERNMENT_PROGRAM: "Program Coordinator",
     AssessmentType.DEVELOPMENT_PROGRAM: "Program Lead",
     AssessmentType.TOURISM_SME: "Business Owner",
+    AssessmentType.RESEARCH_INSTITUTION: "Lead Researcher / Director",
+    AssessmentType.FOUNDATION: "Executive Director",
+    AssessmentType.COOPERATIVE: "Cooperative Chairperson",
+    AssessmentType.SOCIAL_ENTERPRISE: "Managing Director",
+    AssessmentType.FARMER_ORGANIZATION: "Association Chairperson",
     AssessmentType.ACCELERATOR: "Programme Lead",
 }
 
@@ -74,6 +89,17 @@ def coerce_assessment_type(value: str | AssessmentType | None) -> AssessmentType
         "tourism_sme": AssessmentType.TOURISM_SME,
         "tourism sme": AssessmentType.TOURISM_SME,
         "hospitality": AssessmentType.TOURISM_SME,
+        "research": AssessmentType.RESEARCH_INSTITUTION,
+        "research_institution": AssessmentType.RESEARCH_INSTITUTION,
+        "research institution": AssessmentType.RESEARCH_INSTITUTION,
+        "university": AssessmentType.RESEARCH_INSTITUTION,
+        "foundation": AssessmentType.FOUNDATION,
+        "cooperative": AssessmentType.COOPERATIVE,
+        "co-operative": AssessmentType.COOPERATIVE,
+        "social_enterprise": AssessmentType.SOCIAL_ENTERPRISE,
+        "social enterprise": AssessmentType.SOCIAL_ENTERPRISE,
+        "farmer_organization": AssessmentType.FARMER_ORGANIZATION,
+        "farmer organization": AssessmentType.FARMER_ORGANIZATION,
         "accelerator": AssessmentType.ACCELERATOR,
     }
     return aliases.get(raw, AssessmentType.STARTUP)

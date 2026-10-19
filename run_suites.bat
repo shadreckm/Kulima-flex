@@ -1,5 +1,5 @@
 @echo off
-cd /d "c:\Users\HP\Desktop\Kulima vc brain"
+cd /d "%~dp0"
 echo === Suite 1: test_export_integrity.py === > suite_results.txt
 venv\Scripts\python.exe -m pytest test_export_integrity.py -v >> suite_results.txt 2>&1
 echo EXITCODE=%ERRORLEVEL% >> suite_results.txt

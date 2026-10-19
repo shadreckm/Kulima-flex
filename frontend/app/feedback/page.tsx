@@ -7,6 +7,8 @@ import {
   submitRunFeedback,
   getRunFeedback,
   listAllFeedback,
+  submitAssessmentFeedback,
+  getAssessmentFeedback,
   type FeedbackRecord,
 } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
@@ -74,18 +76,28 @@ function FeedbackPageInner() {
   const displayEntity = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || ''
   const trustScore = ctx?.trustScore ?? null
 
-  // Load review data when switching to Review tab — bound to the context run
+  // Load review data when switching to Review tab — bound to the context run or assessment
   useEffect(() => {
-    if (activeTab !== 'review' || !runId || authStatus !== 'authenticated') return
+    if (activeTab !== 'review' || authStatus !== 'authenticated') return
     let cancelled = false
     setReviewLoading(true)
     setReviewError(null)
-    getRunFeedback(runId)
-      .then(res => { if (!cancelled) setRunFeedback(res.feedback) })
-      .catch(err => { if (!cancelled) setReviewError(String(err)) })
-      .finally(() => { if (!cancelled) setReviewLoading(false) })
+    // Use assessment-centric feedback when assessmentId is available
+    if (assessmentId) {
+      getAssessmentFeedback(assessmentId)
+        .then(res => { if (!cancelled) setRunFeedback(res.feedback) })
+        .catch(err => { if (!cancelled) setReviewError(String(err)) })
+        .finally(() => { if (!cancelled) setReviewLoading(false) })
+    } else if (runId) {
+      getRunFeedback(runId)
+        .then(res => { if (!cancelled) setRunFeedback(res.feedback) })
+        .catch(err => { if (!cancelled) setReviewError(String(err)) })
+        .finally(() => { if (!cancelled) setReviewLoading(false) })
+    } else {
+      setReviewLoading(false)
+    }
     return () => { cancelled = true }
-  }, [activeTab, runId, authStatus])
+  }, [activeTab, runId, assessmentId, authStatus])
 
   // Load dashboard data when switching to Dashboard tab
   useEffect(() => {
@@ -124,21 +136,29 @@ function FeedbackPageInner() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!runId) {
-      setSubmitError('No active assessment run — create an assessment first.')
+    if (!assessmentId && !runId) {
+      setSubmitError('No active assessment — create an assessment first.')
       return
     }
     setSubmitting(true)
     setSubmitError(null)
     setSubmitMessage(null)
     try {
-      // Feedback binds to the Assessment Context run identity (assessmentId → runId)
-      await submitRunFeedback(runId, { userName, rating, comment })
+      // Feedback binds to the Assessment Context (assessmentId prioritized)
+      if (assessmentId) {
+        await submitAssessmentFeedback(assessmentId, { userName, rating, comment })
+      } else if (runId) {
+        await submitRunFeedback(runId, { userName, rating, comment })
+      }
       setSubmitMessage('Feedback recorded against the active assessment.')
       setComment('')
       setRating(4)
       // Refresh review and dashboard data silently
-      getRunFeedback(runId).then(res => setRunFeedback(res.feedback)).catch(() => {})
+      if (assessmentId) {
+        getAssessmentFeedback(assessmentId).then(res => setRunFeedback(res.feedback)).catch(() => {})
+      } else if (runId) {
+        getRunFeedback(runId).then(res => setRunFeedback(res.feedback)).catch(() => {})
+      }
       listAllFeedback(200).then(res => setAllFeedback(res.feedback)).catch(() => {})
     } catch (err) {
       setSubmitError(String(err))
@@ -278,7 +298,7 @@ function FeedbackPageInner() {
 
                   <button
                     type="submit"
-                    disabled={submitting || !runId}
+                    disabled={submitting || (!assessmentId && !runId)}
                     className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-[#0B5D3B] text-white text-xs font-extrabold uppercase tracking-wider hover:bg-[#08482E] transition disabled:opacity-50 shadow-sm"
                   >
                     {submitting ? 'Recording Feedback…' : 'Submit Review Feedback'}

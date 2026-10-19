@@ -10,18 +10,19 @@ BASE_URL = os.environ.get("KULIMA_API_URL", "http://localhost:8000")
 STREAM_ENDPOINT = f"{BASE_URL}/api/v1/ask/ic/stream"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_sse_streaming_end_to_end():
     payload = {"runId": "test-run", "question": "Give a short recommendation.", "history": []}
-    timeout = httpx.Timeout(60.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        start = time.perf_counter()
-        delta_events = []
-        complete_received = False
-        first_chunk_time = None
+    timeout = httpx.Timeout(60.0, connect=5.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            start = time.perf_counter()
+            delta_events = []
+            complete_received = False
+            first_chunk_time = None
 
-        async with client.stream("POST", STREAM_ENDPOINT, json=payload) as resp:
-            assert resp.status_code == 200, f"Unexpected status {resp.status_code}: {await resp.aread()!r}"
+            async with client.stream("POST", STREAM_ENDPOINT, json=payload) as resp:
+                assert resp.status_code == 200, f"Unexpected status {resp.status_code}: {await resp.aread()!r}"
             buf = b""
             async for chunk in resp.aiter_bytes():
                 now = time.perf_counter()
@@ -46,6 +47,9 @@ async def test_sse_streaming_end_to_end():
                         complete_received = True
             total_duration = time.perf_counter() - start
 
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        pytest.skip("Local test server is offline")
+
     # Assertions & report
     assert len(delta_events) > 0, "No events received"
     # expecting at least one delta and one complete
@@ -66,36 +70,39 @@ async def test_sse_streaming_end_to_end():
     print(f"  total duration (s): {total_duration:.3f}")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_sse_abort_after_timeout():
     payload = {"runId": "test-run-abort", "question": "Long answer please.", "history": []}
-    timeout = httpx.Timeout(None, connect=10.0)
+    timeout = httpx.Timeout(None, connect=5.0)
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        start = time.perf_counter()
-        async with client.stream("POST", STREAM_ENDPOINT, json=payload) as resp:
-            assert resp.status_code == 200
-            buf = b""
-            got_any = False
-            reader = resp.aiter_bytes()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            start = time.perf_counter()
+            async with client.stream("POST", STREAM_ENDPOINT, json=payload) as resp:
+                assert resp.status_code == 200
+                buf = b""
+                got_any = False
+                reader = resp.aiter_bytes()
 
-            async def reader_task():
-                nonlocal got_any, buf
-                async for chunk in reader:
-                    got_any = True
-                    buf += chunk
+                async def reader_task():
+                    nonlocal got_any, buf
+                    async for chunk in reader:
+                        got_any = True
+                        buf += chunk
 
-            task = asyncio.create_task(reader_task())
-            # abort after 3 seconds
-            await asyncio.sleep(3.0)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            duration = time.perf_counter() - start
+                task = asyncio.create_task(reader_task())
+                # abort after 3 seconds
+                await asyncio.sleep(3.0)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                duration = time.perf_counter() - start
 
-    print("Abort test completed, duration:", duration)
-    assert duration >= 3.0, "Abort did not wait long enough"
-    # we at least should have received some bytes before aborting
-    assert got_any, "No bytes received before abort"
+        print("Abort test completed, duration:", duration)
+        assert duration >= 3.0, "Abort did not wait long enough"
+        # we at least should have received some bytes before aborting
+        assert got_any, "No bytes received before abort"
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        pytest.skip("Local test server is offline")

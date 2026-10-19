@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -296,8 +297,27 @@ class ResearchEngine:
         return max(0.05, min(0.98, relevance * 0.72 + 0.18 + boost + penalty))
 
     @staticmethod
+    def _sanitize_snippet(text: str) -> str:
+        """Strip PDF markers, CreationDate, Creator:, and metadata artifacts (Phase 9)."""
+        if not text:
+            return ""
+        # Remove PDF metadata markers and raw object streams
+        cleaned = re.sub(r"%PDF-[0-9.]+", "", text, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"(?:CreationDate|ModDate|Creator|Producer|Author|Subject|Keywords|Title)\s*[:=]\s*[^\n\r;]+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"\b(?:xref|endobj|endstream|startxref|trailer)\b", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\b\d+\s+\d+\s+obj\b", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"/(?:Root|Info|Size|Filter|Length|FlateDecode)\b", "", cleaned, flags=re.IGNORECASE)
+        return " ".join(cleaned.split()).strip()
+
+    @staticmethod
     def _summarize_snippet(snippet: str, max_chars: int = 520) -> str:
-        compact = " ".join((snippet or "").split())
+        sanitized = ResearchEngine._sanitize_snippet(snippet)
+        compact = " ".join(sanitized.split())
         return compact[:max_chars].rstrip() + ("…" if len(compact) > max_chars else "")
 
     @staticmethod

@@ -337,3 +337,88 @@ async def remove_assessment_collaborator(
         )
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
+
+
+class AssessmentFeedbackRequest(BaseModel):
+    rating: int
+    comment: Optional[str] = None
+    userName: Optional[str] = None
+
+
+@router.get("/feedback/analytics")
+async def get_assessment_feedback_analytics(
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Phase 10: Feedback analytics overview across all visible runs/assessments."""
+    check_rate_limit(current.user_id, "assessments:feedback_analytics")
+    from kulima.db import IntelligenceRepository
+    repo = IntelligenceRepository()
+    records = repo.list_all_feedback(limit=500, user_id=current.user_id, org_id=current.org_id)
+    total = len(records)
+    avg_rating = round(sum(r.get("rating", 0) for r in records) / total, 2) if total else 0.0
+    rating_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in records:
+        rt = r.get("rating")
+        if rt in rating_counts:
+            rating_counts[rt] += 1
+    return {
+        "totalFeedback": total,
+        "averageRating": avg_rating,
+        "ratingCounts": rating_counts,
+        "recentFeedback": records[:10],
+    }
+
+
+@router.get("/{assessment_id}/feedback")
+async def get_assessment_feedback(
+    assessment_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Phase 10: Get all feedback entries for a specific assessment (no 404s)."""
+    check_rate_limit(current.user_id, "assessments:feedback_get")
+    try:
+        records = assessment_adapter.get_feedback_for_assessment(
+            assessment_id, user_id=current.user_id, org_id=current.org_id
+        )
+        return {
+            "feedback": [
+                {
+                    "id": row.get("id"),
+                    "runId": row.get("run_id"),
+                    "userName": row.get("user_name"),
+                    "rating": row.get("rating"),
+                    "comment": row.get("comment"),
+                    "createdAt": row.get("created_at"),
+                }
+                for row in records
+            ],
+            "total": len(records),
+            "assessmentId": assessment_id,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.post("/{assessment_id}/feedback")
+async def save_assessment_feedback(
+    assessment_id: str,
+    payload: AssessmentFeedbackRequest,
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Phase 10: Submit feedback for a specific assessment."""
+    check_rate_limit(current.user_id, "assessments:feedback_save")
+    try:
+        feedback_id = assessment_adapter.save_feedback_for_assessment(
+            assessment_id,
+            payload.userName or current.user_id or "Assessment Reviewer",
+            payload.rating,
+            payload.comment,
+            user_id=current.user_id,
+            org_id=current.org_id,
+        )
+        if not feedback_id:
+            raise HTTPException(status_code=500, detail={"error": True, "message": "feedback could not be saved"})
+        return {"ok": True, "assessmentId": assessment_id, "rating": payload.rating, "feedbackId": feedback_id}
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+

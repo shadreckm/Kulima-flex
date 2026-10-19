@@ -389,13 +389,21 @@ def market_validation_lines(brief: Any) -> list[str]:
 # ── Issue 5: exception-free report text ──────────────────────────────────────
 
 _EXCEPTION_MARKERS = (
-    "Traceback (most recent call last)", "Abstaining pending model recovery:",
-    " raise ", "Exception:", "Error:", "exception —", "Traceback",
+    "traceback (most recent call last)",
+    "abstaining pending model recovery:",
+    "zerodivisionerror:",
+    "keyerror:",
+    "valueerror:",
+    "typeerror:",
+    "apiconnectionerror",
+    "ratelimiterror",
+    "filenotfounderror",
+    "connectionrefusederror",
 )
 
 
 def sanitize_runtime_artifacts(text: str) -> str:
-    """Strip Python exception leakage from report text (Issue 5)."""
+    """Strip Python exception leakage and runtime artifacts from report text (Phase 6)."""
     if not text:
         return text
     cleaned = text
@@ -405,15 +413,14 @@ def sanitize_runtime_artifacts(text: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     )
-    cleaned = re.sub(r"Traceback \(most recent call last\):[\s\S]*", "", cleaned)
-    return cleaned
+    cleaned = re.sub(r"Traceback \(most recent call last\):[\s\S]*?(?=\n\n[A-Z]|\Z)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'File\s+"[^"]+",\s+line\s+\d+,\s+in\s+[^\n]+', "", cleaned)
+    cleaned = re.sub(r"(?:[A-Za-z]+Error|Exception):\s+[^\n]+", "", cleaned)
+    return cleaned.strip()
 
 
 def has_python_error_text(text: str) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    return (
-        "traceback (most recent call last)" in lowered
-        or "abstaining pending model recovery:" in lowered
-    )
+    return any(marker in lowered for marker in _EXCEPTION_MARKERS)

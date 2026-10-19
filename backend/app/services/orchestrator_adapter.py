@@ -426,9 +426,42 @@ def start_intelligence_run(
     def _worker(rid: str, founder: str, startup: str, owner_id: str | None) -> None:
         try:
             _log.info("Orchestrator: starting analysis for %s / %s", founder, startup)
+            entity_profile_payload: dict = {}
+            document_trust_scores: list[float] = []
+            if assessment_id:
+                try:
+                    from kulima.core.assessment.repository import AssessmentRepository
+                    from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
+                    _ctx = AssessmentRepository().get(assessment_id, user_id=owner_id, org_id=org_id)
+                    if _ctx is not None:
+                        entity_profile_payload = dict(_ctx.entity_profile or {})
+                        if not entity_profile_payload:
+                            _docs = [
+                                {"name": d.name, "rawSummary": d.raw_summary or "", "evidence_items": list(d.evidence_items or [])}
+                                for d in _ctx.uploaded_documents
+                            ]
+                            entity_profile_payload = profile_to_payload(build_entity_profile(
+                                (getattr(_ctx.assessment_type, "value", None) or "startup"),
+                                _docs,
+                                _ctx.extracted_text or "",
+                                entity_name=(_ctx.organization_name or _ctx.startup_name) or startup,
+                            ))
+                        document_trust_scores = [
+                            float(d.trust_score)
+                            for d in _ctx.uploaded_documents
+                            if d.trust_score is not None
+                        ]
+                except Exception as _ep_err:
+                    _log.warning("Could not build entity profile in _worker: %s", _ep_err)
+
             orchestrator = get_orchestrator()
             brief: InvestmentBrief = orchestrator.analyze(
-                founder, startup, user_id=owner_id, sector_hint=sector_hint
+                founder,
+                startup,
+                user_id=owner_id,
+                sector_hint=sector_hint,
+                entity_profile=entity_profile_payload or None,
+                document_trust_scores=document_trust_scores or None,
             )
             # Persist to DB (synchronous)
             db_id = _repo.save_brief(brief, user_id=owner_id, org_id=org_id)
@@ -704,12 +737,21 @@ def _sync_assessment(
         # sources), generate findings from documents + context + signals +
         # evidence + trust — research never comes back empty-handed.
         if not research.get("summary"):
+            ctx_payload = None
+            if ctx:
+                ctx_payload = {
+                    "organizationName": ctx.organization_name or ctx.startup_name,
+                    "displayEntity": ctx.display_entity(),
+                    "sector": ctx.sector,
+                    "country": ctx.country,
+                    "extraction": ctx.extraction.model_dump(mode="json") if ctx.extraction else {},
+                }
             research["summary"] = AIProviderManager.research_fallback_summary(
                 documents=[
                     {"name": doc.name, "raw_summary": doc.raw_summary}
                     for doc in (ctx.uploaded_documents if ctx else [])
                 ],
-                assessment_context=None,
+                assessment_context=ctx_payload,
                 signals=dedup_signals,
                 evidence=[
                     item

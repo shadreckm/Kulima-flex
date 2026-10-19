@@ -1,5 +1,5 @@
-Set-Location 'c:\Users\HP\Desktop\Kulima vc brain'
-$python = 'c:\Users\HP\Desktop\Kulima vc brain\venv\Scripts\python.exe'
+Set-Location $PSScriptRoot
+$python = if (Test-Path "$PSScriptRoot\venv\Scripts\python.exe") { "$PSScriptRoot\venv\Scripts\python.exe" } else { "python" }
 
 Write-Host "=== TEST 1: test_ask_signals.py ===" 
 $out1 = & $python -m pytest test_ask_signals.py -v 2>&1

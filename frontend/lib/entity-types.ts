@@ -84,7 +84,7 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     label: 'Tourism SME',
     description: 'Tourism, hospitality, or destination business under impact and viability review.',
     fields: {
-      primary:   { key: 'entityName',    label: 'Business Name', placeholder: 'e.g. SolarHarvest Lodge' },
+      primary:   { key: 'entityName',    label: 'Business Name', placeholder: 'e.g. Lakeshore Eco Lodge' },
       secondary: { key: 'programName',   label: 'Owner / Lead',  placeholder: 'e.g. Grace Banda' },
     },
     uploadGuidance: 'Upload visitor statistics, sustainability reports, destination impact data, business licenses, financial statements',

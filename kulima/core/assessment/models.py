@@ -28,13 +28,18 @@ def _utc_now_iso() -> str:
 
 
 class AssessmentType(str, Enum):
-    """The five canonical assessment types collected on the landing page."""
+    """Canonical assessment types collected on the landing page."""
 
     STARTUP = "startup"
     NGO = "ngo"
     GOVERNMENT_PROGRAM = "government_program"
     DEVELOPMENT_PROGRAM = "development_program"
     TOURISM_SME = "tourism_sme"
+    RESEARCH_INSTITUTION = "research_institution"
+    FOUNDATION = "foundation"
+    COOPERATIVE = "cooperative"
+    SOCIAL_ENTERPRISE = "social_enterprise"
+    FARMER_ORGANIZATION = "farmer_organization"
     # Legacy alias retained so contexts stored before Tourism SME existed
     # continue to load without migration.
     ACCELERATOR = "accelerator"
@@ -58,6 +63,11 @@ ASSESSMENT_TYPE_LABELS: Dict[str, str] = {
     AssessmentType.GOVERNMENT_PROGRAM.value: "Government Program",
     AssessmentType.DEVELOPMENT_PROGRAM.value: "Development Program",
     AssessmentType.TOURISM_SME.value: "Tourism SME",
+    AssessmentType.RESEARCH_INSTITUTION.value: "Research Institution",
+    AssessmentType.FOUNDATION.value: "Foundation",
+    AssessmentType.COOPERATIVE.value: "Cooperative",
+    AssessmentType.SOCIAL_ENTERPRISE.value: "Social Enterprise",
+    AssessmentType.FARMER_ORGANIZATION.value: "Farmer Organization",
     AssessmentType.ACCELERATOR.value: "Accelerator",
 }
 
@@ -98,6 +108,11 @@ class DocumentIntelligence(BaseModel):
     partnerships: List[str] = Field(default_factory=list)
     revenue_indicators: List[str] = Field(default_factory=list)
     traction: List[str] = Field(default_factory=list)
+    programs: List[str] = Field(default_factory=list)
+    services: List[str] = Field(default_factory=list)
+    products: List[str] = Field(default_factory=list)
+    beneficiaries: List[str] = Field(default_factory=list)
+    market_validation: List[str] = Field(default_factory=list)
     # Phase 1: structured document-section extraction — what the uploaded
     # document actually contains, keyed by canonical section category.
     sections: Dict[str, List[str]] = Field(default_factory=dict)

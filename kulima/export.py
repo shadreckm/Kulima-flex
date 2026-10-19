@@ -206,10 +206,10 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
 # ── Entity-adaptive report type labels (Phase 6 follow-through) ────────────
 
 _ENTITY_REPORT_LABELS = {
-    "startup": "Investment Memo",
+    "startup": "Investment Committee Report",
     "ngo": "Institutional Capacity Report",
-    "development_program": "Program Performance Report",
-    "government_program": "Governance Performance Report",
+    "development_program": "Program Performance Review",
+    "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
 }
 _ENTITY_LABEL_INHERIT = {

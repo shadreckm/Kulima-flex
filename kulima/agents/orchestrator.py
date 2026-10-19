@@ -141,7 +141,7 @@ class IntelligenceOrchestrator:
                     SourceAttribution(
                         title=d.filename,
                         url=f"document://{d.id}",
-                        snippet=chunk_text[:1200],
+                        snippet=ResearchEngine._sanitize_snippet(chunk_text[:1200]),
                         relevance=1.0,
                         source_type="document",
                         # Source A outranks all external web research.

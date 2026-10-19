@@ -1,4 +1,4 @@
-# Kulima FLEX VC Brain — Python Dependencies
+# Kulima FLEX — Python Dependencies
 # Python 3.11+
 
 # Dashboard and UI

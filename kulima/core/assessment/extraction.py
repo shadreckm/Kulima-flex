@@ -501,6 +501,13 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
                 risks.append(entry)
     risks = risks[:_MAX_LIST_ITEMS]
 
+    sections = _extract_sections(raw)
+    programs = list(sections.get("programs", []))
+    services = list(sections.get("services", []))
+    products = list(sections.get("products", []))
+    beneficiaries = list(sections.get("beneficiaries", []))
+    market_validation = list(sections.get("market_validation", []))
+
     return DocumentIntelligence(
         locations=locations,
         dates=dates,
@@ -517,7 +524,12 @@ def _extract_rich(text: str) -> "DocumentIntelligence":
         partnerships=partnerships,
         revenue_indicators=revenue_indicators,
         traction=traction,
-        sections=_extract_sections(raw),
+        programs=programs[:_MAX_LIST_ITEMS],
+        services=services[:_MAX_LIST_ITEMS],
+        products=products[:_MAX_LIST_ITEMS],
+        beneficiaries=beneficiaries[:_MAX_LIST_ITEMS],
+        market_validation=market_validation[:_MAX_LIST_ITEMS],
+        sections=sections,
     )
 
 
@@ -674,7 +686,12 @@ def merge_extractions(extractions: Iterable[AssessmentExtraction]) -> Assessment
             candidate = getattr(extraction, field_name)
             setattr(merged, field_name, best_field(current, candidate))
         rich = extraction.intelligence
-        for key in ("locations", "dates", "budget_references", "activities", "objectives", "outcomes", "risks", "funding_asks", "revenue_models", "roadmaps", "customer_discovery", "pilots", "partnerships", "revenue_indicators", "traction"):
+        for key in (
+            "locations", "dates", "budget_references", "activities", "objectives",
+            "outcomes", "risks", "funding_asks", "revenue_models", "roadmaps",
+            "customer_discovery", "pilots", "partnerships", "revenue_indicators",
+            "traction", "programs", "services", "products", "beneficiaries", "market_validation",
+        ):
             existing = getattr(merged_intelligence, key)
             for item in getattr(rich, key):
                 if item not in existing:

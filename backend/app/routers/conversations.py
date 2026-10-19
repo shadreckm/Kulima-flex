@@ -153,3 +153,81 @@ async def append_message(
         return {"conversationId": conversation_id, "messageId": message_id, "ok": message_id is not None}
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
+
+
+@router.post("/{conversation_id}/feedback")
+async def save_conversation_feedback(
+    conversation_id: str,
+    payload: dict = Body(...),
+    current: OrgContext = Depends(require_permission(Permission.ASSESS)),
+):
+    """Phase 10: Submit feedback linked to an AI Analyst conversation."""
+    check_rate_limit(current.user_id, "conversations:feedback_save")
+    try:
+        conv_info = conversation_service.get_conversation_messages(
+            conversation_id, current.user_id, current.org_id
+        )
+        conv = conv_info.get("conversation") or {}
+        assessment_id = conv.get("assessment_id")
+        if not assessment_id:
+            raise ConversationError("assessment_not_found", "Conversation is not bound to an assessment.")
+
+        rating = int(payload.get("rating", 5))
+        comment = str(payload.get("comment") or "")
+        user_name = str(payload.get("userName") or current.user_id or "AI Analyst Reviewer")
+
+        from ..services import assessment_adapter
+        feedback_id = assessment_adapter.save_feedback_for_assessment(
+            assessment_id,
+            user_name,
+            rating,
+            f"[Chat: {conv.get('title', 'AI Analyst')}] {comment}".strip(),
+            user_id=current.user_id,
+            org_id=current.org_id,
+        )
+        return {
+            "ok": True,
+            "conversationId": conversation_id,
+            "assessmentId": assessment_id,
+            "rating": rating,
+            "feedbackId": feedback_id,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.get("/{conversation_id}/feedback")
+async def get_conversation_feedback(
+    conversation_id: str,
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Phase 10: Retrieve feedback linked to an AI Analyst conversation."""
+    check_rate_limit(current.user_id, "conversations:feedback_get")
+    try:
+        conv_info = conversation_service.get_conversation_messages(
+            conversation_id, current.user_id, current.org_id
+        )
+        conv = conv_info.get("conversation") or {}
+        assessment_id = conv.get("assessment_id")
+        if not assessment_id:
+            return {"feedback": [], "total": 0, "conversationId": conversation_id}
+
+        from ..services import assessment_adapter
+        records = assessment_adapter.get_feedback_for_assessment(
+            assessment_id, user_id=current.user_id, org_id=current.org_id
+        )
+        # Filter records mentioning this conversation
+        prefix = f"[Chat: {conv.get('title', '')}"
+        conv_records = [
+            r for r in records
+            if prefix in str(r.get("comment", ""))
+        ] or records
+        return {
+            "feedback": conv_records,
+            "total": len(conv_records),
+            "conversationId": conversation_id,
+            "assessmentId": assessment_id,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+

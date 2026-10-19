@@ -1,4 +1,4 @@
-# Kulima OS — Backend startup script
+# Kulima FLEX — Backend startup script
 # Run from the project root: .\start_backend.ps1
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -39,7 +39,7 @@ if (Test-Path $frontendEnvFile) {
     }
 }
 
-Write-Host "Starting Kulima OS backend on http://127.0.0.1:8000 ..."
+Write-Host "Starting Kulima FLEX backend on http://127.0.0.1:8000 ..."
 $pythonExe = Join-Path $scriptRoot "venv\Scripts\python.exe"
 if (Test-Path $pythonExe) {
     & $pythonExe -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000

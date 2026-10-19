@@ -356,6 +356,28 @@ async def download_report(
     return Response(content=body, media_type=media_type, headers=headers)
 
 
+@router.get("/feedback/analytics")
+async def get_feedback_analytics(
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Phase 10: Feedback analytics overview across all runs/assessments."""
+    check_rate_limit(current.user_id, "intelligence:feedback_analytics")
+    records = _brief_repo.list_all_feedback(limit=500, user_id=current.user_id, org_id=current.org_id)
+    total = len(records)
+    avg_rating = round(sum(r.get("rating", 0) for r in records) / total, 2) if total else 0.0
+    rating_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in records:
+        rt = r.get("rating")
+        if rt in rating_counts:
+            rating_counts[rt] += 1
+    return {
+        "totalFeedback": total,
+        "averageRating": avg_rating,
+        "ratingCounts": rating_counts,
+        "recentFeedback": records[:10],
+    }
+
+
 @router.get("/feedback/all")
 async def list_all_feedback(
     limit: int = Query(default=100, ge=1, le=500),

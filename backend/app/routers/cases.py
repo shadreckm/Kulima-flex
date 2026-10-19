@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from kulima.core.cases.service import CaseService
 from kulima.core.cases.models import Case, CaseLifecycleStatus, WorkspaceType, CaseSubject
@@ -55,8 +55,7 @@ class CaseResponse(BaseModel):
     subject: dict
     document_count: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CaseTransitionRequest(BaseModel):
