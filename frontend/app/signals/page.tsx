@@ -175,8 +175,31 @@ function SignalsPageInner() {
                               {Math.round(score)}/100
                             </span>
                           ) : (
-          <AssessmentGuard active />
-        )}
+                            <span className="text-[10px] text-slate-400">—</span>
+                          )}
+                        </div>
+                        {summary ? (
+                          <p className="text-[11px] text-slate-600 leading-relaxed">{summary}</p>
+                        ) : null}
+                        {total > 0 ? (
+                          <div className="mt-2 text-[10px] text-slate-500">
+                            {riskCount > 0 && <span className="text-red-600">{riskCount} risk</span>}
+                            {riskCount > 0 && oppCount > 0 && <span> · </span>}
+                            {oppCount > 0 && <span className="text-green-600">{oppCount} opportunity</span>}
+                            {total > 0 && <span> · {total} total</span>}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : null}
+          </>
+        ) : null}
+        {!assessmentContext ? (
+          <AssessmentGuard active label="Preparing your assessment…" />
+        ) : null}
       </main>
       <ContextPanel type="signals" runId={runId} status={status} />
     </div>
