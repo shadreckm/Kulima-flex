@@ -463,6 +463,26 @@ def start_intelligence_run(
                 entity_profile=entity_profile_payload or None,
                 document_trust_scores=document_trust_scores or None,
             )
+            # Log provider health for this assessment (Phase 3)
+            manager = AIProviderManager.instance()
+            provider_health = {
+                "provider_used": manager.last_result.provider if manager.last_result else "unknown",
+                "model_used": manager.last_result.model if manager.last_result else "unknown",
+                "fallback_triggered": manager.last_result.fallback_triggered if manager.last_result else False,
+                "fallback_count": manager.last_result.fallback_count if manager.last_result else 0,
+                "response_time_ms": round(manager.last_result.response_time * 1000, 2) if manager.last_result else 0,
+                "analysis_mode": manager.last_result.analysis_mode if manager.last_result else "unknown",
+                "available_providers": manager.chain,
+            }
+            _log.info("Provider health for assessment %s (run %s): %s", assessment_id, rid, provider_health)
+            record_event(
+                "provider.health",
+                org_id=org_id,
+                user_id=owner_id,
+                run_id=rid,
+                assessment_id=assessment_id,
+                metadata=provider_health,
+            )
             # Persist to DB (synchronous)
             db_id = _repo.save_brief(brief, user_id=owner_id, org_id=org_id)
             # Mark run completed in persistent store
@@ -477,6 +497,27 @@ def start_intelligence_run(
             # and whatever research succeeded. Demo seed data is never used.
             _log.warning("Orchestrator live analysis failed (%s) — activating Document Intelligence Mode.", exc)
             try:
+                # Log provider health before fallback (Phase 3)
+                manager = AIProviderManager.instance()
+                provider_health = {
+                    "provider_used": "document_intelligence_fallback",
+                    "model_used": "n/a",
+                    "fallback_triggered": True,
+                    "fallback_count": len(manager.chain) if manager.chain else 0,
+                    "response_time_ms": 0,
+                    "analysis_mode": "document_intelligence",
+                    "available_providers": manager.chain,
+                    "failure_reason": str(exc),
+                }
+                _log.info("Provider health for assessment %s (run %s) before fallback: %s", assessment_id, rid, provider_health)
+                record_event(
+                    "provider.health",
+                    org_id=org_id,
+                    user_id=owner_id,
+                    run_id=rid,
+                    assessment_id=assessment_id,
+                    metadata=provider_health,
+                )
                 brief, research_payload, fallback_signal_titles = build_document_intelligence_fallback(
                     founder,
                     startup,

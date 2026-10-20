@@ -141,7 +141,8 @@ function HomeInner() {
       const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0)
       const FOUR_MB = 4 * 1024 * 1024
 
-      // Use direct backend upload for files > 4MB to bypass Vercel limit
+      // Use direct backend upload for files > 4MB to bypass Vercel 4.5MB proxy limit
+      // Backend now supports up to 100MB
       const createFn = totalSize > FOUR_MB ? api.createAssessmentDirect : api.createAssessment
 
       const payload = await createFn(selectedFiles, entityToAssessmentType(type), {

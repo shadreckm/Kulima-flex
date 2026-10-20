@@ -3,12 +3,9 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
-import {
-  getActiveAssessment,
-  getAssessmentWorkspace,
-  type AssessmentWorkspacePayload,
-} from '../../lib/api'
+import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import { getActivity, type AuditEventRecord } from '../../lib/enterprise'
 
 /**
@@ -41,36 +38,23 @@ const EVENT_LABELS: Record<string, string> = {
 
 function ActivityInner() {
   const { status: authStatus } = useSession()
-  const searchParams = useSearchParams()
-  const [ctx, setCtx] = useState<AssessmentWorkspacePayload | null>(null)
-  const [ctxError, setCtxError] = useState<string | null>(null)
+  const router = useRouter()
+  const { data: ctx, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
   const [events, setEvents] = useState<AuditEventRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (authStatus !== 'authenticated') return
+    if (authStatus !== 'authenticated' || !ctx) return
     let cancelled = false
     ;(async () => {
       try {
-        const idParam = searchParams.get('id') || searchParams.get('assessmentId')
-        const payload = idParam
-          ? await getAssessmentWorkspace(idParam)
-          : await getActiveAssessment()
+        const res = await getActivity({ assessmentId: ctx.assessmentId, limit: 100 })
         if (cancelled) return
-        setCtx(payload)
-        try {
-          const res = await getActivity({ assessmentId: payload.assessmentId, limit: 100 })
-          if (cancelled) return
-          setEvents(Array.isArray(res?.events) ? res.events : [])
-        } catch (e: any) {
-          // The audit feed is informational — never block the page on it.
-          if (!cancelled) setError(e?.message ?? 'Activity feed unavailable.')
-        }
+        setEvents(Array.isArray(res?.events) ? res.events : [])
       } catch (e: any) {
-        if (!cancelled) {
-          setCtxError(e?.message ?? 'No active assessment found. Create an assessment first.')
-        }
+        // The audit feed is informational — never block the page on it.
+        if (!cancelled) setError(e?.message ?? 'Activity feed unavailable.')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -78,7 +62,7 @@ function ActivityInner() {
     return () => {
       cancelled = true
     }
-  }, [authStatus, searchParams])
+  }, [authStatus, ctx])
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
@@ -88,6 +72,19 @@ function ActivityInner() {
       <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
         <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
         <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">Sign in</button>
+      </div>
+    )
+  }
+
+  // Redirect to Create Assessment if no assessment exists
+  if (noAssessment && !ctxLoading) {
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
+        <div className="text-lg font-bold text-slate-900">No Assessment Found</div>
+        <div className="text-sm text-slate-500">Create an assessment to view activity.</div>
+        <Link href="/" className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">
+          Create Assessment
+        </Link>
       </div>
     )
   }

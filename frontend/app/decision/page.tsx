@@ -8,6 +8,7 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { getDecisionSnapshot, getFullBrief, reportDownloadHref, type DecisionSnapshot } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 type FullBrief = Record<string, any>
 
@@ -25,7 +26,7 @@ function domainScoreBar(score: number): string {
 
 export default function DecisionWorkspacePage() {
   const { status: authStatus } = useSession()
-  const { data: ctx, runId, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
+  const { data: ctx, runId, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
   const [brief, setBrief] = useState<FullBrief | null>(null)
   const [snapshot, setSnapshot] = useState<DecisionSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
@@ -112,6 +113,12 @@ export default function DecisionWorkspacePage() {
         </button>
       </div>
     )
+  }
+
+  // Global Assessment Context Guard: no assessment → auto-redirect to the
+  // landing page (upload workflow). Users never see a raw 404 or dead end.
+  if (noAssessment && !ctxLoading) {
+    return <AssessmentGuard active />
   }
 
   return (

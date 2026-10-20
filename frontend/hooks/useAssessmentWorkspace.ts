@@ -15,6 +15,8 @@ export type UseAssessmentWorkspaceResult = {
   runId: string | null
   loading: boolean
   error: string | null
+  /** True when no assessment exists → the Global Assessment Guard redirects to '/' (upload workflow). */
+  noAssessment: boolean
   reload: () => Promise<void>
 }
 
@@ -32,11 +34,13 @@ export function useAssessmentWorkspace(enabled: boolean): UseAssessmentWorkspace
   const [data, setData] = useState<AssessmentWorkspacePayload | null>(null)
   const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
+  const [noAssessment, setNoAssessment] = useState(false)
 
   const load = useCallback(async () => {
     if (!enabled) return
     setLoading(true)
     setError(null)
+    setNoAssessment(false)
     const idParam = searchParams.get('id') || searchParams.get('assessmentId')
     try {
       const payload = idParam
@@ -60,8 +64,20 @@ export function useAssessmentWorkspace(enabled: boolean): UseAssessmentWorkspace
           // ignore fallback errors
         }
       }
-      setError(e?.message || 'No active assessment found. Create an assessment first.')
-      setData(null)
+      // Check if this is a "no assessment" error (404 with message about no assessment context)
+      const isNoAssessmentError = e?.message?.includes('No assessment context found') ||
+                                  e?.message?.includes('not found or not accessible') ||
+                                  e?.status === 404 ||
+                                  String(e).includes('404')
+      if (isNoAssessmentError && !idParam) {
+        // Global Assessment Guard: no raw API error is ever surfaced.
+        setNoAssessment(true)
+        setError(null)
+        setData(null)
+      } else {
+        setError('The workspace could not be loaded. Please try again.')
+        setData(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -77,6 +93,7 @@ export function useAssessmentWorkspace(enabled: boolean): UseAssessmentWorkspace
     runId: data?.runId || null,
     loading,
     error,
+    noAssessment,
     reload: load,
   }
 }

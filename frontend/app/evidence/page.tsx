@@ -2,17 +2,19 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
 import { getFullBrief, attachAssessmentDocuments, attachAssessmentDocumentsDirect, type AssessmentWorkspacePayload } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 type FullBrief = Record<string, any>
 
 export default function EvidencePage() {
   const { status: authStatus } = useSession()
-  const { data: ctx, assessmentId, runId, reload: reloadContext, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
+  const { data: ctx, assessmentId, runId, reload: reloadContext, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
   const [brief, setBrief] = useState<FullBrief | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,7 +61,8 @@ export default function EvidencePage() {
       const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0)
       const FOUR_MB = 4 * 1024 * 1024
 
-      // Use direct backend upload for files > 4MB to bypass Vercel limit
+      // Use direct backend upload for files > 4MB to bypass Vercel 4.5MB proxy limit
+      // Backend now supports up to 100MB
       const attachFn = totalSize > FOUR_MB ? attachAssessmentDocumentsDirect : attachAssessmentDocuments
 
       // Document Bridge: all files attach to the Assessment Context in ONE
@@ -120,6 +123,12 @@ export default function EvidencePage() {
         </button>
       </div>
     )
+  }
+
+  // Global Assessment Context Guard: no assessment → auto-redirect to the
+  // landing page (upload workflow). Users never see a raw 404 or dead end.
+  if (noAssessment && !ctxLoading) {
+    return <AssessmentGuard active />
   }
 
   return (

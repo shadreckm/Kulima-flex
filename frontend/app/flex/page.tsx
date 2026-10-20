@@ -11,6 +11,7 @@ import WorkspaceHeader from '../../components/WorkspaceHeader'
 import AssessmentProgress from '../../components/AssessmentProgress'
 import * as api from '../../lib/api'
 import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
@@ -155,18 +156,12 @@ function FlexPageInner() {
             )}
           </section>
         ) : (
-          <section className="rounded-xl border border-[#DDE6F0] bg-white p-5 shadow-saas sm:p-6">
-            <h1 className="text-lg font-bold text-slate-900">No assessment context found</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Create an assessment from your documents to open the AI Analyst workspace.
-            </p>
-            <Link
-              href="/"
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#08482E] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B5D3B]"
-            >
-              Start an assessment
-            </Link>
-          </section>
+          // Global Assessment Context Guard: no assessment → auto-redirect to
+          // the landing page (upload workflow). Users never see a dead end.
+          <AssessmentGuard
+            active
+            label="Preparing your assessment…"
+          />
         )}
       </main>
       <ContextPanel type="flex" runId={runId} status={status} />

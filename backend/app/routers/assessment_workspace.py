@@ -21,6 +21,7 @@ from ..services import assessment_adapter
 from ..services.assessment_adapter import AssessmentError
 from ..services.document_adapter import InvalidUploadError
 from kulima.core.orgs.models import Permission
+from kulima.providers import AIProviderManager
 
 _log = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,7 +36,7 @@ def _handle_error(exc: Exception) -> HTTPException:
         if msg == "file_too_large":
             return HTTPException(
                 status_code=400,
-                detail="File too large. Maximum upload size is 25 MB. Please compress or split the document.",
+                detail="File too large. Maximum upload size is 100 MB. Please compress or split the document.",
             )
         return HTTPException(
             status_code=400,
@@ -207,6 +208,32 @@ async def save_assessment_feedback(
         if not feedback_id:
             raise HTTPException(status_code=500, detail={"error": True, "message": "feedback could not be saved"})
         return {"ok": True, "assessmentId": assessment_id, "rating": rating, "feedbackId": feedback_id}
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_error(exc)
+
+
+@router.get("/admin/provider-health")
+async def get_provider_health(
+    current: OrgContext = Depends(require_permission(Permission.VIEW)),
+):
+    """Admin diagnostics: current provider health and configuration.
+
+    Returns the active provider chain, available providers, and last-known
+    provider usage statistics for observability (Phase 3).
+    """
+    try:
+        manager = AIProviderManager.instance()
+        return {
+            "available_providers": manager.chain,
+            "configured_providers": manager._configured_order,
+            "disabled_providers": list(manager._disabled_providers),
+            "last_provider_used": manager.last_result.provider if manager.last_result else None,
+            "last_model_used": manager.last_result.model if manager.last_result else None,
+            "last_fallback_triggered": manager.last_result.fallback_triggered if manager.last_result else False,
+            "last_fallback_count": manager.last_result.fallback_count if manager.last_result else 0,
+            "last_response_time_ms": round(manager.last_result.response_time * 1000, 2) if manager.last_result else 0,
+            "last_analysis_mode": manager.last_result.analysis_mode if manager.last_result else None,
+        }
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
 

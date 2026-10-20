@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB — aligned with proxy and frontend limits
+MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB — supports large reports while avoiding Vercel proxy
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

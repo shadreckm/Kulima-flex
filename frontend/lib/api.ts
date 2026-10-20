@@ -346,7 +346,7 @@ export async function createAssessment(
  * Create the shared Assessment Context via direct backend upload.
  *
  * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
- * uploads up to 25MB. Use this for large file uploads.
+ * uploads up to 100MB. Use this for large file uploads.
  */
 export async function createAssessmentDirect(
   files: File[],
@@ -420,7 +420,7 @@ export async function attachAssessmentDocuments(
  * Attach documents to an existing assessment via direct backend upload.
  *
  * This bypasses the Vercel proxy and its 4.5MB payload limit, allowing
- * uploads up to 25MB. Use this for large file uploads.
+ * uploads up to 100MB. Use this for large file uploads.
  */
 export async function attachAssessmentDocumentsDirect(
   assessmentId: string,

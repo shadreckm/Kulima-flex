@@ -12,6 +12,7 @@ import {
   type FeedbackRecord,
 } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import Link from 'next/link'
 
@@ -53,7 +54,7 @@ function FeedbackPageInner() {
 
   // Single source of truth: the shared Assessment Context. Feedback binds to
   // the active assessment (assessmentId) — run identity comes from the context.
-  const { data: ctx, assessmentId, runId, loading: ctxLoading, error: ctxError } = useAssessmentWorkspace(authStatus === 'authenticated')
+  const { data: ctx, assessmentId, runId, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
 
   // Submit tab state
   const [userName, setUserName] = useState('')
@@ -132,6 +133,12 @@ function FeedbackPageInner() {
         </button>
       </div>
     )
+  }
+
+  // Global Assessment Context Guard: no assessment → auto-redirect to the
+  // landing page (upload workflow). Users never see a raw 404 or dead end.
+  if (noAssessment && !ctxLoading) {
+    return <AssessmentGuard active />
   }
 
   async function handleSubmit(e: React.FormEvent) {

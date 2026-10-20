@@ -13,6 +13,7 @@ import {
 export type AssessmentBootState =
   | 'idle'
   | 'none'
+  | 'no_assessment'
   | 'starting'
   | 'started'
   | 'needs_confirmation'
@@ -129,7 +130,7 @@ export function useAssessmentBootstrap(options: Options = {}) {
       if (cancelled) return
       setAssessmentContext(ctx)
       if (!ctx?.assessmentId) {
-        setBootState('none')
+        setBootState('no_assessment')
         return
       }
 

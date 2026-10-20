@@ -1,52 +1,20 @@
 'use client'
 
-import React, { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import React, { Suspense } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import WorkspaceHeader from '../../components/WorkspaceHeader'
 import AssessmentProgress from '../../components/AssessmentProgress'
-import { getActiveAssessment, getAssessmentWorkspace, type AssessmentWorkspacePayload } from '../../lib/api'
 import { normalizeEntityType } from '../../lib/assessment-store'
+import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 function ResearchPageInner() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { status: authStatus } = useSession()
-  const [error, setError] = useState<string | null>(null)
-  const [data, setData] = useState<AssessmentWorkspacePayload | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadResearch() {
-      setLoading(true)
-      setError(null)
-      try {
-        const assessmentIdParam = searchParams.get('id') || searchParams.get('assessmentId')
-        let payload: AssessmentWorkspacePayload
-        if (assessmentIdParam) {
-          payload = await getAssessmentWorkspace(assessmentIdParam)
-        } else {
-          payload = await getActiveAssessment()
-        }
-        if (!cancelled) setData(payload)
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'No active assessment found. Please create an assessment first.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    if (authStatus === 'authenticated') {
-      loadResearch()
-    } else if (authStatus === 'unauthenticated') {
-      setLoading(false)
-    }
-    return () => {
-      cancelled = true
-    }
-  }, [authStatus, searchParams])
+  const { data, loading, error, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
 
   const status = data?.research?.status ?? data?.status ?? 'pending'
   const sources: any[] = data?.research?.sources ?? []
@@ -70,6 +38,27 @@ function ResearchPageInner() {
   ]
   const docIntelMode: boolean = data?.research?.mode === 'document_intelligence'
   const docIntelFindings: string[] = data?.research?.document_findings ?? (docIntelMode && data?.extractedTextPreview ? [data.extractedTextPreview] : [])
+
+  if (authStatus === 'loading') {
+    return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
+  }
+
+  if (authStatus === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex flex-col items-center justify-center gap-4">
+        <div className="text-lg font-bold text-slate-900">Sign in to use Kulima FLEX</div>
+        <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">
+          Sign in
+        </button>
+      </div>
+    )
+  }
+
+  // Global Assessment Context Guard: no assessment → auto-redirect to the
+  // landing page (upload workflow). Users never see a raw 404 or dead end.
+  if (noAssessment && !loading) {
+    return <AssessmentGuard active />
+  }
 
   return (
     <PilotWorkspaceShell
@@ -120,7 +109,7 @@ function ResearchPageInner() {
         </div>
       )}
 
-      {error && !loading && (
+      {error && !loading && !noAssessment && (
         <div className="p-4 rounded-[12px] border border-amber-300 bg-amber-50 text-sm text-amber-800">
           {error}{' '}
           <button className="underline font-bold ml-2" onClick={() => router.push('/flex')}>

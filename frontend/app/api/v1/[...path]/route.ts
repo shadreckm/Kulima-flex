@@ -8,9 +8,9 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 export const fetchCache = 'force-no-store'
 
-// Vercel has a 4.5MB limit for function payloads. Files larger than this will fail
-// with 413 FUNCTION_PAYLOAD_TOO_LARGE regardless of this limit.
-// This is a known Vercel limitation that cannot be bypassed without architecture changes.
+// Vercel has a 4.5MB limit for function payloads. Files larger than this are
+// uploaded directly to the backend to bypass the proxy (see frontend/lib/api.ts).
+// This limit is enforced to prevent 413 FUNCTION_PAYLOAD_TOO_LARGE errors.
 const MAX_REQUEST_BYTES = 4.5 * 1024 * 1024
 
 const configuredBackendUrl = process.env.KULIMA_BACKEND_URL
@@ -24,7 +24,7 @@ async function proxy(request: NextRequest) {
 
   const declaredLength = Number(request.headers.get('content-length') || 0)
   if (declaredLength > MAX_REQUEST_BYTES) {
-    return NextResponse.json({ error: true, message: 'Request exceeds the 25 MB upload limit' }, { status: 413 })
+    return NextResponse.json({ error: true, message: 'Request exceeds the 4.5 MB proxy limit. Large files (>4MB) are uploaded directly to the backend.' }, { status: 413 })
   }
 
   const headers = new Headers(request.headers)
@@ -96,7 +96,7 @@ async function proxy(request: NextRequest) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = await request.arrayBuffer()
     if (init.body.byteLength > MAX_REQUEST_BYTES) {
-      return NextResponse.json({ error: true, message: 'Request exceeds the 25 MB upload limit' }, { status: 413 })
+      return NextResponse.json({ error: true, message: 'Request exceeds the 4.5 MB proxy limit. Large files (>4MB) are uploaded directly to the backend.' }, { status: 413 })
     }
   }
 

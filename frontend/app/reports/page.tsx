@@ -5,6 +5,7 @@ import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { reportDownloadHref } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
+import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 import Link from 'next/link'
 
 // ── Report definitions with entity-type framing ───────────────────────────
@@ -82,7 +83,7 @@ const FUTURE_INTEGRATIONS = [
 
 function ReportsPageInner() {
   const { status: authStatus } = useSession()
-  const { data: ctx, runId, loading, error } = useAssessmentWorkspace(authStatus === 'authenticated')
+  const { data: ctx, runId, loading, error, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
 
   const entityTypeLabel = ctx?.assessmentTypeLabel || 'Assessment'
   const entityName = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || 'Current Assessment'
@@ -98,6 +99,12 @@ function ReportsPageInner() {
         <button onClick={() => signIn()} className="px-5 py-2.5 rounded-lg bg-[#0B5D3B] text-white font-bold hover:bg-[#08482E] transition shadow-sm">Sign in</button>
       </div>
     )
+  }
+
+  // Global Assessment Context Guard: no assessment → auto-redirect to the
+  // landing page (upload workflow). Users never see a raw 404 or dead end.
+  if (noAssessment && !loading) {
+    return <AssessmentGuard active />
   }
 
   return (
