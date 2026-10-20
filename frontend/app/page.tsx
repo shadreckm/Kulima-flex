@@ -205,7 +205,7 @@ function HomeInner() {
 
   // Failsafe: Check for completed assessments when authenticated
   // If the user is stranded on the landing page with a completed assessment,
-  // show a button to open the workspace.
+  // automatically redirect to the workspace (NO BUTTON - the landing page is only for upload)
   useEffect(() => {
     if (authStatus !== 'authenticated') return
     let cancelled = false
@@ -218,14 +218,15 @@ function HomeInner() {
         if (isComplete) {
           setActiveAssessment(active)
           activeAssessmentRef.current = active
-          setMessage(`Assessment "${active.displayEntity || active.organizationName || active.startupName}" is ready. Open your workspace to continue.`)
+          // Auto-redirect to workspace - NO BUTTON needed
+          router.push('/flex')
         }
       } catch {
         // No active assessment — this is expected on the landing page
       }
     })()
     return () => { cancelled = true }
-  }, [authStatus])
+  }, [authStatus, router])
 
   // Poll for assessment completion if we have an active assessment with a run
   // Automatically redirect to workspace when complete
@@ -330,20 +331,6 @@ function HomeInner() {
           <div className="mt-3 text-sm font-semibold text-[#475467]">Upload first. Ask questions later. <span className="font-normal text-[#667085]">Extraction and assessment-type detection happen automatically — you confirm, not re-type.</span></div>
 
           {message ? <div className="mt-4 rounded-lg border border-[#B7E6CC] bg-[#F0FBF4] px-4 py-3 text-sm font-semibold text-[#117A4B]">{message}</div> : null}
-
-          {/* Failsafe: Open Workspace button when assessment is ready */}
-          {activeAssessmentRef.current && !busy && !hasFiles ? (
-            <div className="mt-4 rounded-lg border border-[#159A62] bg-[#EAF8F0] px-4 py-3">
-              <div className="text-sm font-semibold text-[#117A4B] mb-2">Assessment Ready</div>
-              <button
-                type="button"
-                onClick={() => router.push('/flex')}
-                className="rounded-lg bg-[#159A62] px-4 py-2 text-sm font-bold text-white hover:bg-[#117A4B] transition"
-              >
-                Open Workspace →
-              </button>
-            </div>
-          ) : null}
 
           {/* ── SECTION 2: AUTO DETECTION — appears after files are staged ──── */}
           {hasFiles ? (
