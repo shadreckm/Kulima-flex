@@ -10,6 +10,7 @@ import { saveUseCase } from '../lib/use-case-store'
 import { INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
 import * as api from '../lib/api'
+import type { AssessmentContextPayload } from '../lib/api'
 
 const TYPE_LABELS: Record<EntityType, string> = {
   startup: 'Startup', ngo: 'NGO', government_program: 'Government Programme', development_program: 'Development Programme', tourism_sme: 'Tourism SME', accelerator: 'Accelerator',
@@ -110,6 +111,8 @@ function HomeInner() {
   const [keywords, setKeywords] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const resumeHandled = useRef(false)
+  const [activeAssessment, setActiveAssessment] = useState<AssessmentContextPayload | null>(null)
+  const activeAssessmentRef = useRef<AssessmentContextPayload | null>(null)
 
   // Get Started UX: clicking the CTA activates Upload Mode — the page scrolls
   // to the dropzone and the CTA label transitions to reflect the upload state.
@@ -166,13 +169,11 @@ function HomeInner() {
       }
 
       // Persist the run identity straight into the Assessment Context.
-      saveIntakeContext({ ...payload, runId: activeRunId || payload.runId || '' })
+      const finalContext = { ...payload, runId: activeRunId || payload.runId || '' }
+      saveIntakeContext(finalContext)
 
-      // Redirect first — never let post-create housekeeping block navigation.
-      // IndexedDB draft cleanup is fire-and-forget (a blocked IndexedDB
-      // transaction used to stall this function before router.push ran,
-      // leaving the user stranded on the landing page with a succeeded
-      // assessment).
+      // Redirect immediately to the workspace — the assessment is now active.
+      // The useAssessmentBootstrap hook will poll for completion and refresh automatically.
       setMessage('Assessment created. Opening your workspace…')
       router.push('/flex')
       void clearIntakeDraft().catch(() => {})
@@ -201,6 +202,69 @@ function HomeInner() {
       router.replace('/')
     })()
   }, [authStatus, searchParams, router, runIntake])
+
+  // Failsafe: Check for completed assessments when authenticated
+  // If the user is stranded on the landing page with a completed assessment,
+  // show a button to open the workspace.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const active = await api.getActiveAssessment()
+        if (cancelled || !active) return
+        // Check if assessment is complete or has a run
+        const isComplete = active.status === 'complete' || active.status === 'completed' || active.runId
+        if (isComplete) {
+          setActiveAssessment(active)
+          activeAssessmentRef.current = active
+          setMessage(`Assessment "${active.displayEntity || active.organizationName || active.startupName}" is ready. Open your workspace to continue.`)
+        }
+      } catch {
+        // No active assessment — this is expected on the landing page
+      }
+    })()
+    return () => { cancelled = true }
+  }, [authStatus])
+
+  // Poll for assessment completion if we have an active assessment with a run
+  // Automatically redirect to workspace when complete
+  useEffect(() => {
+    const current = activeAssessmentRef.current
+    if (!current?.runId || authStatus !== 'authenticated') return
+    const status = current.status
+    if (status === 'complete' || status === 'completed') return
+
+    let cancelled = false
+    const interval = setInterval(async () => {
+      if (cancelled) return
+      try {
+        const s = await api.getRunStatus(current.runId!)
+        const st = String(s?.status || '').toLowerCase()
+        if (st === 'complete' || st === 'completed') {
+          clearInterval(interval)
+          if (!cancelled) {
+            // Refresh the assessment context
+            const full = await api.getAssessment(current.assessmentId!)
+            if (full) {
+              setActiveAssessment(full)
+              activeAssessmentRef.current = full
+              // Save to store (the store accepts both types)
+              saveIntakeContext(full as unknown as AssessmentContext)
+              // Auto-redirect to workspace
+              router.push('/flex')
+            }
+          }
+        }
+      } catch {
+        // Transient errors — keep polling
+      }
+    }, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [authStatus, router])
 
   function addFiles(incoming: FileList | null) {
     if (!incoming?.length) return
@@ -266,6 +330,20 @@ function HomeInner() {
           <div className="mt-3 text-sm font-semibold text-[#475467]">Upload first. Ask questions later. <span className="font-normal text-[#667085]">Extraction and assessment-type detection happen automatically — you confirm, not re-type.</span></div>
 
           {message ? <div className="mt-4 rounded-lg border border-[#B7E6CC] bg-[#F0FBF4] px-4 py-3 text-sm font-semibold text-[#117A4B]">{message}</div> : null}
+
+          {/* Failsafe: Open Workspace button when assessment is ready */}
+          {activeAssessmentRef.current && !busy && !hasFiles ? (
+            <div className="mt-4 rounded-lg border border-[#159A62] bg-[#EAF8F0] px-4 py-3">
+              <div className="text-sm font-semibold text-[#117A4B] mb-2">Assessment Ready</div>
+              <button
+                type="button"
+                onClick={() => router.push('/flex')}
+                className="rounded-lg bg-[#159A62] px-4 py-2 text-sm font-bold text-white hover:bg-[#117A4B] transition"
+              >
+                Open Workspace →
+              </button>
+            </div>
+          ) : null}
 
           {/* ── SECTION 2: AUTO DETECTION — appears after files are staged ──── */}
           {hasFiles ? (
