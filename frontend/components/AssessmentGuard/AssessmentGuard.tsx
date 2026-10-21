@@ -24,6 +24,7 @@ export function AssessmentGuard({
   children,
   redirectTo = '/',
   label = 'Opening the upload workflow…',
+  loading = false,
 }: {
   /** True when the workspace resolved no Assessment Context. */
   active: boolean
@@ -33,20 +34,35 @@ export function AssessmentGuard({
   redirectTo?: string
   /** Brief transition label shown while redirecting. */
   label?: string
+  /** True when still loading context - do NOT redirect while loading. */
+  loading?: boolean
 }) {
   const router = useRouter()
   const [leaving, setLeaving] = useState(false)
   const redirectedRef = useRef(false)
 
   useEffect(() => {
-    if (!active || redirectedRef.current) return
+    // DO NOT REDIRECT while loading - prevents redirect loop during context hydration
+    if (!active || loading || redirectedRef.current) return
     redirectedRef.current = true
     setLeaving(true)
     // Replace (not push) so Back never returns the user to a dead workspace.
     router.replace(redirectTo)
-  }, [active, redirectTo, router])
+  }, [active, loading, redirectTo, router])
 
   if (!active) return <>{children}</>
+
+  // Show loading state instead of redirecting while hydrating context
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <span className="w-3 h-3 rounded-full bg-[#0B5D3B] animate-pulse" />
+          <span className="text-sm font-semibold text-slate-500">Loading Assessment Context…</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center">

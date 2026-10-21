@@ -9,7 +9,7 @@ import NavigationSidebar from '../../components/NavigationSidebar/NavigationSide
 import AssessmentSummaryBar from '../../components/AssessmentSummaryBar/AssessmentSummaryBar'
 import * as api from '../../lib/api'
 import type { SignalsSummary } from '../../lib/api'
-import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
+import { useAssessmentBootstrap, type AssessmentBootState } from '../../hooks/useAssessmentBootstrap'
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 // Domain config mirrors ContextPanel but for the main-column overview
@@ -72,10 +72,12 @@ function SignalsPageInner() {
 
   const runId = assessmentContext?.runId || null
   const status = assessmentContext?.status || null
+  const isLoading = bootState === 'idle' || bootState === 'starting' || bootState === 'started'
 
   // Global Assessment Guard: no assessment → auto-redirect to landing page
+  // Only redirect when bootState is definitively 'no_assessment' - not while loading.
   if (bootState === 'no_assessment' || (bootState === 'none' && !assessmentContext)) {
-    return <AssessmentGuard active label="Preparing your assessment…" />
+    return <AssessmentGuard active label="Preparing your assessment…" loading={isLoading} />
   }
 
   // MVP reliability: Signals page must render whenever the assessment has
@@ -198,7 +200,7 @@ function SignalsPageInner() {
           </>
         ) : null}
         {!assessmentContext ? (
-          <AssessmentGuard active label="Preparing your assessment…" />
+          <AssessmentGuard active label="Preparing your assessment…" loading={isLoading} />
         ) : null}
       </main>
       <ContextPanel type="signals" runId={runId} status={status} />

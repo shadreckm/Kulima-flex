@@ -25,6 +25,7 @@ function FlexPageInner() {
   const [error, setError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
   const status = statusOverride ?? assessmentContext?.status ?? null
+  const isLoading = bootState === 'idle' || bootState === 'starting' || bootState === 'started'
 
   useEffect(() => {
     setPolling(bootState === 'started')
@@ -158,8 +159,10 @@ function FlexPageInner() {
         ) : (
           // Global Assessment Context Guard: no assessment → auto-redirect to
           // the landing page (upload workflow). Users never see a dead end.
+          // Only redirect when bootState is definitively 'no_assessment' - not while loading.
           <AssessmentGuard
-            active
+            active={bootState === 'no_assessment'}
+            loading={isLoading}
             label="Preparing your assessment…"
           />
         )}

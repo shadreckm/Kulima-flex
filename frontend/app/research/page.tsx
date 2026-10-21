@@ -56,8 +56,9 @@ function ResearchPageInner() {
 
   // Global Assessment Context Guard: no assessment → auto-redirect to the
   // landing page (upload workflow). Users never see a raw 404 or dead end.
+  // Pass loading to prevent redirect loop during context hydration.
   if (noAssessment && !loading) {
-    return <AssessmentGuard active />
+    return <AssessmentGuard active loading={false} />
   }
 
   return (

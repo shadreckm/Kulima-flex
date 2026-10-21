@@ -113,6 +113,7 @@ function HomeInner() {
   const resumeHandled = useRef(false)
   const [activeAssessment, setActiveAssessment] = useState<AssessmentContextPayload | null>(null)
   const activeAssessmentRef = useRef<AssessmentContextPayload | null>(null)
+  const hasRedirectedRef = useRef(false)
 
   // Get Started UX: clicking the CTA activates Upload Mode — the page scrolls
   // to the dropzone and the CTA label transitions to reflect the upload state.
@@ -206,8 +207,9 @@ function HomeInner() {
   // Failsafe: Check for completed assessments when authenticated
   // If the user is stranded on the landing page with a completed assessment,
   // automatically redirect to the workspace (NO BUTTON - the landing page is only for upload)
+  // PROTECT AGAINST REDIRECT LOOP: Only redirect once using hasRedirectedRef
   useEffect(() => {
-    if (authStatus !== 'authenticated') return
+    if (authStatus !== 'authenticated' || hasRedirectedRef.current) return
     let cancelled = false
     void (async () => {
       try {
@@ -218,6 +220,7 @@ function HomeInner() {
         if (isComplete) {
           setActiveAssessment(active)
           activeAssessmentRef.current = active
+          hasRedirectedRef.current = true
           // Auto-redirect to workspace - NO BUTTON needed
           router.push('/flex')
         }
@@ -230,9 +233,10 @@ function HomeInner() {
 
   // Poll for assessment completion if we have an active assessment with a run
   // Automatically redirect to workspace when complete
+  // PROTECT AGAINST REDIRECT LOOP: Only redirect once using hasRedirectedRef
   useEffect(() => {
     const current = activeAssessmentRef.current
-    if (!current?.runId || authStatus !== 'authenticated') return
+    if (!current?.runId || authStatus !== 'authenticated' || hasRedirectedRef.current) return
     const status = current.status
     if (status === 'complete' || status === 'completed') return
 
@@ -244,7 +248,8 @@ function HomeInner() {
         const st = String(s?.status || '').toLowerCase()
         if (st === 'complete' || st === 'completed') {
           clearInterval(interval)
-          if (!cancelled) {
+          if (!cancelled && !hasRedirectedRef.current) {
+            hasRedirectedRef.current = true
             // Refresh the assessment context
             const full = await api.getAssessment(current.assessmentId!)
             if (full) {
