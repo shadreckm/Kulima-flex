@@ -237,6 +237,13 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
             "confidence": brief.confidence,
         }
 
+    # STATE SYNCHRONIZATION FIX: status is derived from ACTUAL DATA, not the
+    # stored lifecycle value. The rule: if any of signalsSummary / signal
+    # domains / signal count > 0 / signal scores exist, the workspace CANNOT
+    # be "running" — it is COMPLETE. This kills the stale RUNNING banner that
+    # persisted after the pipeline finished but the stored status was not
+    # flipped (the Signals page showed "RUNNING / Analysis in progress..."
+    # while all nine domains were populated).
     signals_summary_payload = None
     if brief:
         try:
@@ -270,11 +277,48 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
         except Exception as exc:
             _log.debug("serialize_context: could not generate signalsSummary: %s", exc)
 
+    # Data-driven status override (same rule as the frontend): any of
+    # signalsSummary / populated domains / signal count > 0 forces COMPLETE.
+    def _has_signal_data() -> bool:
+        if not isinstance(signals_summary_payload, dict):
+            return False
+        if signals_summary_payload.get("critical", 0) or signals_summary_payload.get("high", 0) or \
+           signals_summary_payload.get("medium", 0) or signals_summary_payload.get("low", 0):
+            return True
+        domains = signals_summary_payload.get("domains") or {}
+        if any(isinstance(v, dict) and ((v.get("count") or 0) > 0 or v.get("score") is not None or (v.get("signals") or []))
+               for v in domains.values()):
+            return True
+        return bool(signals_summary_payload.get("allSignals"))
+
+    status_value = getattr(ctx.status, "value", str(ctx.status))
+    if _has_signal_data() and status_value.lower() not in ("complete", "completed"):
+        _log.info(
+            "status sync: overriding stale status '%s' -> 'complete' for assessment %s (signals data present)",
+            status_value, ctx.assessment_id,
+        )
+        status_value = "complete"
+        # Persist the correction so every later read starts consistent.
+        try:
+            ctx.status = AssessmentStatus.COMPLETE
+            _repo.save(ctx)
+        except Exception as exc:
+            _log.debug("status sync persist failed (non-fatal): %s", exc)
+
+    # Keep every section payload on the SAME status (no module says RUNNING
+    # while another says COMPLETE for the same assessment).
+    if status_value == "complete":
+        if isinstance(research_payload, dict):
+            research_payload["status"] = "completed"
+            research_payload["progress"] = 100
+        if isinstance(reports_payload, dict):
+            reports_payload["status"] = "ready"
+
     return {
         "assessmentId": ctx.assessment_id,
         "assessmentType": atype_value,
         "assessmentTypeLabel": ASSESSMENT_TYPE_LABELS.get(atype_value, "Assessment"),
-        "status": getattr(ctx.status, "value", str(ctx.status)),
+        "status": status_value,
         "runId": ctx.run_id,
         # Phase 7: never fail silently — surface which intelligence mode ran.
         "aiMode": ai_mode,

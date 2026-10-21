@@ -122,13 +122,18 @@ export default function DecisionWorkspacePage() {
     return <AssessmentGuard active loading={false} />
   }
 
+  // STATE SYNCHRONIZATION FIX: Derive status from actual data, not just cached state
+  // If decision snapshot exists, status should be 'complete' regardless of stored status
+  const hasDecisionData = Boolean(snapshot || brief)
+  const effectiveStatus = hasDecisionData ? 'complete' : (ctx?.status || 'active')
+
   return (
     <PilotWorkspaceShell
       workspace="Decision"
       title="Decision Workspace"
       description="Review, analyze, and approve evaluations. The definitive evidence-backed decision layer: Information → Evidence → Trust → Signals → Decision."
       runId={runId}
-      status={ctx?.status === 'complete' ? 'active' : (ctx?.status || 'active')}
+      status={effectiveStatus === 'complete' ? 'active' : effectiveStatus}
       startupName={displayEntity || undefined}
       recommendation={recommendation}
       trustScore={trustScore || undefined}

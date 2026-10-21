@@ -104,7 +104,9 @@ function FlexSnapshotView({ runId, status, loading, error, data }: SnapshotProps
     return <div className="text-xs text-gray-500">Run an analysis to see the decision snapshot.</div>
   }
 
-  if (status && !assessmentIsDone(status)) {
+  // STATE SYNCHRONIZATION FIX: If data exists, decision is complete regardless of status string
+  // This prevents showing "Analysis in progress" when decision snapshot is already loaded
+  if (status && !assessmentIsDone(status) && !data) {
     return <div className="text-xs text-gray-500">Analysis in progress… Decision snapshot will appear when complete.</div>
   }
 
@@ -206,7 +208,9 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
     return <div className="text-xs text-gray-500">Select or create an evaluation to inspect signal intelligence.</div>
   }
 
-  if (status && !assessmentIsDone(status)) {
+  // STATE SYNCHRONIZATION FIX: If data exists, signals are complete regardless of status string
+  // This prevents showing "Analysis in progress" when signals are already loaded
+  if (status && !assessmentIsDone(status) && !data) {
     return <div className="text-xs text-gray-500">Analysis in progress… Signals will appear when complete.</div>
   }
 

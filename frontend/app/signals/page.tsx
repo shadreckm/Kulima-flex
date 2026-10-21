@@ -89,6 +89,11 @@ function SignalsPageInner() {
   const assessmentComplete = !!status && ['complete', 'completed'].includes(String(status).toLowerCase())
   const showDomains = Boolean(effectiveSignals) || assessmentComplete
 
+  // STATE SYNCHRONIZATION FIX: Derive status from actual data, not just cached state
+  // If signals exist, status should be 'complete' regardless of stored status
+  const hasSignalsData = Boolean(effectiveSignals)
+  const effectiveStatus = hasSignalsData ? 'complete' : status
+
   // Refetch the live summary from the run API when a run exists (once, plus a
   // short retry window if the run has just completed).
   useEffect(() => {
@@ -125,7 +130,7 @@ function SignalsPageInner() {
       <NavigationSidebar
         workspace="Signals"
         runId={runId}
-        status={status}
+        status={effectiveStatus}
         startupName={assessmentContext?.displayEntity || assessmentContext?.entityName}
         recommendation={assessmentContext?.decision?.recommendation}
         trustScore={assessmentContext?.trustScore}
@@ -133,7 +138,7 @@ function SignalsPageInner() {
       <main className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
         {assessmentContext ? (
           <div className="flex-shrink-0">
-            <AssessmentSummaryBar context={assessmentContext} status={status} />
+            <AssessmentSummaryBar context={assessmentContext} status={effectiveStatus} hasData={hasSignalsData} />
           </div>
         ) : null}
         {assessmentContext && runId ? (
@@ -203,7 +208,7 @@ function SignalsPageInner() {
           <AssessmentGuard active label="Preparing your assessment…" loading={isLoading} />
         ) : null}
       </main>
-      <ContextPanel type="signals" runId={runId} status={status} />
+      <ContextPanel type="signals" runId={runId} status={effectiveStatus} />
     </div>
   )
 }

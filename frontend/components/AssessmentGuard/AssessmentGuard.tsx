@@ -16,7 +16,7 @@
  *   // or wrap content: <AssessmentGuard active={noAssessment && !loading}>…</AssessmentGuard>
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 export function AssessmentGuard({
@@ -38,16 +38,21 @@ export function AssessmentGuard({
   loading?: boolean
 }) {
   const router = useRouter()
-  const [leaving, setLeaving] = useState(false)
   const redirectedRef = useRef(false)
 
   useEffect(() => {
     // DO NOT REDIRECT while loading - prevents redirect loop during context hydration
     if (!active || loading || redirectedRef.current) return
-    redirectedRef.current = true
-    setLeaving(true)
-    // Replace (not push) so Back never returns the user to a dead workspace.
-    router.replace(redirectTo)
+    // HYDRATION GRACE: a context created seconds ago may not be indexed by the
+    // backend yet. Give the bootstrap retries a final grace window before
+    // bouncing back to the landing page — this is what breaks the loop.
+    const grace = setTimeout(() => {
+      if (redirectedRef.current) return
+      redirectedRef.current = true
+      // Replace (not push) so Back never returns the user to a dead workspace.
+      router.replace(redirectTo)
+    }, 2000)
+    return () => clearTimeout(grace)
   }, [active, loading, redirectTo, router])
 
   if (!active) return <>{children}</>

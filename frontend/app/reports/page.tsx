@@ -108,13 +108,18 @@ function ReportsPageInner() {
     return <AssessmentGuard active loading={false} />
   }
 
+  // STATE SYNCHRONIZATION FIX: Derive status from actual data, not just cached state
+  // If decision snapshot exists (proxy for reports being ready), status should be 'complete'
+  const hasReportData = Boolean(ctx?.decision)
+  const effectiveStatus = hasReportData ? 'complete' : (ctx?.status || 'active')
+
   return (
     <PilotWorkspaceShell
       workspace="Reports"
       title="Reports"
       description="Download evidence-backed reports for your investment committee, donors, or program review."
       runId={runId}
-      status={ctx?.status}
+      status={effectiveStatus}
       startupName={entityName}
       trustScore={ctx?.trustScore}
       assessmentCtx={ctx ? {
@@ -164,10 +169,10 @@ function ReportsPageInner() {
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-black px-2.5 py-1 rounded border uppercase tracking-wider ${
-              ctx.status === 'complete' || ctx.status === 'completed' ? 'bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]' :
-              ctx.status === 'running' ? 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]' :
+              hasReportData || ctx.status === 'complete' || ctx.status === 'completed' ? 'bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]' :
+              ctx.status === 'running' && !hasReportData ? 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]' :
               'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
-            }`}>{ctx.status || 'pending'}</span>
+            }`}>{hasReportData ? 'complete' : (ctx.status || 'pending')}</span>
           </div>
         </section>
       )}

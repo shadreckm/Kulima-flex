@@ -61,13 +61,32 @@ function ResearchPageInner() {
     return <AssessmentGuard active loading={false} />
   }
 
+  // STATE SYNCHRONIZATION FIX: Derive status from actual data, not just cached state
+  // If usable research exists, status should be 'complete' regardless of stored status.
+  // All downstream consumers (header, progress steps, banners) must read this
+  // derived status — never the raw cached string.
+  const effectiveStatus = hasUsableResearch ? 'complete' : status
+  const effectiveStatusLower = String(effectiveStatus).toLowerCase()
+  const isRunning = effectiveStatusLower === 'running' && !hasUsableResearch
+  const derivedProgress = hasUsableResearch
+    ? 100
+    : (data?.research?.progress ?? (isRunning ? 50 : 20))
+  const derivedProgressSteps: Array<{ key: string; label: string; status: 'complete' | 'pending' | 'in_progress' }> = [
+    { key: 'created', label: 'Assessment Created', status: 'complete' },
+    { key: 'research', label: 'Research Complete', status: hasUsableResearch ? 'complete' : (isRunning ? 'in_progress' : 'pending') },
+    { key: 'evidence', label: 'Evidence Complete', status: hasUsableResearch ? 'complete' : 'pending' },
+    { key: 'signals', label: 'Signals Complete', status: hasUsableResearch ? 'complete' : 'pending' },
+    { key: 'decision', label: 'Decision Ready', status: hasUsableResearch ? 'complete' : 'pending' },
+    { key: 'report', label: 'Report Ready', status: hasUsableResearch ? 'complete' : 'pending' },
+  ]
+
   return (
     <PilotWorkspaceShell
       workspace="Research"
       title="Research Intelligence"
       description="External OSINT, market analysis, institutional registry signals, and contextual research."
       runId={data?.runId || null}
-      status={status}
+      status={effectiveStatus}
       startupName={data?.displayEntity || data?.organizationName || data?.startupName}
       trustScore={data?.trustScore}
       assessmentCtx={data ? {
@@ -95,11 +114,11 @@ function ResearchPageInner() {
             assessmentType={normalizeEntityType(data?.assessmentType)}
             organization={data?.organizationName}
             founder={data?.founderName}
-            status={status}
+            status={effectiveStatus}
             documentCount={data?.uploadedDocuments?.length || 0}
-            progress={progress}
+            progress={derivedProgress}
           />
-          <AssessmentProgress steps={progressSteps} />
+          <AssessmentProgress steps={derivedProgressSteps} />
         </div>
       )}
 
@@ -147,10 +166,10 @@ function ResearchPageInner() {
                 </div>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider border ${
                   hasUsableResearch ? 'bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]' :
-                  status === 'running' ? 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]' :
+                  isRunning ? 'bg-[#EAF3FF] text-[#004085] border-[#D6E8FF]' :
                   'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
                 }`}>
-                  {hasUsableResearch ? 'COMPLETE' : String(status).toUpperCase()}
+                  {hasUsableResearch ? 'COMPLETE' : String(effectiveStatus).toUpperCase()}
                 </span>
               </div>
             </div>
@@ -159,10 +178,10 @@ function ResearchPageInner() {
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 mb-2">
               <div
                 className="h-full bg-[#0B5D3B] transition-all duration-700 rounded-full"
-                style={{ width: `${Math.min(100, Math.max(0, Number(progress)))}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, Number(derivedProgress)))}%` }}
               />
             </div>
-            <p className="text-xs text-slate-500 mb-3">{Number(progress)}% complete</p>
+            <p className="text-xs text-slate-500 mb-3">{Number(derivedProgress)}% complete</p>
 
             {researchSummary ? (
               <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0] text-xs text-slate-700 leading-6">
@@ -170,7 +189,7 @@ function ResearchPageInner() {
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic">
-                {status === 'running' ? 'Research in progress — findings will appear here.' : 'No research summary available yet.'}
+                {isRunning ? 'Research in progress — findings will appear here.' : 'No research summary available yet.'}
               </p>
             )}
           </section>

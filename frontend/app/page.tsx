@@ -96,6 +96,26 @@ const PRICING = [
   { name: 'Enterprise', price: 'Custom', detail: 'Organizations, RBAC, audit logs, private workspace, donor templates.', cta: 'Talk to us' },
 ]
 
+// REDIRECT LOOP FIX (landing side): a per-mount ref resets every time the
+// loop bounces the user back to '/', so it cannot stop a redirect loop.
+// This latch is module-level AND session-scoped: the landing page may only
+// push /flex once per session window. /flex clears the latch once the
+// Assessment Context has actually hydrated (see flex/page.tsx).
+const FLEX_REDIRECT_LATCH = 'kulima:flex-redirect-latch'
+const FLEX_REDIRECT_WINDOW_MS = 15_000
+
+function mayRedirectToFlex(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const last = Number(window.sessionStorage.getItem(FLEX_REDIRECT_LATCH) || 0)
+    if (last && Date.now() - last < FLEX_REDIRECT_WINDOW_MS) return false
+    window.sessionStorage.setItem(FLEX_REDIRECT_LATCH, String(Date.now()))
+    return true
+  } catch {
+    return true
+  }
+}
+
 function HomeInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -175,8 +195,9 @@ function HomeInner() {
 
       // Redirect immediately to the workspace — the assessment is now active.
       // The useAssessmentBootstrap hook will poll for completion and refresh automatically.
+      // Redirect-loop protection: only one push to /flex per session window.
       setMessage('Assessment created. Opening your workspace…')
-      router.push('/flex')
+      if (mayRedirectToFlex()) router.push('/flex')
       void clearIntakeDraft().catch(() => {})
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Upload failed. Please try again.')
@@ -221,8 +242,10 @@ function HomeInner() {
           setActiveAssessment(active)
           activeAssessmentRef.current = active
           hasRedirectedRef.current = true
-          // Auto-redirect to workspace - NO BUTTON needed
-          router.push('/flex')
+          // Auto-redirect to workspace - NO BUTTON needed.
+          // Redirect-loop protection: only one push to /flex per session window.
+          if (mayRedirectToFlex()) router.push('/flex')
+          else hasRedirectedRef.current = true
         }
       } catch {
         // No active assessment — this is expected on the landing page
@@ -257,8 +280,8 @@ function HomeInner() {
               activeAssessmentRef.current = full
               // Save to store (the store accepts both types)
               saveIntakeContext(full as unknown as AssessmentContext)
-              // Auto-redirect to workspace
-              router.push('/flex')
+              // Auto-redirect to workspace (once per session window)
+              if (mayRedirectToFlex()) router.push('/flex')
             }
           }
         }

@@ -13,6 +13,17 @@ import * as api from '../../lib/api'
 import { useAssessmentBootstrap } from '../../hooks/useAssessmentBootstrap'
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
+// REDIRECT LOOP FIX (flex side): once the Assessment Context has actually
+// hydrated, clear the landing page's one-shot redirect latch so a genuine new
+// assessment (or a manual return to '/') can navigate to /flex again. The
+// latch only stays armed while the loop would be possible — while /flex is
+// bouncing the user back to '/' and '/' is pushing them straight back.
+const FLEX_REDIRECT_LATCH = 'kulima:flex-redirect-latch'
+function clearFlexRedirectLatch() {
+  if (typeof window === 'undefined') return
+  try { window.sessionStorage.removeItem(FLEX_REDIRECT_LATCH) } catch {}
+}
+
 function FlexPageInner() {
   const { status: authStatus } = useSession()
   // Assessment Context drives everything â€” no legacy current-run store.
@@ -26,6 +37,17 @@ function FlexPageInner() {
   const [polling, setPolling] = useState(false)
   const status = statusOverride ?? assessmentContext?.status ?? null
   const isLoading = bootState === 'idle' || bootState === 'starting' || bootState === 'started'
+  // The context is hydrating from the moment the page mounts until the
+  // bootstrap resolves a context or definitively fails. During this window
+  // /flex MUST NOT redirect back — "Loading Assessment Context…" is shown
+  // instead. This is the loop breaker on the /flex side.
+  const hydrating =
+    bootState === 'idle' || bootState === 'starting' || bootState === 'none'
+
+  useEffect(() => {
+    // Context hydrated successfully — allow future legitimate navigations.
+    if (assessmentContext?.assessmentId) clearFlexRedirectLatch()
+  }, [assessmentContext?.assessmentId])
 
   useEffect(() => {
     setPolling(bootState === 'started')
@@ -162,7 +184,7 @@ function FlexPageInner() {
           // Only redirect when bootState is definitively 'no_assessment' - not while loading.
           <AssessmentGuard
             active={bootState === 'no_assessment'}
-            loading={isLoading}
+            loading={hydrating}
             label="Preparing your assessment…"
           />
         )}

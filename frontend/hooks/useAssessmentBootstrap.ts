@@ -104,30 +104,29 @@ export function useAssessmentBootstrap(options: Options = {}) {
 
     async function syncAndStart() {
       if (!ctx?.assessmentId) {
-        try {
-          const active = await api.getActiveAssessment()
-          if (active?.assessmentId) {
-            ctx = saveIntakeContext(active)
-          }
-        } catch (activeErr) {
-          // If getActiveAssessment fails, retry a few times with exponential backoff
-          // This handles the case where the assessment was just created but the
-          // backend hasn't indexed it yet
-          for (let i = 0; i < 3; i++) {
-            await new Promise(r => setTimeout(r, 500 * (i + 1)))
-            try {
-              const retryActive = await api.getActiveAssessment()
-              if (retryActive?.assessmentId) {
-                ctx = saveIntakeContext(retryActive)
-                break
-              }
-            } catch {
-              // continue retrying
+        // REDIRECT LOOP FIX: retry even when the call *succeeds but returns
+        // null* — a context created seconds ago may not be indexed yet, and
+        // previously that raced straight to 'no_assessment' and bounced the
+        // user back to the landing page (the flashing loop).
+        for (let i = 0; i < 4; i++) {
+          try {
+            const active = await api.getActiveAssessment()
+            if (active?.assessmentId) {
+              ctx = saveIntakeContext(active)
+              break
             }
+          } catch {
+            // transient network/indexing error — fall through to retry
           }
+          await new Promise(r => setTimeout(r, 400 * (i + 1)))
         }
       }
       if (cancelled) return
+      // Final local-store re-check: another tab (or the upload flow itself)
+      // may have persisted the context while we were retrying the backend.
+      if (!ctx?.assessmentId) {
+        ctx = loadAssessmentContext()
+      }
       setAssessmentContext(ctx)
       if (!ctx?.assessmentId) {
         setBootState('no_assessment')

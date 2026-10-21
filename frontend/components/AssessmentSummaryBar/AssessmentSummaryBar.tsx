@@ -8,6 +8,8 @@ type Props = {
   /** Live run status overrides the stored context status when available. */
   status?: string | null
   compact?: boolean
+  /** Optional: data exists to indicate completion (signals, decision, reports) */
+  hasData?: boolean
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -23,11 +25,13 @@ const STATUS_LABELS: Record<string, string> = {
  * Step 4: the Signals / Flex surfaces only display what the single intake
  * already knows — Assessment, Type, Status. No duplicate questions.
  */
-export default function AssessmentSummaryBar({ context, status, compact = false }: Props) {
+export default function AssessmentSummaryBar({ context, status, compact = false, hasData = false }: Props) {
   const statusKey = String(context.status || 'intake')
   const runStatus = status ? String(status).toLowerCase() : ''
+  // STATE SYNCHRONIZATION FIX: If data exists, force status to 'complete' regardless of stored status
+  const effectiveStatus = hasData ? 'complete' : runStatus
   const displayStatusKey =
-    runStatus === 'completed' ? 'complete' : runStatus === 'running' ? 'running' : statusKey
+    effectiveStatus === 'completed' ? 'complete' : effectiveStatus === 'running' ? 'running' : statusKey
   const statusLabel = STATUS_LABELS[displayStatusKey] || displayStatusKey
   const healthy = displayStatusKey === 'ready' || displayStatusKey === 'running' || displayStatusKey === 'complete'
 
