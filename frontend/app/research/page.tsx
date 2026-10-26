@@ -34,7 +34,8 @@ function ResearchPageInner() {
   const researchSummary: string = data?.research?.summary ?? data?.research?.synthesis ?? ''
 
   const synthesizedFallback =
-    data?.executiveSummary ||
+    data?.research?.summary ||
+    data?.research?.synthesis ||
     (findings.length > 0 ? findings.slice(0, 3).join(' ') : '') ||
     (sources.length > 0 ? `Evidence analysis grounded in ${sources.length} primary and research sources.` : '') ||
     (data?.problemStatement ? String(data.problemStatement) : '') ||
