@@ -1,0 +1,20 @@
+docClass: [('Kulima_Africa_Business_Plan.pdf', 'Business Plan')]
+entity: Startup | confidence: 0.75 | source: declared
+reportTitle: Investment Committee Report
+run: completed
+{
+ "runStatus": "completed",
+ "trust": 67.2,
+ "signals": 15,
+ "negativePhrases": [],
+ "recognizedTerms": [
+  "decision intelligence",
+  "evidence-to-decision",
+  "NGO",
+  "development program",
+  "DFI",
+  "government program",
+  "funding",
+  "business model"
+ ]
+}

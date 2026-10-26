@@ -207,7 +207,7 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
 
 _ENTITY_REPORT_LABELS = {
     "startup": "Investment Committee Report",
-    "ngo": "Institutional Capacity Report",
+    "ngo": "Institutional Capacity Review",
     "development_program": "Program Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
@@ -230,7 +230,7 @@ def _entity_report_label(brief: "InvestmentBrief", fallback: str) -> str:
     """Entity-aware report type label; entity titles never default to startup.
 
     Issue 6: canonical titles are Startup → Investment Committee Report,
-    NGO → Institutional Capacity Report, Development Program → Program
+    NGO → Institutional Capacity Review, Development Program → Program
     Performance Review, Government Program → Governance Review,
     Tourism SME → Tourism Resilience Report.
     """
@@ -249,7 +249,13 @@ def _txt_header(report_title: str, brief: InvestmentBrief) -> str:
     try:
         from kulima.intelligence.entity_profile import classify_entity
         _entity = classify_entity(None, " ".join([brief.startup_assessment or "", brief.executive_summary or ""]))
-        report_title = f"{_entity_report_label(brief, report_title)} — {report_title}"
+        canonical = _entity_report_label(brief, report_title)
+        # Issue: avoid duplicating the title when the incoming label already IS
+        # the canonical entity report title (e.g. NGO → Institutional Capacity Review).
+        if report_title.strip().lower() != canonical.strip().lower():
+            report_title = f"{canonical} — {report_title}"
+        else:
+            report_title = canonical
     except Exception:  # noqa: BLE001 — titles must never break report generation
         pass
     rec = brief.recommendation.value.upper()
@@ -322,34 +328,80 @@ Key facts in this memo are consistently supported across {ei.source_count} indep
 reviewed sources. Evidence Depth: {depth_label}.
 """
 
+    etype = _brief_entity_type(brief)
+    if etype in ("ngo", "research_institution", "foundation"):
+        memo_title = "INSTITUTIONAL CAPACITY REVIEW"
+        entity_line_label = "Entity:"
+        founder_label = "LEADERSHIP & GOVERNANCE ASSESSMENT"
+        startup_sec_label = "INSTITUTIONAL & OPERATIONAL CAPACITY"
+        market_sec_label = "PROGRAMMATIC & COMMUNITY CONTEXT"
+        scorecard_org = "Capacity"
+        scorecard_readiness = "Institutional Readiness"
+        verification_section = verification_section.replace("Before IC presentation", "Before committee review")
+    elif etype == "tourism_sme":
+        memo_title = "TOURISIM RESILIENCE REPORT"
+        entity_line_label = "Enterprise:"
+        founder_label = "LEADERSHIP & MANAGEMENT ASSESSMENT"
+        startup_sec_label = "TOURISM OPERATIONS & DESTINATION ASSESSMENT"
+        market_sec_label = "DESTINATION & VISITOR ECONOMY ASSESSMENT"
+        scorecard_org = "Operations"
+        scorecard_readiness = "Growth Readiness"
+        verification_section = verification_section.replace("Before IC presentation", "Before underwriting decision")
+    elif etype in ("development_program", "farmer_organization"):
+        memo_title = "PROGRAM PERFORMANCE REVIEW"
+        entity_line_label = "Program:"
+        founder_label = "PROGRAM LEADERSHIP & MANAGEMENT ASSESSMENT"
+        startup_sec_label = "PROGRAM IMPLEMENTATION & PERFORMANCE ASSESSMENT"
+        market_sec_label = "BENEFICIARY & IMPLEMENTATION CONTEXT"
+        scorecard_org = "Performance"
+        scorecard_readiness = "Implementation Readiness"
+        verification_section = verification_section.replace("Before IC presentation", "Before steering review")
+    elif etype == "government_program":
+        memo_title = "GOVERNANCE REVIEW"
+        entity_line_label = "Program / Agency:"
+        founder_label = "OVERSIGHT & LEADERSHIP ASSESSMENT"
+        startup_sec_label = "GOVERNANCE & PUBLIC SERVICE DELIVERY"
+        market_sec_label = "POLICY & CITIZEN IMPACT CONTEXT"
+        scorecard_org = "Governance"
+        scorecard_readiness = "Delivery Readiness"
+        verification_section = verification_section.replace("Before IC presentation", "Before governance sign-off")
+    else:
+        memo_title = "INVESTMENT COMMITTEE MEMO"
+        entity_line_label = "Deal:"
+        founder_label = "FOUNDER ASSESSMENT"
+        startup_sec_label = "STARTUP ASSESSMENT"
+        market_sec_label = "MARKET ASSESSMENT"
+        scorecard_org = "Startup"
+        scorecard_readiness = "Investment Readiness"
+
     return f"""{header}
-KULIMA FLEX — INVESTMENT COMMITTEE MEMO
+KULIMA FLEX — {memo_title}
 ========================================
-Deal: {brief.founder_name} / {brief.startup_name}
-Sector: {brief.sector or 'â€”'} | Geography: {brief.geography or 'â€”'} | Stage: {brief.stage or 'â€”'}
+{entity_line_label} {brief.founder_name} / {brief.startup_name}
+Sector: {brief.sector or '—'} | Geography: {brief.geography or '—'} | Stage: {brief.stage or '—'}
 Recommendation: {canonical_rec}
 Overall Score: {brief.overall_score:.0f}/100 | Confidence: {brief.confidence_level.value}{reliability_line}
 Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 
 EXECUTIVE SUMMARY
 ----------------------------------------
-{sanitize_runtime_artifacts(brief.executive_summary or 'â€”')}
+{sanitize_runtime_artifacts(brief.executive_summary or '—')}
 
-FOUNDER ASSESSMENT
+{founder_label}
 ----------------------------------------
-{sanitize_founder_reasoning(sanitize_runtime_artifacts(brief.founder_assessment or 'â€”'), brief)}
+{sanitize_founder_reasoning(sanitize_runtime_artifacts(brief.founder_assessment or '—'), brief)}
 
 FOUNDER EVIDENCE STATUS
 ----------------------------------------
 {founder_evidence_status(brief)}
 
-STARTUP ASSESSMENT
+{startup_sec_label}
 ----------------------------------------
-{sanitize_runtime_artifacts(brief.startup_assessment or 'â€”')}
+{sanitize_runtime_artifacts(brief.startup_assessment or '—')}
 
-MARKET ASSESSMENT
+{market_sec_label}
 ----------------------------------------
-{sanitize_runtime_artifacts(brief.market_assessment or 'â€”')}
+{sanitize_runtime_artifacts(brief.market_assessment or '—')}
 
 MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)
 ----------------------------------------
@@ -357,7 +409,7 @@ MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)
 
 RISK ASSESSMENT
 ----------------------------------------
-{sanitize_runtime_artifacts(brief.risk_assessment or 'â€”')}
+{sanitize_runtime_artifacts(brief.risk_assessment or '—')}
 
 RECOMMENDATION
 ----------------------------------------
@@ -369,17 +421,17 @@ NEXT STEPS
 
 SCORECARD
 ----------------------------------------
-Founder: {brief.founder_score:.0f}/100
-Startup: {brief.startup_score:.0f}/100
-Market: {brief.market_score:.0f}/100
+Leadership: {brief.founder_score:.0f}/100
+{scorecard_org}: {brief.startup_score:.0f}/100
+Market / Reach: {brief.market_score:.0f}/100
 Trust: {brief.trust_score:.0f}/100
 Risk (lower better): {brief.risk_score:.0f}/100
 Growth Potential: {brief.growth_potential:.0f}/100
-Investment Readiness: {brief.investment_readiness:.0f}/100
+{scorecard_readiness}: {brief.investment_readiness:.0f}/100
 {verification_section}
 — End of Memo —
 ================================================================================
-Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically
+Kulima Africa | Kulima FLEX · Confidential · Generated Automatically
 """.strip()
 
 
@@ -388,7 +440,7 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
         build_memo_text(brief),
         "",
         "=" * 80,
-        "FULL INVESTMENT COMMITTEE REPORT",
+        "FULL " + _entity_report_label(brief, "INVESTMENT COMMITTEE REPORT").upper(),
         "=" * 80,
         "",
     ]
@@ -1089,7 +1141,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
 
     # Brand Header & Executive Callout
     report_title = (
-        "Executive Full Investment Committee Report"
+        _entity_report_label(brief, "Executive Full Investment Committee Report")
         if full_report
         else _entity_report_label(brief, "Executive Investment Committee Memo")
     )
@@ -1128,11 +1180,33 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
     story.append(Spacer(1, 10))
 
     # Main Analysis Sections
+    etype = _brief_entity_type(brief)
+    if etype in ("ngo", "research_institution", "foundation"):
+        sec2_label = "2. Leadership & Institutional Capability Assessment"
+        sec3_label = "3. Institutional & Programmatic Assessment"
+        sec4_label = "4. Programmatic Dynamics & Stakeholders"
+    elif etype == "tourism_sme":
+        sec2_label = "2. Management & Operational Capability Assessment"
+        sec3_label = "3. Tourism Operations & Destination Assessment"
+        sec4_label = "4. Visitor Economy & Market Dynamics"
+    elif etype in ("development_program", "farmer_organization"):
+        sec2_label = "2. Program Leadership & Implementation Capability"
+        sec3_label = "3. Program Implementation & Performance Assessment"
+        sec4_label = "4. Beneficiary Context & Strategic Alignment"
+    elif etype == "government_program":
+        sec2_label = "2. Oversight & Delivery Leadership Assessment"
+        sec3_label = "3. Governance & Delivery Capacity Assessment"
+        sec4_label = "4. Public Value & Policy Alignment"
+    else:
+        sec2_label = "2. Founder & Capability Assessment"
+        sec3_label = "3. Startup Product & Operational Assessment"
+        sec4_label = "4. Market Dynamics & Competition"
+
     sections = [
         ("1. Executive Summary & Thesis", brief.executive_summary),
-        ("2. Founder & Capability Assessment", brief.founder_assessment),
-        ("3. Startup Product & Operational Assessment", brief.startup_assessment),
-        ("4. Market Dynamics & Competition", brief.market_assessment),
+        (sec2_label, brief.founder_assessment),
+        (sec3_label, brief.startup_assessment),
+        (sec4_label, brief.market_assessment),
         ("5. Risk Factors & Mitigations", brief.risk_assessment),
         (
             "6. Final Recommendation",

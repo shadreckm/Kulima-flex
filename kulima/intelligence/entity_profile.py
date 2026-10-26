@@ -152,7 +152,7 @@ _ENTITY_TEXT_HINTS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("foundation", ("foundation", "endowment", "philanthropic")),
     ("research_institution", ("research institute", "research institution", "university", "think tank", "polytechnic", "institute of")),
     ("social_enterprise", ("social enterprise", "social business", "hybrid model", "impact-first", "non-profit business model")),
-    ("development_program", ("development program", "development programme", "donor-funded", "bilateral", "multi-donor", "undp", "usaid", "dfid", "fao", "world bank project", "giz", "eu-funded", "meal team", "meal teams", "development intelligence")),
+    ("development_program", ("development program", "development programme", "donor-funded", "bilateral", "multi-donor", "undp", "usaid", "dfid", "fao", "world bank project", "giz", "eu-funded", "meal team", "meal teams")),
     ("ngo", ("non-governmental", "ngo", "ngos", "nonprofit", "non-profit", "charity", "civil society", "community-based organization", "ngo consortium", "ngo consortia")),
     ("government_program", ("ministry", "government of", "national program", "public sector", "state department", "county government")),
     ("tourism_sme", ("tourism", "safari", "lodge", "hospitality", "tour operator", "travel", "destination", "visitor")),
@@ -193,7 +193,17 @@ def classify_entity(
         if len(hits) > best_hits:
             best_type, best_hits = etype, len(hits)
 
-    if best_type and best_type != atype and best_hits >= 2:
+    # Venture-shaped documents (Business Plan / Pitch Deck) are strong startup
+    # evidence. Customer mentions ("we serve NGOs", "our buyers are DFIs")
+    # must never reclassify a company's own business plan as its customer's
+    # entity type — only overwhelming text evidence (>=5 distinct hints) may.
+    venture_shaped = atype == "startup" and any(
+        d.doc_class in ("Business Plan", "Pitch Deck", "Investment Memo")
+        for d in document_classes
+    )
+    override_threshold = 5 if venture_shaped else 2
+
+    if best_type and best_type != atype and best_hits >= override_threshold:
         # Document evidence is explicit enough to refine/override the declared type.
         return EntityClassification(
             entity_type=best_type, label=ENTITY_LABELS[best_type],
@@ -371,13 +381,13 @@ def entity_decision(score: float, entity_type: str) -> Tuple[str, str]:
 
 ENTITY_REPORT_TITLES: Dict[str, str] = {
     "startup": "Investment Committee Report",
-    "ngo": "Institutional Capacity Report",
+    "ngo": "Institutional Capacity Review",
     "development_program": "Program Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
-    "research_institution": "Institutional Capacity Report",
+    "research_institution": "Institutional Capacity Review",
     "social_enterprise": "Investment Committee Report",
-    "foundation": "Institutional Capacity Report",
+    "foundation": "Institutional Capacity Review",
     "cooperative": "Investment Committee Report",
     "farmer_organization": "Program Performance Review",
 }

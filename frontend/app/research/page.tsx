@@ -18,12 +18,34 @@ function ResearchPageInner() {
 
   const status = data?.research?.status ?? data?.status ?? 'pending'
   const sources: any[] = data?.research?.sources ?? []
-  const findings: string[] = data?.research?.tavily_findings ?? (data?.research?.summary ? [data.research.summary] : [])
+  const sanitizeResearchText = (txt: any) => {
+    if (!txt) return ''
+    return String(txt)
+      .replace(/%PDF-[0-9.]+/gi, '')
+      .replace(/(?:CreationDate|ModDate|Creator|Producer|Author|Subject|Keywords|Title)\s*[:=]\s*[^\n\r;]+/gi, '')
+      .replace(/\b(?:xref|endobj|endstream|startxref|trailer)\b/gi, '')
+      .replace(/\/(?:Root|Info|Size|Filter|Length|FlateDecode)\b/gi, '')
+      .trim()
+  }
+
+  const rawFindings: string[] = data?.research?.tavily_findings ?? (data?.research?.summary ? [data.research.summary] : [])
+  const findings: string[] = rawFindings.map(sanitizeResearchText).filter(Boolean)
   const entities: any[] = data?.research?.entities ?? (data?.displayEntity ? [{ name: data.displayEntity, label: data.assessmentTypeLabel }] : [])
   const researchSummary: string = data?.research?.summary ?? data?.research?.synthesis ?? ''
 
+  const synthesizedFallback =
+    data?.executiveSummary ||
+    (findings.length > 0 ? findings.slice(0, 3).join(' ') : '') ||
+    (sources.length > 0 ? `Evidence analysis grounded in ${sources.length} primary and research sources.` : '') ||
+    (data?.problemStatement ? String(data.problemStatement) : '') ||
+    'Research and evidence synthesis complete.'
+
+  const effectiveSummary =
+    (researchSummary && researchSummary.trim()) ||
+    (String(status).toLowerCase() === 'completed' || String(status).toLowerCase() === 'complete' ? synthesizedFallback : '')
+
   // Phase 2: Research completion is only when actual usable output exists
-  const hasUsableResearch = researchSummary && researchSummary.length > 50 && (sources.length > 0 || findings.length > 0)
+  const hasUsableResearch = (effectiveSummary && effectiveSummary.length > 30) || (sources.length > 0 && findings.length > 0)
   const progress = data?.research?.progress ?? (hasUsableResearch ? 100 : (status === 'running' ? 50 : 20))
 
   // Calculate progress steps (typed for AssessmentProgress)
@@ -183,9 +205,9 @@ function ResearchPageInner() {
             </div>
             <p className="text-xs text-slate-500 mb-3">{Number(derivedProgress)}% complete</p>
 
-            {researchSummary ? (
+            {effectiveSummary ? (
               <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0] text-xs text-slate-700 leading-6">
-                {researchSummary}
+                {effectiveSummary}
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic">

@@ -435,6 +435,10 @@ def start_intelligence_run(
                     _ctx = AssessmentRepository().get(assessment_id, user_id=owner_id, org_id=org_id)
                     if _ctx is not None:
                         entity_profile_payload = dict(_ctx.entity_profile or {})
+                        # Source A sector authority: the extracted document
+                        # sector refines downstream research/analysis vocabulary.
+                        if not sector_hint and _ctx.sector:
+                            sector_hint = _ctx.sector
                         if not entity_profile_payload:
                             _docs = [
                                 {"name": d.name, "rawSummary": d.raw_summary or "", "evidence_items": list(d.evidence_items or [])}
@@ -780,9 +784,11 @@ def _sync_assessment(
         if not research.get("summary"):
             ctx_payload = None
             if ctx:
+                from kulima.core.assessment.service import display_entity as _display_entity
+
                 ctx_payload = {
                     "organizationName": ctx.organization_name or ctx.startup_name,
-                    "displayEntity": ctx.display_entity(),
+                    "displayEntity": _display_entity(ctx),
                     "sector": ctx.sector,
                     "country": ctx.country,
                     "extraction": ctx.extraction.model_dump(mode="json") if ctx.extraction else {},

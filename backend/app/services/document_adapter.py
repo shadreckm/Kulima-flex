@@ -69,45 +69,32 @@ def _sanitize_extracted_text(text: str) -> str:
 
     Prevents %PDF markers, CreationDate, Creator:, xref, obj, streams,
     Mozilla metadata, and raw binary fragments from entering research,
-    signals, reports, and decision logic.
+    signals, reports, and decision logic, while preserving valid business
+    vocabulary (e.g. objectives, revenue stream, market size, founder info).
     """
     if not text:
         return text
 
-    # Remove PDF-specific markers
-    pdf_patterns = [
-        "%PDF-",
-        "CreationDate:",
-        "Creator:",
-        "Producer:",
-        "Author:",
-        "Subject:",
-        "Keywords:",
-        "xref",
-        "obj",
-        "endobj",
-        "stream",
-        "endstream",
-        "startxref",
-        "trailer",
-        "Root",
-        "Info",
-        "Size",
-    ]
+    from kulima.core.documents.text_clean import sanitize_extracted_text as _clean
+    cleaned = _clean(text)
+    if not cleaned:
+        cleaned = text
 
-    lines = text.split("\n")
+    lines = cleaned.splitlines()
     filtered_lines = []
     for line in lines:
-        line_lower = line.lower()
-        # Skip lines containing PDF metadata markers
-        if any(pattern.lower() in line_lower for pattern in pdf_patterns):
+        line_stripped = line.strip()
+        if not line_stripped:
+            filtered_lines.append("")
             continue
         # Skip lines that look like binary fragments (many non-printable chars)
         if len([c for c in line if ord(c) < 32 or ord(c) > 126]) > len(line) * 0.3:
             continue
-        # Skip Mozilla/Adobe metadata
+        line_lower = line.lower()
+        # Skip pure metadata lines from PDF engines
         if any(k in line_lower for k in ("mozilla/", "adobe pdf", "acrobat", "distiller")):
-            continue
+            if sum(ch.isalpha() for ch in line) < 30:
+                continue
         filtered_lines.append(line)
 
     return "\n".join(filtered_lines)
@@ -448,6 +435,17 @@ def save_uploaded_file(
         extracted_text = "\n\n".join(ch.text for ch in bundle.chunks if ch.text)
         # Phase 3: Filter PDF metadata and binary fragments
         extracted_text = _sanitize_extracted_text(extracted_text)
+        # Re-key the ingested chunks to the persisted document ID.
+        # DocumentIngestionService mints its own internal document id; without
+        # this remap every chunk was orphaned (get_chunks_for_document → 0) and
+        # the intelligence layer saw only a filename — the direct cause of
+        # hallucinated AI narratives and "no evidence" reasoning.
+        bundle.document.id = doc_id
+        for ch in bundle.chunks:
+            ch.document_id = doc_id
+        for ds in getattr(bundle, "sources", []) or []:
+            ds.document_id = doc_id
+            ds.source.url = f"document://{doc_id}"
         # Persist chunks
         _doc_repo.save_chunks(bundle.chunks)
 

@@ -1,4 +1,4 @@
-"""Ask SIGNALS — Risk & Opportunity Analyst persona for Kulima OS.
+"""Ask SIGNALS — Risk & Opportunity Analyst persona for Kulima FLEX.
 
 Phase 5E: Grounded follow-up Q&A over a generated Signals pack.
 
@@ -453,7 +453,7 @@ def answer_ask_signals_question(
 
     Parameters
     ----------
-    case:      The Kulima OS Case this signals pack belongs to.
+    case:      The Kulima FLEX Case this signals pack belongs to.
     signals:   Pre-generated Signal objects for this case.
     question:  The user's free-text question.
     history:   Optional list of prior chat messages

@@ -1,4 +1,4 @@
-"""Kulima OS Case models (Phase 4 Enterprise Layer).
+"""Kulima FLEX Case models (Phase 4 Enterprise Layer).
 
 These models introduce the enterprise Case abstraction that becomes the
 aggregate root for transaction management, workspaces, collaboration, and
@@ -22,7 +22,7 @@ from kulima.models import EvidenceIntegrityReport, SourceAttribution, TrustGraph
 
 
 class CaseType(str, Enum):
-    """High-level case categories for Kulima OS.
+    """High-level case categories for Kulima FLEX.
 
     These are intentionally broad and align with current and planned
     products. Additional types can be added without breaking existing

@@ -1,4 +1,4 @@
-"""Document ingestion service for Kulima OS (Phase A).
+"""Document ingestion service for Kulima FLEX (Phase A).
 
 This module provides a vertical-agnostic DocumentIngestionService that can
 accept uploaded files, detect their type, extract raw text, and produce

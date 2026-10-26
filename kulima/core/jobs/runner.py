@@ -21,6 +21,31 @@ from kulima.core.cases.models import CaseLifecycleStatus
 _log = logging.getLogger(__name__)
 
 
+def _rebuild_entity_profile(assessment_id: str | None, startup: str, org_id: str | None) -> dict:
+    """Rebuild the entity profile from Source A when the context has none stored.
+
+    Deterministic fallback so entity-aware research/decision never silently
+    degrades to the startup default for non-startup entities.
+    """
+    from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
+    try:
+        from kulima.core.assessment.repository import AssessmentRepository
+        _ctx = AssessmentRepository().get(assessment_id, org_id=org_id) if assessment_id else None
+        _docs = [
+            {"name": d.name, "rawSummary": d.raw_summary or "", "evidence_items": list(d.evidence_items or [])}
+            for d in (_ctx.uploaded_documents if _ctx else [])
+        ]
+        return profile_to_payload(build_entity_profile(
+            (getattr(_ctx.assessment_type, "value", None) if _ctx else None) or "startup",
+            _docs,
+            _ctx.extracted_text if _ctx else "",
+            entity_name=(_ctx.organization_name if _ctx else "") or startup,
+        ))
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("entity profile build failed: %s", exc)
+        return {}
+
+
 class JobRunner:
     """Background worker that processes durable jobs from the queue.
 
@@ -181,21 +206,6 @@ class JobRunner:
         case = self.case_service.get_case(job.case_id)
         org_id = job.payload.get("org_id") or (case.org_id if case else None)
 
-        try:
-            research_engine = orchestrator_adapter.get_orchestrator().research
-            research_bundle = await asyncio.to_thread(
-                research_engine.research_bundle,
-                founder,
-                startup,
-                sector_hint,
-            )
-        except Exception as research_exc:  # noqa: BLE001 — documents remain usable without Tavily
-            _log.warning("External research unavailable; continuing with assessment documents: %s", research_exc)
-            research_bundle = {"founder": [], "startup": [], "market": [], "risks": []}
-
-        fallback_used = False
-        research_payload = None
-        fallback_signal_titles: list[str] = []
         # Entity-aware intelligence: load the profile from the assessment
         # context so research and decision follow the entity's own framework.
         entity_profile_payload: dict = {}
@@ -205,25 +215,45 @@ class JobRunner:
                 _ctx = AssessmentRepository().get(assessment_id, org_id=org_id)
                 if _ctx is not None:
                     entity_profile_payload = dict(_ctx.entity_profile or {})
+                    # Source A sector authority: the extracted document sector
+                    # also refines the web-research vocabulary.
+                    if not sector_hint and _ctx.sector:
+                        sector_hint = _ctx.sector
             except Exception as _ctx_exc:  # noqa: BLE001
                 _log.warning("Could not load entity profile for %s: %s", assessment_id, _ctx_exc)
         if not entity_profile_payload:
-            from kulima.intelligence.entity_profile import build_entity_profile, profile_to_payload
+            entity_profile_payload = _rebuild_entity_profile(assessment_id, startup, org_id)
+
+        try:
+            research_engine = orchestrator_adapter.get_orchestrator().research
+            # Entity-aware research: the profile decides query vocabulary
+            # (institutional queries for NGOs/programs, tourism for SMEs) and
+            # keeps web research (Source C) subordinate to uploaded documents.
+            _etype = str(entity_profile_payload.get("entityType") or "startup")
+            _country = ""
             try:
                 from kulima.core.assessment.repository import AssessmentRepository
-                _ctx = AssessmentRepository().get(assessment_id, org_id=org_id) if assessment_id else None
-                _docs = [
-                    {"name": d.name, "rawSummary": d.raw_summary or "", "evidence_items": list(d.evidence_items or [])}
-                    for d in (_ctx.uploaded_documents if _ctx else [])
-                ]
-                entity_profile_payload = profile_to_payload(build_entity_profile(
-                    (getattr(_ctx.assessment_type, "value", None) if _ctx else None) or "startup",
-                    _docs,
-                    _ctx.extracted_text if _ctx else "",
-                    entity_name=(_ctx.organization_name if _ctx else "") or startup,
-                ))
-            except Exception as _ep_exc:  # noqa: BLE001
-                _log.warning("entity profile build failed: %s", _ep_exc)
+                _c = AssessmentRepository().get(assessment_id, org_id=org_id) if assessment_id else None
+                _country = _c.country if _c else ""
+            except Exception:  # noqa: BLE001
+                pass
+            research_bundle = await asyncio.to_thread(
+                research_engine.research_bundle,
+                founder,
+                startup,
+                sector_hint,
+                entity_type=_etype,
+                country=_country,
+            )
+        except Exception as research_exc:  # noqa: BLE001 — documents remain usable without Tavily
+            _log.warning("External research unavailable; continuing with assessment documents: %s", research_exc)
+            research_bundle = {"founder": [], "startup": [], "market": [], "risks": []}
+
+        fallback_used = False
+        research_payload = None
+        fallback_signal_titles: list[str] = []
+        if not entity_profile_payload:
+            entity_profile_payload = _rebuild_entity_profile(assessment_id, startup, org_id)
         # Phase 7: gather Trust Engine scores of the run's uploaded documents
         # so Source A evidence feeds the trust graph.
         document_trust_scores: list[float] = []

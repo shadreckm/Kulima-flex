@@ -1,4 +1,4 @@
-"""Pydantic models for Kulima OS Document Intelligence (Phase A).
+"""Pydantic models for Kulima FLEX Document Intelligence (Phase A).
 
 These models represent ingested documents, their text chunks, and how
 those documents are exposed as evidence sources to the rest of the OS.
@@ -35,7 +35,7 @@ class DocumentType(str, Enum):
 
 
 class Document(BaseModel):
-    """Logical document ingested into Kulima OS.
+    """Logical document ingested into Kulima FLEX.
 
     In Phase A this is primarily metadata; content is represented via
     DocumentChunk instances and storage is handled by the repository.

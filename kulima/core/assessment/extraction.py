@@ -33,6 +33,7 @@ _COUNTRY_NAMES = (
 )
 
 _SECTOR_KEYWORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("Information & Decision Technology", ("technology", "decision intelligence", "evidence", "software", "saas", "platform", "b2b", "data platform")),
     ("AgriTech", ("agritech", "agriculture", "smallholder", "farming", "crop", "irrigation", "soya", "maize")),
     ("Clean Energy", ("solar", "renewable", "clean energy", "off-grid", "mini-grid", "biogas", "cooking")),
     ("Tourism & Hospitality", ("tourism", "tourist", "safari", "lodge", "hotel", "hospitality", "visitor", "heritage")),
@@ -387,7 +388,25 @@ def _extract_country(text_lower: str) -> Optional[ExtractedField]:
     return None
 
 
+_SECTOR_LABEL_RE = re.compile(
+    r"(?:industry|sector)\s*[:\-–]\s*([A-Za-z][A-Za-z &/]{1,40})",
+    re.IGNORECASE,
+)
+
+
 def _extract_sector(text_lower: str) -> Optional[ExtractedField]:
+    # 0. Explicit "Sector: ..." label in the document is authoritative (Source A).
+    #    The label may appear inside a lower-cased copy of the text, so re-match
+    #    the ORIGINAL-case text handled by the caller is not available here; we
+    #    title-case whatever the label says instead of second-guessing it.
+    match = _SECTOR_LABEL_RE.search(text_lower)
+    if match:
+        value = match.group(1).strip(" \t.,;\n")
+        if value and value.lower() not in ("unknown", "n/a", "none", "not specified"):
+            return ExtractedField(
+                value=" ".join(w.capitalize() for w in value.split()),
+                confidence=0.95, source="document_label",
+            )
     best: Optional[Tuple[str, int]] = None
     for label, keywords in _SECTOR_KEYWORDS:
         hits = sum(1 for kw in keywords if kw in text_lower)

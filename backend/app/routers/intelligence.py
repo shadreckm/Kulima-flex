@@ -340,7 +340,7 @@ async def download_report(
     _label_file = _label.replace(" ", "_").replace("—", "-")
     filename_map = {
         "memo": f"Kulima_{_label_file}_{run_id}.{ext}",
-        "report": f"Kulima_Full_IC_Report_{run_id}.{ext}",
+        "report": f"Kulima_{_label_file}_{run_id}.{ext}",
         "signals": f"Kulima_Signals_Report_{run_id}.{ext}",
         "due-diligence": f"Kulima_Due_Diligence_Summary_{run_id}.{ext}",
         "one-pager": f"Kulima_Executive_One_Pager_{run_id}.{ext}",

@@ -1,0 +1,21 @@
+docClasses: [('Lakeland_Safaris_Tourism_Str', 'Tourism Strategy'), ('Lakeland_Safaris_Business_Pl', 'Business Plan'), ('Lakeland_Safaris_Financial_S', 'Financial Statements')]
+entity: Tourism SME | reportTitle: Tourism Resilience Report
+signalDomains: ['Tourism Signals', 'Climate Signals', 'Community Signals', 'Destination Readiness', 'Visitor Economy Signals']
+run: completed
+{
+ "tourism": {
+  "score": 57,
+  "count": 1,
+  "summary": "Ecosystem synergies with tourism and hospitality economy identified in uploaded primary document. 1 opportunity signal(s) observed."
+ },
+ "climate": {
+  "score": 64,
+  "count": 1,
+  "summary": "Identified climate adaptation markers in uploaded primary document. LAKELAND SAFARIS LIMITED \u2014 FINANCIAL STATEMENTS\nBalance sheet, income statement and cash flo"
+ },
+ "community_impact": {
+  "score": 68,
+  "count": 2,
+  "summary": "Demonstrated beneficiary impact, smallholder inclusion, or job creation in uploaded primary document. 2 opportunity signal(s) observed."
+ }
+}

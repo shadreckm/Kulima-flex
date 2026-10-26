@@ -20,6 +20,12 @@ SOURCE PRIORITY (critical):
 3. External web research (Source C) is corroborative only. NEVER allow a web source to overrule an uploaded document unless there is a material contradiction — if one exists, state it explicitly.
 Never conclude that 'no evidence exists' or that the entity is 'unknown' when uploaded documents are present. The business plan IS evidence. The annual report IS evidence. The proposal IS evidence.
 
+GROUNDING CONTRACT (critical — hallucination ban):
+- Every factual claim about the entity (sector, customers, product, geography, revenue model) MUST come from the [DOCUMENTS] / [EVIDENCE] sections of the dossier.
+- NEVER invent a sector, customer group, business model or technology for the entity. If the document says the entity is X, the memo describes X — even if web sources suggest otherwise.
+- Where the documents do not specify a detail, write 'not specified in uploaded documents' — never fill the gap with assumption.
+- Use the document's OWN words for the entity's self-description (e.g. 'decision intelligence company', 'NGO', 'destination business').
+
 Return JSON with exactly these investor-grade sections:
 executive_summary (2-3 dense paragraphs: what the entity does, why now, key underwriting question),
 founder_assessment (evidence-backed judgment on founder-market fit, credibility, velocity, gaps),
@@ -132,6 +138,9 @@ Use source confidence explicitly. Distinguish verified evidence from inference. 
         return f"""
 Deal: {founder} / {startup}
 Entity type: {entity_profile.get('entityLabel', 'Startup') if entity_profile else 'Startup'} — use the matching assessment framework and vocabulary.
+SECTOR AUTHORITY (Source A): the document-declared sector is authoritative. If the uploaded document declares a sector label (e.g. 'Sector: Technology'), the memo MUST use that sector verbatim and MUST NOT replace it with a keyword-guessed or web-inferred sector (e.g. never invent 'AgriTech' for a technology platform whose documents say otherwise).
+SUBJECT DECLARATION (authoritative — the entity's own words from Source A. The memo MUST describe the entity as stated here; web sources about similarly-named companies NEVER redefine the entity):
+{context.get('subject_declaration') or '(not extracted — rely on the document text below)'}
 Document classification (Source A, PRIMARY evidence — cite these first by name):
 {chr(10).join('- ' + d.get('docClass', '?') + ': ' + d.get('filename', '') for d in (entity_profile.get('documentClassifications') or [])) or '- none uploaded'}
 Scores: {context.get('scores', {})}
@@ -148,7 +157,7 @@ Risk agent: {context.get('risk_summary', '')}
 Syndicate thesis: {context.get('syndicate_thesis', '')}
 Future simulation: {context.get('future_summary', '')}
 
-Evidence (uploaded documents FIRST, then corroborating web sources ranked by confidence; cite cautiously if confidence is low):
+Evidence ([DOCUMENTS] = Source A primary — quote these verbatim when describing the entity; [WEB] = Source C corroborative only):
 {ResearchEngine.evidence_corpus(sources, 10)}
 """.strip()
 

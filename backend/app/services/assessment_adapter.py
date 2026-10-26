@@ -177,7 +177,7 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
             "status": "completed" if ctx.status == AssessmentStatus.COMPLETE else ("running" if ctx.status == AssessmentStatus.RUNNING else "pending"),
             "sources": research_sources,
             "tavily_findings": [s.snippet for s in getattr(brief, "sources", []) if getattr(s, "snippet", None)],
-            "summary": getattr(brief, "thesis", "") or "",
+            "summary": getattr(brief, "thesis", "") or getattr(brief, "executive_summary", "") or ctx.problem_statement or "Research synthesized from primary documents and verified evidence.",
             "entities": [{"name": display_entity(ctx) or ctx.organization_name or ctx.startup_name, "label": atype_value}],
             "progress": 100 if ctx.status == AssessmentStatus.COMPLETE else (50 if ctx.status == AssessmentStatus.RUNNING else 0),
         }
@@ -191,10 +191,18 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
                 for doc in ctx.uploaded_documents
             ],
             "tavily_findings": [doc.raw_summary for doc in ctx.uploaded_documents if doc.raw_summary],
-            "summary": ctx.problem_statement or "",
+            "summary": ctx.problem_statement or (f"Document intelligence synthesis for {display_entity(ctx) or ctx.organization_name or 'the entity'} based on {len(ctx.uploaded_documents)} uploaded document(s)." if ctx.uploaded_documents else "Assessment context initialized."),
             "entities": [{"name": display_entity(ctx) or ctx.organization_name or ctx.startup_name, "label": atype_value}],
             "progress": 100 if ctx.status == AssessmentStatus.COMPLETE else (50 if ctx.status == AssessmentStatus.RUNNING else 0),
         }
+
+    if not research_payload.get("summary") and (brief or ctx.status == AssessmentStatus.COMPLETE):
+        research_payload["summary"] = (
+            getattr(brief, "thesis", "")
+            or getattr(brief, "executive_summary", "")
+            or ctx.problem_statement
+            or f"Research and evidence analysis synthesized for {display_entity(ctx) or ctx.organization_name or 'the entity'}."
+        )
 
     # Build reports payload
     reports_payload = dict(ctx.reports or {})
@@ -479,6 +487,7 @@ def create_assessment(
         doc_payloads,
         ctx.extracted_text,
         entity_name=entity_name or organization_name or "",
+        sector=extraction.field_value("sector"),
     )
     ctx.entity_profile = profile_to_payload(entity_profile)
 

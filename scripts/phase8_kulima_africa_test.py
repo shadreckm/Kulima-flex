@@ -20,6 +20,9 @@ Kulima Africa is a decision intelligence company building evidence-to-decision
 infrastructure for NGOs, development programs, DFIs and government programs.
 Our platform turns scattered program evidence into underwriting-grade
 decisions. Business model: SaaS subscriptions plus per-assessment pricing.
+We serve NGO MEAL teams, government program review units and DFI portfolio
+officers. We are NOT an AgriTech or agriculture business — Kulima is a
+technology platform whose customers are development and public institutions.
 
 2. PRODUCT ARCHITECTURE
 The Kulima FLEX platform ingests business plans, annual reports, proposals,
@@ -28,7 +31,9 @@ generation and a composite decision engine; and produces IC-grade reports.
 
 3. MARKET VALIDATION AND CUSTOMER DISCOVERY
 Primary market: NGOs, development programs, DFIs, government programs.
-Customer discovery completed with 40+ interviews across Malawi, Kenya and
+Customer discovery completed with 40+ interviews with MEAL teams, evidence
+units and portfolio officers. Research intelligence, signals engine and
+evidence engine modules were co-designed with pilot deployment partners across Malawi, Kenya and
 Zambia. Market validation confirms willingness to pay for evidence-backed
 assessment tooling.
 

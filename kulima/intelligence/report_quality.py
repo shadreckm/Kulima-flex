@@ -31,13 +31,13 @@ from typing import Any
 
 ENTITY_REPORT_TITLES_FINAL: dict[str, str] = {
     "startup": "Investment Committee Report",
-    "ngo": "Institutional Capacity Report",
+    "ngo": "Institutional Capacity Review",
     "development_program": "Program Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
     # Sub-entities inherit
-    "research_institution": "Institutional Capacity Report",
-    "foundation": "Institutional Capacity Report",
+    "research_institution": "Institutional Capacity Review",
+    "foundation": "Institutional Capacity Review",
     "social_enterprise": "Investment Committee Report",
     "cooperative": "Investment Committee Report",
     "farmer_organization": "Program Performance Review",

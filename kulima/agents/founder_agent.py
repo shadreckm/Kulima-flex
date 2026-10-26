@@ -38,6 +38,17 @@ credibility_narrative (string)
 Required score names: Credibility, Leadership, Digital Footprint, Reputation, Domain Expertise.
 """
 
+    # Entity-adaptive red-flag guidance: absence of web corroboration is only
+    # ever a diligence item, never a red flag, when Source A documents exist.
+    def _entity_redflag_contract(self) -> str:
+        return (
+            "RED-FLAG CONTRACT: Absence of independent web verification is a "
+            "'web corroboration not found' diligence item only — it must NEVER "
+            "appear as a red flag when uploaded documents (Source A) establish "
+            "the founder's identity and role. Red flags require affirmative "
+            "contradicting evidence, not mere silence in external sources."
+        )
+
     def run(
         self,
         founder: str,
@@ -52,7 +63,7 @@ Required score names: Credibility, Leadership, Digital Footprint, Reputation, Do
         corpus = ResearchEngine.evidence_corpus(sources)
         try:
             data = self.llm.complete_json(
-                system=self.SYSTEM,
+                system=self.SYSTEM + "\n\n" + self._entity_redflag_contract(),
                 user=f"Founder: {founder}\nStartup: {startup}\n\n{uploaded_docs}\nOSINT Evidence (Source C, corroborative only):\n{corpus}",
             )
         except json.JSONDecodeError as exc:

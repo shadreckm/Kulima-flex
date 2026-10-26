@@ -297,8 +297,8 @@ def scenario_ngo() -> None:
     memo = build_memo_text(brief)
     full = build_full_ic_report_text(brief)
     everything = memo + full
-    check("S3 report type = Institutional Capacity Report",
-          "INSTITUTIONAL CAPACITY REPORT" in memo.upper(), memo[:400])
+    check("S3 report type = Institutional Capacity Review (official spec)",
+          "INSTITUTIONAL CAPACITY REVIEW" in memo.upper(), memo[:400])
     check("S3 recommendation wording is NGO framework",
           single_recommendation(brief).startswith("Moderate Capacity"), single_recommendation(brief))
     check("S3 no Invest/Pass ladder in NGO report",

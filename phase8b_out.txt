@@ -1,0 +1,20 @@
+docClass: [('Kulima_Africa_Pitch_Deck.pdf', 'Pitch Deck')]
+entity: Startup | confidence: 0.75 | source: declared
+reportTitle: Investment Committee Report
+run: completed
+{
+ "runStatus": "completed",
+ "trust": 60.7,
+ "signals": 15,
+ "negativePhrases": [],
+ "agritechHits": [],
+ "recognizedTerms": [
+  "decision intelligence",
+  "evidence-to-decision",
+  "NGO",
+  "development program",
+  "DFI",
+  "government program",
+  "MEAL"
+ ]
+}

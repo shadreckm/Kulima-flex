@@ -1,4 +1,4 @@
-"""Kulima OS Core namespace.
+"""Kulima FLEX Core namespace.
 
 This module re-exports core platform services and utilities from the existing
 Kulima FLEX codebase without moving or modifying their implementations.

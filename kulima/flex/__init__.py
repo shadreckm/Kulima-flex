@@ -1,4 +1,4 @@
-"""Kulima FLEX vertical namespace on top of Kulima OS Core.
+"""Kulima FLEX vertical namespace on top of Kulima FLEX Core.
 
 This module re-exports FLEX-specific orchestrators, agents, engines, and
 interfaces from their existing locations so callers can start using the

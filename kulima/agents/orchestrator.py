@@ -169,9 +169,28 @@ class IntelligenceOrchestrator:
         # Source A (uploaded documents) is the PRIMARY evidence base. Every
         # agent receives the entity profile so its reasoning is anchored on
         # uploaded evidence before any web/OSINT material (Source C).
+        # Primary subject declaration: the entity's self-description as stated
+        # in the uploaded documents (Source A). Rendered as an authoritative
+        # header in every downstream agent dossier so web OSINT about a
+        # similarly-named company can never redefine the entity.
+        subject_declaration = ""
+        _doc_sheets = (entity_profile or {}).get("documentClassifications") or []
+        if _doc_sheets:
+            _doc_text = " ".join(
+                s.snippet for s in all_sources if s.source_type == "document"
+            )
+            _decl_sentences = []
+            for _needle in (
+                "is a", "is an", "we are", "our mission", "founded", "operates"
+            ):
+                _idx = _doc_text.lower().find(_needle)
+                if _idx >= 0:
+                    _decl_sentences.append(_doc_text[_idx:_idx + 300].strip())
+            subject_declaration = " ".join(_decl_sentences[:2])[:500]
         agent_context = {
             "entity_profile": entity_profile or {},
             "document_trust_scores": document_trust_scores or [],
+            "subject_declaration": subject_declaration,
         }
 
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -393,6 +412,7 @@ class IntelligenceOrchestrator:
                     or (future.scenarios[1].revenue_growth_outlook if len(future.scenarios) > 1 else "")
                 ),
                 "futures_most_likely": future.most_likely_case,
+                "subject_declaration": agent_context.get("subject_declaration", ""),
                 "confidence": conf,
             },
         )
@@ -434,10 +454,15 @@ class IntelligenceOrchestrator:
             )
 
         progress(1.0, "Intelligence complete — IC pack ready.")
+        # Sector authority (Source A): an explicit sector hint from the shared
+        # Assessment Context is an explicit document label — it overrides any
+        # web-inferred sector in the startup agent metadata.
+        _doc_sector = (sector_hint or "").strip()
+        _agent_sector = str(startup_result.metadata.get("sector", ""))
         brief_out = InvestmentBrief(
             founder_name=founder,
             startup_name=startup,
-            sector=str(startup_result.metadata.get("sector", "")),
+            sector=_doc_sector or _agent_sector,
             geography=str(startup_result.metadata.get("geography", "")),
             stage=str(startup_result.metadata.get("stage", "")),
             executive_summary=str(meta.get("executive_summary", memo.summary)),

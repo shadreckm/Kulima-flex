@@ -1,4 +1,4 @@
-# Detached backend launcher for Kulima OS (used by validation tooling).
+# Detached backend launcher for Kulima FLEX (used by validation tooling).
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptRoot
 Set-Location $projectRoot

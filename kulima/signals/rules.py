@@ -1,7 +1,7 @@
 """Rule-based SIGNALS generation from Evidence Integrity and Trust Graph.
 
 Phase 5C: Deterministic, LLM-free rules that derive Signal objects from
-existing Kulima OS core outputs for a given Case.
+existing Kulima FLEX core outputs for a given Case.
 """
 
 from __future__ import annotations

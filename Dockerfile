@@ -1,4 +1,4 @@
-# Production Dockerfile for Kulima OS API (Render / Docker hosts)
+# Production Dockerfile for Kulima FLEX API (Render / Docker hosts)
 # Build context MUST be the repository root so kulima/ + scripts/ are included.
 #
 #   docker build -t kulima-api -f Dockerfile .

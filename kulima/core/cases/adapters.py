@@ -1,4 +1,4 @@
-"""Adapters between FLEX InvestmentBrief and generic Kulima OS Case.
+"""Adapters between FLEX InvestmentBrief and generic Kulima FLEX Case.
 
 Phase 4A: provide lossless conversions without changing FLEX behaviour.
 
