@@ -423,25 +423,6 @@ function HomeInner() {
                   )}
                 </div>
               </div>
-                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
-                  {showEdit ? (
-                    <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].lead} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
-                  ) : (
-                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {founderOrLead || 'Detected from documents'}</div>
-                  )}
-                </div>
-                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Keywords</div>
-                  {showEdit ? (
-                    <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].keywords} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs font-semibold text-[#344054]">
-                      {(keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : ['Climate', 'Waste Management', 'Tourism', 'Agriculture']).map(k => <span key={k} className="rounded-md bg-[#EAF8F0] px-2 py-0.5 text-[#117A4B]">{k}</span>)}
-                    </div>
-                  )}
-                </div>
-              </div>
 
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#EAECF0] pt-4">
                 <div className="text-sm text-[#667085]">{files.length} document{files.length !== 1 ? 's' : ''} staged · {files.map(f => f.name).join(', ')}</div>
