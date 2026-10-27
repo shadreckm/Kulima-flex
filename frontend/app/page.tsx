@@ -422,18 +422,7 @@ function HomeInner() {
                     <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {keywords || 'Detected from documents'}</div>
                   )}
                 </div>
-                  ) : (
-                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {TYPE_LABELS[assessmentType]}</div>
-                  )}
-                </div>
-                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organization</div>
-                  {showEdit ? (
-                    <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].organization} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
-                  ) : (
-                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {organization || 'Detected from documents'}</div>
-                  )}
-                </div>
+              </div>
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
                   {showEdit ? (
