@@ -28,6 +28,7 @@ from .routers import (
     cases,
     tasks,
     auth_diagnostics,
+    admin,
 )
 
 # Phase 4 Enterprise: Import job runner
@@ -106,6 +107,8 @@ app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(auth_diagnostics.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
+# Internal platform operations console (admin-only, cross-workspace reads).
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 # Phase 4 Enterprise: case workspace + task queues (self-prefixed routers)
 app.include_router(cases.router, tags=["cases"])

@@ -60,6 +60,11 @@ class Settings:
     database_url: str
     use_supabase: bool
     storage_bucket_name: str
+    # ── Platform operations console (internal, admin-only) ──────────────
+    # Identity keys (user ids / emails) allowed to read across every
+    # workspace. Distinct from organization roles: an org Owner is NOT a
+    # platform operator. Empty means the console is unreachable (fail-closed).
+    platform_admin_user_ids: tuple[str, ...] = ()
 
     def missing_required_secrets(self) -> list[str]:
         missing = []
@@ -135,6 +140,11 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL", ""),
         use_supabase=os.getenv("USE_SUPABASE", "false").lower() in {"1", "true", "yes"},
         storage_bucket_name=os.getenv("STORAGE_BUCKET_NAME", "kulima-documents"),
+        platform_admin_user_ids=tuple(
+            v.strip().lower()
+            for v in os.getenv("KULIMA_PLATFORM_ADMIN_USER_IDS", "").split(",")
+            if v.strip()
+        ),
     )
 
 

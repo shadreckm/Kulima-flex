@@ -4,6 +4,7 @@ import React, { useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import TrustGauge from '../TrustGauge/TrustGauge'
+import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import type { EntityType } from '../../lib/entity-types'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
 
@@ -45,6 +46,11 @@ const SECONDARY_ITEMS = [
   { label: 'Settings',         href: '/settings' },
   { label: 'Billing & Plan',   href: '/billing' },
 ]
+
+// Internal tooling, never shown to a customer. Visibility is decided by the
+// backend operator gate (/api/v1/admin/session), not by an organization role —
+// an Org Owner sees nothing here.
+const PLATFORM_OPS_ITEM = { label: 'Admin Console', href: '/admin' }
 
 function NavGroup({
   label,
@@ -98,6 +104,12 @@ export default function NavigationSidebar({
   onCloseMobile,
 }: SidebarProps) {
   const pathname = usePathname()
+  const { isPlatformAdmin } = usePlatformAdmin()
+
+  const platformOpsItems = useMemo(
+    () => (isPlatformAdmin === true ? [PLATFORM_OPS_ITEM] : []),
+    [isPlatformAdmin],
+  )
 
   const currentStatus = useMemo(() => status || 'idle', [status])
   const displayStartup = startupName
@@ -179,6 +191,19 @@ export default function NavigationSidebar({
             pathname={pathname}
             onCloseMobile={onCloseMobile}
           />
+          {/* Internal — only rendered when the backend confirms this identity is
+              a configured platform operator. */}
+          {platformOpsItems.length ? (
+            <>
+              <div className="border-t border-[#F79009]/30" />
+              <NavGroup
+                label="Platform Ops"
+                items={platformOpsItems}
+                pathname={pathname}
+                onCloseMobile={onCloseMobile}
+              />
+            </>
+          ) : null}
         </nav>
       </div>
 

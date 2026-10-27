@@ -65,6 +65,8 @@ EVENT_TYPES: dict[str, str] = {
     "report.exported": "Report Exported",
     "user.login": "User Login",
     "research.triggered": "External Research Triggered",
+    "provider.health": "Provider Health",
+    "conversation.deleted": "AI Analyst Conversation Deleted",
     "org.member_added": "Member Added",
     "org.role_changed": "Role Changed",
     "org.member_removed": "Member Removed",
@@ -87,6 +89,8 @@ EVENT_TYPES: dict[str, str] = {
     "comment.added": "Comment Added",
     "comment.edited": "Comment Edited",
     "comment.deleted": "Comment Deleted",
+    # Platform operations console: who looked at the cross-workspace view.
+    "admin.console_viewed": "Admin Console Opened",
     "dossier.generated": "Decision Dossier Generated",
     "dossier.approved": "Decision Dossier Approved",
     "session.exit_with_pending": "Session Exit with Pending Tasks",
@@ -100,8 +104,11 @@ LABELS_BY_PREFIX = {
     "report": "Reports",
     "user": "Access",
     "research": "Research",
+    "provider": "AI Providers",
+    "conversation": "AI Analyst",
     "org": "Team",
     "billing": "Billing",
+    "admin": "Platform Ops",
 }
 
 
