@@ -795,6 +795,7 @@ class IntelligenceRepository:
                        o.what_happened, o.what_was_predicted, o.what_was_missed,
                        o.what_worked, o.what_failed,
                        d.followup_status, d.followup_due_at, d.answered_at,
+                       d.decision_snapshot_at,
                        d.decision_taken, d.recommendation_followed,
                        d.decision_comment
                 FROM intelligence_runs r
@@ -843,9 +844,12 @@ class IntelligenceRepository:
             return {
                 "tier": label,
                 "decision_count": len([r for r in rows if lo <= (r.get("trust_score") or 0) <= hi]),
+                "completed_count": len(band),
                 "successful_count": len(succ),
                 "success_rate": rate,
-                "is_predictive": rate >= 60 or len(band) == 0,
+                # A band is only predictive when real completed outcomes in
+                # that band actually support the claim — never on empty data.
+                "is_predictive": bool(band) and rate >= 60,
             }
 
         bins = [
@@ -854,27 +858,35 @@ class IntelligenceRepository:
             _bin("Low Trust (0–59)", 0, 59),
         ]
 
-        ht_rate = bins[0]["success_rate"]
-        lt_fail = 100 - bins[2]["success_rate"] if bins[2]["success_rate"] > 0 else 0.0
+        ht_rate = bins[0]["success_rate"] if bins[0]["completed_count"] else None
+        lt_fail = (
+            round(100.0 - bins[2]["success_rate"], 1) if bins[2]["completed_count"] else None
+        )
 
         if n_completed == 0:
             calib_summary = "INSUFFICIENT EVIDENCE: No completed outcomes recorded yet. Update decisions to generate calibration data."
         else:
+            _ht = f"{ht_rate:.0f}%" if ht_rate is not None else "no completed outcomes in band"
+            _lt = f"{lt_fail:.0f}%" if lt_fail is not None else "no completed outcomes in band"
             calib_summary = (
-                f"High-trust decisions succeeded at {ht_rate:.0f}% rate. "
-                f"Low-trust decisions failed at {lt_fail:.0f}% rate. "
+                f"High-trust decisions succeeded at {_ht} rate. "
+                f"Low-trust decisions failed at {_lt} rate. "
                 f"Overall recommendation accuracy: {rec_accuracy:.0f}%."
             )
 
         return {
             "total_decisions": total,
             "completed_outcomes": n_completed,
-            "decision_accuracy": rec_accuracy,
+            # Honest calibration (Trust & Outcome audit P2): accuracy figures
+            # are None until real outcome data exists — 0.0 would read as a
+            # measured failure and a default predictive score would be a
+            # fabricated number.
+            "decision_accuracy": rec_accuracy if n_completed else None,
             "trust_accuracy": ht_rate,
-            "signal_accuracy": rec_accuracy,
-            "recommendation_accuracy": rec_accuracy,
+            "signal_accuracy": None,
+            "recommendation_accuracy": rec_accuracy if n_completed else None,
             "calibration": {
-                "overall_predictive_score": ht_rate if ht_rate > 0 else 85.0,
+                "overall_predictive_score": ht_rate,
                 "high_trust_success_rate": ht_rate,
                 "low_trust_failure_rate": lt_fail,
                 "calibration_bins": bins,

@@ -426,12 +426,20 @@ class IntelligenceOrchestrator:
             risk_score,
             len(all_sources),
             syndicate.consensus_score or syndicate.average_score,
+            entity_type=entity_type,
         )
-        explainability.append(
-            f"Twin Syndicate final recommendation: {syndicate_final.value} "
-            f"(consensus {syndicate.consensus_score:.0f}/100, "
-            f"dissent {syndicate.dissent_score:.0f}/100)."
-        )
+        # Trust & Outcome audit (P7): the syndicate's final recommendation and
+        # the investor EV line are venture framing — restating them inside an
+        # NGO/programme artifact would put a second recommendation next to the
+        # canonical one. They render as ballots in the report body; keep them
+        # out of institutional explainability.
+        _is_venture = entity_type in ("startup", "social_enterprise", "cooperative")
+        if _is_venture:
+            explainability.append(
+                f"Twin Syndicate final recommendation: {syndicate_final.value} "
+                f"(consensus {syndicate.consensus_score:.0f}/100, "
+                f"dissent {syndicate.dissent_score:.0f}/100)."
+            )
         if future.scenarios:
             for s in future.scenarios:
                 explainability.append(
@@ -439,11 +447,12 @@ class IntelligenceOrchestrator:
                     f"success {s.success_probability:.0f}%, "
                     f"attractiveness {s.investor_attractiveness_score:.0f}/100."
                 )
-        explainability.append(
-            f"Continental Futures EV (36m): ${future.expected_value_usd:,.0f} "
-            f"with Africa risk premium {future.africa_risk_premium:.1f}pp "
-            f"(most likely: {future.most_likely_case or 'Base Case'})."
-        )
+        if _is_venture:
+            explainability.append(
+                f"Continental Futures EV (36m): ${future.expected_value_usd:,.0f} "
+                f"with Africa risk premium {future.africa_risk_premium:.1f}pp "
+                f"(most likely: {future.most_likely_case or 'Base Case'})."
+            )
 
         # Issue 4: surface agent-extracted market-validation categories in the brief.
         _mv = startup_result.metadata.get("market_validation") or {}

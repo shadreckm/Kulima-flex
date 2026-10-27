@@ -902,7 +902,7 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
         acc = evidence_accounting(brief)
         lines.extend(
             [
-                f"Grade: Grade B (75/100)",
+                "Grade: Not graded — no integrity sweep on record (document evidence only)",
                 f"Depth: Document-Only",
                 f"Consistency: Uploaded documents analyzed",
                 f"Sources reviewed: {acc['source_count']}",
@@ -945,10 +945,16 @@ def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
     if brief.red_flags:
         risks = [f"[{rf.severity.upper()}] {rf.title}: {rf.detail}" for rf in brief.red_flags[:3]]
     else:
-        risks = ["No critical red flags surfaced from open-source intelligence."]
+        risks = ["No critical red flags surfaced from the available evidence base."]
+    _venture = _brief_entity_type(brief) in _STARTUP_ENTITIES
+    drivers_label = "TOP 3 INVESTMENT DRIVERS" if _venture else "TOP 3 STRENGTHS"
+    next_act_fallback = (
+        "Continue verification before IC." if _venture
+        else "Continue verification before committing."
+    )
     lines = [
         header,
-        "TOP 3 INVESTMENT DRIVERS",
+        drivers_label,
         "-" * 40,
         *top_reasons,
         "",
@@ -958,7 +964,7 @@ def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
         "",
         "RECOMMENDED NEXT ACTION",
         "-" * 40,
-        brief.next_steps[0] if brief.next_steps else "Continue verification before IC.",
+        brief.next_steps[0] if brief.next_steps else next_act_fallback,
         "",
         "EVIDENCE RELIABILITY SUMMARY",
         "-" * 40,
@@ -967,7 +973,12 @@ def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
         ei = brief.evidence_integrity
         lines.append(f"Grade {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) Â· {ei.source_count} Sources Reviewed Â· {ei.high_authority_count} High-Authority Records")
     else:
-        lines.append("Evidence Integrity Engine Verified.")
+        # Trust & Outcome audit (P7): never claim the engine "verified" when
+        # no integrity sweep is on record for this assessment.
+        lines.append(
+            "Evidence Integrity sweep not recorded — assessment rests on "
+            "uploaded document evidence."
+        )
     lines.append("================================================================================")
     lines.append("Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically")
     return "\n".join(lines).strip()
@@ -1257,7 +1268,7 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     if brief.red_flags:
         risks_list = [Paragraph(f"â€¢ <b>[{rf.severity.upper()}]</b> " + _esc(rf.title) + ": " + _esc(rf.detail), styles["KulimaBullet"]) for rf in brief.red_flags[:2]]
     else:
-        risks_list = [Paragraph("â€¢ No critical red flags surfaced from open-source intelligence.", styles["KulimaBullet"])]
+        risks_list = [Paragraph("â€¢ No critical red flags surfaced from the available evidence base.", styles["KulimaBullet"])]
 
     cols_table = Table(
         [[
@@ -1642,7 +1653,7 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief, outcome: dict | None
         acc = evidence_accounting(brief)
         reliability_lines.extend(
             [
-                f"Grade: Grade B (75/100)",
+                "Grade: Not graded — no integrity sweep on record (document evidence only)",
                 f"Depth: Document-Only",
                 f"Consistency: Uploaded documents analyzed",
                 f"Sources reviewed: {acc['source_count']}",
@@ -1674,7 +1685,7 @@ def build_executive_one_pager_pdf(brief: InvestmentBrief, outcome: dict | None =
     risks = [
         f"[{rf.severity.upper()}] {rf.title}: {rf.detail}"
         for rf in (brief.red_flags[:3] if brief.red_flags else [])
-    ] or ["No critical red flags surfaced from open-source intelligence."]
+    ] or ["No critical red flags surfaced from the available evidence base."]
     
     next_act = [brief.next_steps[0] if brief.next_steps else "Continue verification before IC."]
     

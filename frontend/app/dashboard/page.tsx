@@ -123,7 +123,7 @@ export default function DashboardPage() {
             {dueFollowups.slice(0, 3).map(f => (
               <Link
                 key={f.runId}
-                href="/outcomes"
+                href={`/outcomes?focus=${encodeURIComponent(String(f.runId))}`}
                 className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 hover:bg-[#F5F8FC] transition"
               >
                 <div className="min-w-0">
@@ -135,7 +135,12 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] px-2 py-1 rounded-full shrink-0">
-                  Due {new Date(f.followupDueAt).toLocaleDateString()}
+                  {(() => {
+                    const t = new Date(f.followupDueAt).getTime()
+                    if (Number.isNaN(t)) return `Due ${new Date(f.followupDueAt).toLocaleDateString()}`
+                    const days = Math.floor((Date.now() - t) / 86_400_000)
+                    return days <= 0 ? 'Due today' : `Follow-up due ${days}d ago`
+                  })()}
                 </span>
               </Link>
             ))}

@@ -1,15 +1,16 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
+import OutcomeFollowup from '../../components/OutcomeFollowup/OutcomeFollowup'
 import {
   getDecisionHistory,
   getDueFollowups,
+  getOutcome,
   getOutcomeIntelligence,
   isDemoRunRecord,
-  outcomeReviewDownloadHref,
   saveFollowupAnswer,
   saveOutcome,
   type DecisionRecord,
@@ -60,17 +61,55 @@ function FollowUpCard({ record, onAnswered }: {
   const [decisionTaken, setDecisionTaken] = useState('')
   const [followed, setFollowed] = useState('')
   const [comment, setComment] = useState('')
+  const [outcomeStatus, setOutcomeStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const canSave = decisionTaken !== '' && followed !== '' && !saving
   const daysSince = _daysSince(record.decisionSnapshotAt)
 
+  // One-tap capture path: records the required pair instantly (followed =
+  // too-early-to-tell, which rate math excludes honestly); the full form
+  // below stays available for comments and outcome ratings.
+  async function quickSubmit(taken: string) {
+    setSaving(true)
+    setErr(null)
+    try {
+      onAnswered(await saveFollowupAnswer(record.runId, { decisionTaken: taken, recommendationFollowed: 'not_yet', comment: '' }))
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function submit() {
     setSaving(true)
     setErr(null)
     try {
-      onAnswered(await saveFollowupAnswer(record.runId, { decisionTaken, recommendationFollowed: followed, comment: comment.trim() }))
+      const updated = await saveFollowupAnswer(record.runId, { decisionTaken, recommendationFollowed: followed, comment: comment.trim() })
+      if (outcomeStatus) {
+        // Merge with any stored outcome so rating the status never erases
+        // notes or lessons recorded earlier.
+        let base: OutcomeUpdatePayload = { outcome_status: outcomeStatus }
+        try {
+          const existing = await getOutcome(record.runId)
+          base = {
+            outcome_status: outcomeStatus,
+            outcome_date: existing?.outcome_date || null,
+            outcome_notes: existing?.outcome_notes || '',
+            what_happened: existing?.what_happened || '',
+            what_was_predicted: existing?.what_was_predicted || '',
+            what_was_missed: existing?.what_was_missed || '',
+            what_worked: existing?.what_worked || '',
+            what_failed: existing?.what_failed || '',
+          }
+        } catch {
+          // no outcome yet — status-only payload is fine
+        }
+        await saveOutcome(record.runId, base)
+      }
+      onAnswered(updated)
     } catch (e: any) {
       setErr(e?.message || String(e))
     } finally {
@@ -93,11 +132,28 @@ function FollowUpCard({ record, onAnswered }: {
       </div>
       <p className="mt-2 text-xs text-slate-500 leading-relaxed">
         We check in 30 days after every assessment to see whether the decision moved.
-        Two quick questions — takes about 30 seconds. Your answer appears next to this
+        Three quick fields — under a minute. Your answer appears next to this
         decision in the registry and in the Outcome Snapshot section of future report exports.
         Nothing is scored and nothing breaks if you skip it — the request just stays here until you answer.
       </p>
       {err ? <div className="mt-3 p-2 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-medium">{err}</div> : null}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Answer in one tap:</span>
+        {[
+          { v: 'yes', label: '✓ Decision taken' },
+          { v: 'in_progress', label: '↻ Decision in progress' },
+          { v: 'no', label: 'No decision yet' },
+        ].map(o => (
+          <button
+            key={o.v}
+            disabled={saving}
+            onClick={() => quickSubmit(o.v)}
+            className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-white text-slate-700 border border-[#FEDF89] hover:border-[#0B5D3B] hover:text-[#0B5D3B] transition disabled:opacity-50"
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
@@ -138,6 +194,19 @@ function FollowUpCard({ record, onAnswered }: {
           onChange={e => setComment(e.target.value)}
         />
       </div>
+      <div className="mt-4">
+        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+          4. Outcome <span className="normal-case font-bold text-slate-400">(if known — optional)</span>
+        </label>
+        <select
+          className="w-full p-2 border border-[#DDE6F0] rounded-lg bg-white text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0B5D3B]"
+          value={outcomeStatus}
+          onChange={e => setOutcomeStatus(e.target.value)}
+        >
+          <option value="">Not ready to rate yet</option>
+          {OUTCOME_STATUSES.filter(s => s !== 'Completed').map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
       <button
         onClick={submit}
         disabled={!canSave}
@@ -145,7 +214,7 @@ function FollowUpCard({ record, onAnswered }: {
           canSave ? 'bg-[#0B5D3B] hover:bg-[#08482E] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
         }`}
       >
-        {saving ? 'Saving…' : 'Record follow-up answer'}
+        {saving ? 'Saving…' : 'Save & done'}
       </button>
     </div>
   )
@@ -163,6 +232,62 @@ export default function OutcomesPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   // Outcome Layer V1: 30-day follow-up queue
   const [dueFollowups, setDueFollowups] = useState<DecisionRecord[]>([])
+  const focusConsumed = useRef(false)
+
+  // Deep link from any follow-up reminder (/outcomes?focus=<run_id>): open
+  // that decision's row and scroll it into view — one click from banner to
+  // the update form. Consumed once so re-renders never re-steal the view.
+  useEffect(() => {
+    if (focusConsumed.current || decisions.length === 0) return
+    const focus = new URLSearchParams(window.location.search).get('focus')
+    if (!focus) return
+    focusConsumed.current = true
+    const id = Number(focus)
+    if (!Number.isNaN(id)) {
+      setActiveTab('history')
+      setExpandedId(id)
+      setTimeout(() => {
+        document.getElementById(`decision-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 150)
+    }
+  }, [decisions])
+
+  // Phase 6 — Pilot Health: adoption metrics computed from the decision
+  // registry rows only (no new backend fields, no inferred data). Empty
+  // measures print NO DATA rather than a fabricated zero-percent.
+  const pilotHealth = useMemo(() => {
+    const dayMs = 86_400_000
+    const total = decisions.length
+    const answeredRows = decisions.filter(d => d.followup_status === 'answered')
+    const ratedRows = decisions.filter(d => ['Successful', 'Partially Successful', 'Unsuccessful'].includes(d.outcome_status))
+    const diffs = (rows: any[], from: (d: any) => string | null, to: (d: any) => string | null): number[] =>
+      rows.map(d => {
+        const a = from(d), b = to(d)
+        if (!a || !b) return null
+        const v = Math.round((new Date(b).getTime() - new Date(a).getTime()) / dayMs)
+        return Number.isNaN(v) ? null : Math.max(0, v)
+      }).filter((x): x is number => x != null).sort((a, b) => a - b)
+    const ff = diffs(answeredRows, d => d.decision_snapshot_at || d.followup_due_at || d.created_at, d => d.answered_at)
+    const velocity = diffs(answeredRows.filter(d => d.decision_taken === 'yes'), d => d.created_at, d => d.answered_at)
+    // Decision Followed Rate: fully/partially ÷ decidable answers. not_yet and
+    // unknown are excluded from the denominator — never counted as "not followed".
+    const decidable = answeredRows.filter(d => ['fully', 'partially', 'no'].includes(d.recommendation_followed))
+    const followed = decidable.filter(d => d.recommendation_followed === 'fully' || d.recommendation_followed === 'partially')
+    const avg = (xs: number[]) => xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10 : null
+    const median = (xs: number[]) => xs.length ? xs[Math.floor(xs.length / 2)] : null
+    return {
+      total,
+      answered: answeredRows.length,
+      rated: ratedRows.length,
+      captureRate: total ? Math.round(answeredRows.length / total * 100) : null,
+      followedRate: decidable.length ? Math.round(followed.length / decidable.length * 100) : null,
+      followedSample: decidable.length,
+      avgFollowUpDays: avg(ff),
+      followUpSample: ff.length,
+      velocityDays: median(velocity),
+      velocitySample: velocity.length,
+    }
+  }, [decisions])
 
   // Local mutation state for outcome updates
   const [draftOutcomes, setDraftOutcomes] = useState<Record<number, OutcomeUpdatePayload>>({})
@@ -349,6 +474,41 @@ export default function OutcomesPage() {
       {/* Tab: Decision History */}
       {activeTab === 'history' ? (
         <section className="space-y-4">
+          {/* Pilot Health — adoption metrics (capture rate, days to follow-up,
+              decision velocity). Honest empties: NO DATA until rows exist. */}
+          <div className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-700">Pilot Health</h2>
+              <span className="text-[10px] text-slate-400 font-semibold">{pilotHealth.total} decisions tracked</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="p-3 rounded-lg bg-[#F5F8FC] border border-[#DDE6F0]">
+                <div className="text-lg font-black text-[#0B5D3B]">{pilotHealth.captureRate !== null ? `${pilotHealth.captureRate}%` : 'NO DATA'}</div>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mt-0.5">Outcome capture rate</div>
+                <div className="text-[10px] text-slate-400">{pilotHealth.answered}/{pilotHealth.total} decisions answered the follow-up</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#F5F8FC] border border-[#DDE6F0]">
+                <div className="text-lg font-black text-[#0B5D3B]">{pilotHealth.followedRate !== null ? `${pilotHealth.followedRate}%` : 'NO DATA'}</div>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mt-0.5">Decision followed rate</div>
+                <div className="text-[10px] text-slate-400">fully/partially of decidable answers (n={pilotHealth.followedSample})</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#F5F8FC] border border-[#DDE6F0]">
+                <div className="text-lg font-black text-[#0B5D3B]">{pilotHealth.rated} <span className="text-xs font-bold text-slate-500">/ {pilotHealth.total}</span></div>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mt-0.5">Outcomes rated</div>
+                <div className="text-[10px] text-slate-400">Successful · Partially · Unsuccessful</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#F5F8FC] border border-[#DDE6F0]">
+                <div className="text-lg font-black text-[#0B5D3B]">{pilotHealth.avgFollowUpDays !== null ? `${pilotHealth.avgFollowUpDays}d` : 'NO DATA'}</div>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mt-0.5">Days to follow-up</div>
+                <div className="text-[10px] text-slate-400">avg after the window opened (n={pilotHealth.followUpSample})</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#F5F8FC] border border-[#DDE6F0]">
+                <div className="text-lg font-black text-[#0B5D3B]">{pilotHealth.velocityDays !== null ? `${pilotHealth.velocityDays}d` : 'NO DATA'}</div>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mt-0.5">Decision velocity</div>
+                <div className="text-[10px] text-slate-400">median: assessment → decision confirmed (n={pilotHealth.velocitySample})</div>
+              </div>
+            </div>
+          </div>
           {dueFollowups.length > 0 ? (
             <div className="space-y-3">
               <div className="p-4 rounded-[12px] bg-[#FFFAEB] border border-[#FEDF89]">
@@ -394,7 +554,7 @@ export default function OutcomesPage() {
             const isOpen = expandedId === runId
             const draft = getDraft(runId)
             return (
-              <div key={runId} className="bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas overflow-hidden">
+              <div key={runId} id={`decision-row-${runId}`} className="bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas overflow-hidden">
                 {/* Row header */}
                 <button
                   className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#F5F8FC] transition text-left"
@@ -433,6 +593,27 @@ export default function OutcomesPage() {
                   </div>
                 </button>
 
+                {/* Phase 4: recorded follow-up + outcome readable without
+                    expanding — the registry itself tells the story. */}
+                {!isOpen && (d.followup_status === 'answered' || d.what_happened) ? (
+                  <div className="px-5 pb-3 -mt-1 text-xs text-slate-600 leading-relaxed">
+                    {d.followup_status === 'answered' ? (
+                      <span>
+                        ✓ {ANSWER_LABELS[d.decision_taken] || d.decision_taken} · {ANSWER_LABELS[d.recommendation_followed] || d.recommendation_followed}
+                      </span>
+                    ) : null}
+                    {d.what_happened ? (
+                      <span className={d.followup_status === 'answered' ? ' ml-2' : ''}>
+                        {String(d.what_happened).length > 140 ? `${String(d.what_happened).slice(0, 140)}…` : d.what_happened}
+                      </span>
+                    ) : d.decision_comment ? (
+                      <span className={d.followup_status === 'answered' ? ' ml-2' : ''}>
+                        “{String(d.decision_comment).length > 140 ? `${String(d.decision_comment).slice(0, 140)}…` : d.decision_comment}”
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {/* Expanded outcome editor + lessons */}
                 {isOpen ? (
                   <div className="border-t border-[#DDE6F0] px-5 py-4 bg-[#F5F8FC] space-y-4">
@@ -469,31 +650,12 @@ export default function OutcomesPage() {
                       </div>
                     </div>
 
-                    {/* Outcome Layer V1: Decision Outcome — follow-up answers */}
+                    {/* Outcome Layer V1: Decision follow-up — view, inline
+                        update, and recorded review in one surface. Outcome
+                        status stays owned by the editor above (no duplicate). */}
                     <div className="p-3 rounded-lg bg-white border border-[#DDE6F0]">
-                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">Decision Outcome (30-day follow-up)</div>
-                      {d.followup_status === 'answered' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-bold text-slate-800">
-                          <div>Was a decision taken? <span className="text-[#0B5D3B]">{ANSWER_LABELS[d.decision_taken] || d.decision_taken}</span></div>
-                          <div>Was the recommendation followed? <span className="text-[#0B5D3B]">{ANSWER_LABELS[d.recommendation_followed] || d.recommendation_followed}</span></div>
-                          {d.decision_comment ? (
-                            <div className="md:col-span-2 text-xs text-slate-600 italic">Comment: “{d.decision_comment}”</div>
-                          ) : null}
-                          <div className="md:col-span-2">
-                            <a
-                              href={outcomeReviewDownloadHref(runId, 'pdf')}
-                              className="inline-block px-3 py-1.5 rounded-lg bg-[#0B5D3B] hover:bg-[#08482E] text-white text-[10px] font-extrabold uppercase tracking-wider transition"
-                            >
-                              ↓ Outcome Review Report
-                            </a>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-500">
-                          No follow-up recorded yet{d.followup_due_at ? ` — window opened ${new Date(d.followup_due_at).toLocaleDateString()}` : ''}.
-                          Answer the two questions in the 30-day follow-up queue above.
-                        </p>
-                      )}
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Decision Outcome (30-day follow-up)</div>
+                      <OutcomeFollowup runId={runId} showOutcomeSelect={false} compact />
                     </div>
 
                     {/* Lessons Learned */}
@@ -604,7 +766,10 @@ export default function OutcomesPage() {
               {calibrationBins.map((bin: any) => {
                 const rate = bin.success_rate as number
                 const isPredictive = bin.is_predictive as boolean
-                const barWidth = rate > 0 ? `${rate}%` : '5%'
+                // Calibration is only meaningful once outcomes are COMPLETED —
+                // decisions without outcomes must read NO DATA, never a rate.
+                const hasOutcomes = (bin.completed_count ?? bin.decision_count ?? 0) > 0
+                const barWidth = hasOutcomes && rate > 0 ? `${rate}%` : '5%'
                 const barColor = isPredictive ? 'bg-[#12B76A]' : 'bg-[#F04438]'
                 return (
                   <div key={bin.tier} className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0]">
@@ -617,10 +782,10 @@ export default function OutcomesPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`text-xs font-black ${isPredictive ? 'text-[#027A48]' : 'text-[#B42318]'}`}>
-                          {bin.decision_count === 0 ? 'INSUFFICIENT EVIDENCE' : `${rate}% success rate`}
+                          {!hasOutcomes ? 'INSUFFICIENT EVIDENCE' : `${rate}% success rate`}
                         </span>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${isPredictive ? 'bg-[#ECFDF3] text-[#027A48]' : 'bg-[#FEF3F2] text-[#B42318]'}`}>
-                          {bin.decision_count === 0 ? 'NO DATA' : isPredictive ? 'PREDICTIVE' : 'NOT PREDICTIVE'}
+                          {!hasOutcomes ? 'NO DATA' : isPredictive ? 'PREDICTIVE' : 'NOT PREDICTIVE'}
                         </span>
                       </div>
                     </div>
@@ -632,7 +797,7 @@ export default function OutcomesPage() {
               })}
             </div>
 
-            {calibrationBins.every((b: any) => b.decision_count === 0) ? (
+            {calibrationBins.every((b: any) => (b.completed_count ?? b.decision_count ?? 0) === 0) ? (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-[10px] text-xs font-medium text-amber-800">
                 INSUFFICIENT EVIDENCE: Update outcome statuses for completed decisions to generate trust calibration data.
               </div>

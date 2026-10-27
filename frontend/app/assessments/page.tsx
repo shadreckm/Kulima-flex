@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { getActiveAssessment, listAssessments, type AssessmentWorkspacePayload } from '../../lib/api'
+import { getActiveAssessment, listAssessments, getDecisionHistory, type AssessmentWorkspacePayload } from '../../lib/api'
+import { FollowupChip, followupStateFromRow } from '../../components/OutcomeFollowup/OutcomeFollowup'
 
 export default function AssessmentsPage() {
   const { status: authStatus } = useSession()
@@ -12,6 +13,9 @@ export default function AssessmentsPage() {
   const [activeAssessment, setActiveAssessment] = useState<AssessmentWorkspacePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Outcome Layer V1: run_id -> decision-history row, loaded once for the
+  // whole list so every card can show its follow-up state without N+1 calls.
+  const [followupByRun, setFollowupByRun] = useState<Record<string, Record<string, any>>>({})
 
   async function loadAssessments() {
     setLoading(true)
@@ -23,6 +27,17 @@ export default function AssessmentsPage() {
         setActiveAssessment(active)
       } catch {
         setActiveAssessment(null)
+      }
+      // Best-effort: cards simply omit the chip if outcome data is unavailable.
+      try {
+        const hist = await getDecisionHistory(200)
+        const map: Record<string, Record<string, any>> = {}
+        for (const d of hist.decisions || []) {
+          if (d.id != null) map[String(d.id)] = d
+        }
+        setFollowupByRun(map)
+      } catch {
+        setFollowupByRun({})
       }
     } catch (err) {
       setError(String(err))
@@ -93,7 +108,10 @@ export default function AssessmentsPage() {
               <div className="min-w-0">
                 <div className="text-xs font-bold text-slate-900 truncate">{activeAssessment.displayEntity || activeAssessment.organizationName || activeAssessment.startupName}</div>
                 <div className="text-[11px] text-slate-500">{activeAssessment.founderName}</div>
-                <div className="text-[10px] text-slate-400 mt-1.5">Status: {activeAssessment.status}</div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1.5">
+                  <span>Status: {activeAssessment.status}</span>
+                  {activeAssessment.runId ? <FollowupChip runId={activeAssessment.runId} state={followupStateFromRow(followupByRun[String(activeAssessment.runId)])} /> : null}
+                </div>
               </div>
               <Link
                 href={`/flex?assessmentId=${activeAssessment.assessmentId}`}
@@ -127,7 +145,10 @@ export default function AssessmentsPage() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-slate-900 truncate">{assessment.displayEntity || assessment.organizationName || assessment.startupName}</div>
                   <div className="text-[11px] text-slate-500">{assessment.founderName}</div>
-                  <div className="text-[10px] text-slate-400 mt-1.5">Status: {assessment.status}</div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1.5">
+                    <span>Status: {assessment.status}</span>
+                    {assessment.runId ? <FollowupChip runId={assessment.runId} state={followupStateFromRow(followupByRun[String(assessment.runId)])} /> : null}
+                  </div>
                 </div>
                 <Link
                   href={`/flex?assessmentId=${assessment.assessmentId}`}

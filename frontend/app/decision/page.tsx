@@ -7,6 +7,7 @@ import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { getDecisionSnapshot, getFullBrief, reportDownloadHref, type DecisionSnapshot } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
+import OutcomeFollowup from '../../components/OutcomeFollowup/OutcomeFollowup'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
@@ -196,6 +197,10 @@ export default function DecisionWorkspacePage() {
         </div>
       </section>
       ) : null}
+
+      {/* Outcome Layer V1: follow-up visibility in the decision surface —
+          due banner, quiet countdown, or recorded review, all one-click. */}
+      {runId ? <OutcomeFollowup runId={runId} /> : null}
 
       {/* Decision Dossier Master Grid (10 Core Elements) */}
       {brief ? (

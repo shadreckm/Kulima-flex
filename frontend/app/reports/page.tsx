@@ -4,6 +4,7 @@ import React, { Suspense } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import { reportDownloadHref } from '../../lib/api'
+import OutcomeFollowup from '../../components/OutcomeFollowup/OutcomeFollowup'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 import Link from 'next/link'
@@ -222,6 +223,10 @@ function ReportsPageInner() {
           </div>
         </section>
       )}
+
+      {/* Outcome Layer V1: the reports a board reads are the same artifacts a
+          follow-up later judges — keep the decision loop visible here. */}
+      {runId ? <OutcomeFollowup runId={runId} /> : null}
 
       {/* Report downloads */}
       {!runId && !loading ? (

@@ -405,24 +405,42 @@ export default function ChatShell({
         {/* Outcome Layer V1: 30-day follow-up reminder strip (in-product only) */}
         {runId && followupRecord ? (
           followupRecord.followupStatus === 'answered' ? (
-            <div className="px-4 py-2 bg-[#EAF3FF] border-b border-[#D6E8FF] text-[11px] font-bold text-[#004085]">
-              ✓ 30-day follow-up recorded — decision: {FOLLOWUP_LABELS[followupRecord.decisionTaken || ''] || followupRecord.decisionTaken};
-              recommendation followed: {FOLLOWUP_LABELS[followupRecord.recommendationFollowed || ''] || followupRecord.recommendationFollowed}.
-              Ask me what happened after this recommendation.
+            <div className="px-4 py-2 bg-[#EAF3FF] border-b border-[#D6E8FF] flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-[#004085]">
+                ✓ Follow-up recorded — decision: {FOLLOWUP_LABELS[followupRecord.decisionTaken || ''] || followupRecord.decisionTaken};
+                followed: {FOLLOWUP_LABELS[followupRecord.recommendationFollowed || ''] || followupRecord.recommendationFollowed}.
+                Ask me what happened after this recommendation.
+              </span>
+              <Link
+                href={`/outcomes?focus=${encodeURIComponent(String(runId))}`}
+                className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg border border-[#D6E8FF] text-[#004085] hover:bg-white transition shrink-0"
+              >
+                Update
+              </Link>
             </div>
           ) : new Date(followupRecord.followupDueAt).getTime() <= Date.now() ? (
             <div className="px-4 py-2 bg-[#FFFAEB] border-b border-[#FEDF89] flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] font-bold text-[#B54708]">
-                ⏳ This assessment completed 30+ days ago — follow-up waiting. Help us learn if this recommendation worked.
+                ⏳ Decision follow-up due — {(() => {
+                  const t = new Date(followupRecord.followupDueAt).getTime()
+                  const days = Math.floor((Date.now() - t) / 86_400_000)
+                  return days <= 0 ? 'due today' : `${days} days past the 30-day check-in`
+                })()}. Help us learn if this recommendation worked.
               </span>
               <Link
-                href="/outcomes"
+                href={`/outcomes?focus=${encodeURIComponent(String(runId))}`}
                 className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-[#0B5D3B] text-white hover:bg-[#08482E] transition shrink-0"
               >
-                Record follow-up →
+                One-click update →
               </Link>
             </div>
-          ) : null
+          ) : (
+            // Window not open yet — one quiet line. Never a banner, never modal.
+            <div className="px-4 py-1.5 border-b border-[#DDE6F0] text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+              Decision follow-up opens in {Math.max(1, Math.ceil((new Date(followupRecord.followupDueAt).getTime() - Date.now()) / 86_400_000))} days
+            </div>
+          )
         ) : null}
 
         <div ref={containerRef} className="flex-1 p-4 overflow-auto scroll-area" style={{ minHeight: 0 }}>

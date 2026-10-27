@@ -410,7 +410,7 @@ def render_decision_brief(brief: InvestmentBrief, detail_kind: str | None = None
             detail = html.escape(rf.detail)[:120]
             st.markdown(f"• [{sev}] {title}: {detail}")
     else:
-        st.markdown("• No critical red flags surfaced from open-source intelligence.")
+        st.markdown("• No critical red flags surfaced from the available evidence base.")
 
     # NEXT ACTION (one sentence)
     st.markdown("**Next Action:**")

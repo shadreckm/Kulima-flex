@@ -601,7 +601,7 @@ async def get_decision_snapshot(run_id: str, current: OrgContext = Depends(requi
             detail = (rf.detail or "")[:120]
             top_risks.append(f"[{sev}] {title}: {detail}")
     else:
-        top_risks.append("No critical red flags surfaced from open-source intelligence.")
+        top_risks.append("No critical red flags surfaced from the available evidence base.")
 
     # NEXT ACTION (one sentence)
     if brief.investment_recommendation:

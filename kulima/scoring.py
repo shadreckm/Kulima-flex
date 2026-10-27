@@ -230,14 +230,44 @@ def build_explainability(
     risk_score: float,
     n_sources: int,
     syndicate_avg: float | None,
+    entity_type: str | None = None,
 ) -> list[str]:
+    # Trust & Outcome audit (P7): the explanation lines are reproduced verbatim
+    # in NGO/government/tourism reports and in the AI Analyst context, so they
+    # must not speak in venture terms about non-ventures, and must not claim
+    # "open-source" attribution for evidence that was never externally sourced.
+    # Scores are identical across entities — only the framing follows the entity.
+    is_venture = (entity_type or "startup") in ("startup", "social_enterprise", "cooperative")
+    if is_venture:
+        lead_line = f"Founder intelligence contributes {founder_score:.0f}/100 to conviction."
+        org_line = f"Startup / product-market signals scored {startup_score:.0f}/100."
+        mkt_line = f"Africa-adjusted market opportunity scored {market_score:.0f}/100."
+    else:
+        lead_line = (
+            f"Leadership & governance evidence contributes {founder_score:.0f}/100 "
+            "to the institutional confidence picture."
+        )
+        org_line = (
+            f"Organisational capability & delivery signals scored {startup_score:.0f}/100."
+        )
+        mkt_line = f"Sector & operating-context opportunity scored {market_score:.0f}/100."
+    if n_sources > 0:
+        evidence_line = (
+            f"Decision grounded in {n_sources} attributed evidence items "
+            "(uploaded documents and open-source research)."
+        )
+    else:
+        evidence_line = (
+            "Decision rests on uploaded document evidence; no externally "
+            "attributed items were recorded for this assessment."
+        )
     reasons = [
-        f"Founder intelligence contributes {founder_score:.0f}/100 to conviction.",
-        f"Startup / product-market signals scored {startup_score:.0f}/100.",
-        f"Africa-adjusted market opportunity scored {market_score:.0f}/100.",
+        lead_line,
+        org_line,
+        mkt_line,
         f"Trust graph density and digital footprint yield {trust_score:.0f}/100.",
         f"Composite risk pressure sits at {risk_score:.0f}/100 (lower is better).",
-        f"Decision grounded in {n_sources} attributed open-source evidence items.",
+        evidence_line,
     ]
     if syndicate_avg is not None:
         reasons.append(

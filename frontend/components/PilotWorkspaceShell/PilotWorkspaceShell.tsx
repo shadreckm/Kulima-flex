@@ -4,6 +4,7 @@ import React from 'react'
 import NavigationSidebar from '../NavigationSidebar/NavigationSidebar'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
 import UserMenu from '../UserMenu/UserMenu'
+import { FollowupHeaderChip } from '../OutcomeFollowup/OutcomeFollowup'
 import { useState } from 'react'
 import type { AssessmentContext } from '../../lib/assessment-store'
 
@@ -189,6 +190,10 @@ export default function PilotWorkspaceShell({
 
             {/* Right: user menu + status pill */}
             <div className="hidden sm:flex items-center gap-2 shrink-0">
+              {/* Outcome Layer V1: follow-up state visible on every workspace a
+                  user naturally returns to (rendered only when a decision
+                  record already exists for this run). */}
+              <FollowupHeaderChip runId={assessmentCtx?.runId || runId} />
               <UserMenu />
               {(assessmentCtx?.runId || runId) ? (
                 <span className="bg-[#EAF3FF] border border-[#D6E8FF] px-3 py-1 rounded-lg text-[11px] font-bold text-[#004085] font-mono">
