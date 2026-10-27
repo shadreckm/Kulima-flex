@@ -13,6 +13,7 @@ import { useAssessmentBootstrap, type AssessmentBootState } from '../../hooks/us
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 // Domain config mirrors ContextPanel but for the main-column overview
+// PRIMARY EXPERIENCE: NGO and Development Program signal domains prioritized for V1
 const DOMAIN_DISPLAY: Array<{ key: string; label: string; icon: string; description: string }> = [
   { key: 'trust',           label: 'Trust',        icon: 'ðŸ›¡ï¸', description: 'Source reliability, corroboration, and evidence integrity.' },
   { key: 'risk',            label: 'Risk',          icon: 'âš ï¸', description: 'Material risks and red flags requiring attention.' },

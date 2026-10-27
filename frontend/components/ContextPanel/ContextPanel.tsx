@@ -160,16 +160,18 @@ function FlexSnapshotView({ runId, status, loading, error, data }: SnapshotProps
   )
 }
 
+// PRIMARY EXPERIENCE: NGO and Development Program signal domains prioritized for V1
 const DOMAIN_CONFIG: Record<string, { label: string; icon: string; category: string }> = {
+  community_impact: { label: 'Community', icon: '🤝', category: 'community_impact' },
   trust: { label: 'Trust', icon: '🛡️', category: 'trust' },
+  funding: { label: 'Funding', icon: '💰', category: 'funding' },
   risk: { label: 'Risk', icon: '⚠️', category: 'risk' },
   opportunity: { label: 'Opportunity', icon: '🌱', category: 'opportunity' },
-  market: { label: 'Market', icon: '📈', category: 'market' },
-  funding: { label: 'Funding', icon: '💰', category: 'funding' },
   climate: { label: 'Climate', icon: '🌤️', category: 'climate' },
   environmental: { label: 'Environment', icon: '🌿', category: 'environmental' },
-  tourism: { label: 'Tourism', icon: '🧭', category: 'tourism' },
-  community_impact: { label: 'Community', icon: '🤝', category: 'community_impact' },
+  // Secondary market signals (kept but deprioritized in order)
+  market: { label: 'Market', icon: '📈', category: 'market' },
+  tourism: { label: 'Tourism', icon: '�', category: 'tourism' },
 }
 
 /** Legacy domain keys folded into the nine display domains (backend Step 6). */

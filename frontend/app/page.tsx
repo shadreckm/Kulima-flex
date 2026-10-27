@@ -13,27 +13,29 @@ import * as api from '../lib/api'
 import type { AssessmentContextPayload } from '../lib/api'
 
 const TYPE_LABELS: Record<EntityType, string> = {
-  startup: 'Startup', ngo: 'NGO', government_program: 'Government Programme', development_program: 'Development Programme', tourism_sme: 'Tourism SME', accelerator: 'Accelerator',
+  ngo: 'NGO', development_program: 'Development Programme', government_program: 'Government Programme', tourism_sme: 'Tourism SME', startup: 'Startup', accelerator: 'Accelerator',
 }
 
 /** Entity-aware form copy: placeholders change with the selected assessment type. */
+// PRIMARY EXPERIENCE: NGO and Development Program placeholders prioritized for V1
 const TYPE_PLACEHOLDERS: Record<EntityType, { organization: string; lead: string; keywords: string }> = {
-  startup: { organization: 'e.g. Kulima Africa Ltd', lead: 'e.g. CEO / Founder', keywords: 'Fintech, Marketplaces, AgriTech' },
   ngo: { organization: 'e.g. Emerge Livelihoods Foundation', lead: 'e.g. Executive Director', keywords: 'Livelihoods, Women & Youth, Community' },
-  tourism_sme: { organization: 'e.g. Savanna Trails Lodge', lead: 'e.g. Managing Director', keywords: 'Tourism, Hospitality, Destination' },
   development_program: { organization: 'e.g. UNDP Resilience Programme', lead: 'e.g. Programme Manager', keywords: 'Outcomes, Beneficiaries, M&E' },
   government_program: { organization: 'e.g. Ministry of Agriculture Programme', lead: 'e.g. Programme Director', keywords: 'Policy, Public Services, Delivery' },
+  tourism_sme: { organization: 'e.g. Savanna Trails Lodge', lead: 'e.g. Managing Director', keywords: 'Tourism, Hospitality, Destination' },
+  startup: { organization: 'e.g. Kulima Africa Ltd', lead: 'e.g. CEO / Founder', keywords: 'Fintech, Marketplaces, AgriTech' },
   accelerator: { organization: 'e.g. Sahel Horizon Accelerator', lead: 'e.g. Program Lead', keywords: 'Cohorts, Mentorship, Portfolio' },
 }
 
 const FILE_TYPES = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'CSV', 'TXT']
 
+// PRIMARY EXPERIENCE: NGO and Development Program pipeline language for V1
 const PIPELINE = [
   { key: 'info', label: 'Information', detail: 'Reports, budgets, evaluations, policies' },
   { key: 'evidence', label: 'Evidence', detail: 'Claims extracted and structured' },
   { key: 'trust', label: 'Trust', detail: 'Source reliability scored 0–100' },
-  { key: 'signals', label: 'Signals', detail: 'Risk, opportunity, climate, tourism' },
-  { key: 'decision', label: 'Decision', detail: 'Invest / Observe / Reassess + rationale' },
+  { key: 'signals', label: 'Signals', detail: 'Risk, opportunity, community, climate' },
+  { key: 'decision', label: 'Decision', detail: 'Approve / Reassess / Reject + rationale' },
 ]
 
 const PIPELINE_CARDS = [
@@ -46,25 +48,31 @@ const PIPELINE_CARDS = [
   { label: 'Report Ready', icon: '📑' },
 ]
 
+// PRIMARY EXPERIENCE: NGO and Development Program signal domains prioritized for V1
 const SIGNAL_DOMAINS = [
-  { label: 'Trust', icon: '🛡️', desc: 'Source reliability and corroboration' },
-  { label: 'Risk', icon: '⚠️', desc: 'Red flags and material exposure' },
-  { label: 'Opportunity', icon: '🌱', desc: 'Growth and upside signals' },
-  { label: 'Market', icon: '📈', desc: 'Size, competition, positioning' },
-  { label: 'Funding', icon: '💰', desc: 'Readiness, burn, capital efficiency' },
-  { label: 'Climate', icon: '🌤️', desc: 'Climate risk and net-zero alignment' },
-  { label: 'Environment', icon: '🌿', desc: 'Compliance and ecological footprint' },
-  { label: 'Tourism', icon: '🧭', desc: 'Destination impact and visitor economy' },
   { label: 'Community', icon: '🤝', desc: 'Beneficiary reach and social outcomes' },
+  { label: 'Trust', icon: '🛡️', desc: 'Source reliability and corroboration' },
+  { label: 'Funding', icon: '💰', desc: 'Funding readiness and cost-effectiveness' },
+  { label: 'Risk', icon: '⚠️', desc: 'Program risks and implementation challenges' },
+  { label: 'Opportunity', icon: '🌱', desc: 'Growth and scaling opportunities' },
+  { label: 'Climate', icon: '🌤️', desc: 'Climate risk and resilience alignment' },
+  { label: 'Environment', icon: '🌿', desc: 'Environmental compliance and sustainability' },
+  // Secondary market signals (kept but deprioritized in order)
+  { label: 'Market', icon: '📈', desc: 'Size, competition, positioning' },
+  { label: 'Tourism', icon: '�', desc: 'Destination impact and visitor economy' },
 ]
 
+// PRIMARY EXPERIENCE: NGO and Development Program use cases prioritized for V1
 const USE_CASES = [
   { title: 'NGO Programme Review', desc: 'Verify impact claims across donor reports and field data before the board sees them.' },
-  { title: 'Tourism Investment Readiness', desc: 'Score destination businesses on trust, sustainability and visitor-economy signals.' },
   { title: 'Development Programme Performance', desc: 'Turn monitoring data and theory-of-change documents into decision-ready evidence.' },
+  { title: 'Monitoring & Evaluation Review', desc: 'Corroborate beneficiary outcomes against independent research intelligence.' },
+  { title: 'Institutional Capacity Assessment', desc: 'Assess organizational readiness, financial health, and program delivery capacity.' },
+  { title: 'Evidence & Trust Report', desc: 'Extract and verify claims from proposals, reports, and evaluations with source attribution.' },
   { title: 'Government Initiative Assessment', desc: 'Assess budget allocation, implementation progress and policy alignment in one workspace.' },
+  // Secondary markets (kept but deprioritized in order)
+  { title: 'Tourism Investment Readiness', desc: 'Score destination businesses on trust, sustainability and visitor-economy signals.' },
   { title: 'Startup Readiness', desc: 'Evidence-based investment screening — trust score, risk register and IC memo.' },
-  { title: 'Community Impact Verification', desc: 'Corroborate beneficiary outcomes against independent research intelligence.' },
 ]
 
 const AFTER = ['Evidence', 'Trust', 'Signals', 'Decisions', 'Reports']
@@ -79,12 +87,18 @@ const POST_UPLOAD_FLOW = [
   { label: 'Report', desc: 'Export the IC memo, full report, signal register or one-pager.' },
 ]
 
+// PRIMARY EXPERIENCE: NGO and Development Program reports prioritized for V1
 const REPORT_KINDS = [
-  { label: 'Assessment Report', live: true },
-  { label: 'NGO Report', live: true },
-  { label: 'Tourism SME Report', live: true },
-  { label: 'Development Programme Report', live: true },
-  { label: 'Startup Assessment', live: true },
+  { label: 'Institutional Capacity Review', live: true },
+  { label: 'Program Performance Review', live: true },
+  { label: 'Monitoring & Evaluation Review', live: true },
+  { label: 'Evidence & Trust Report', live: true },
+  { label: 'Development Decision Report', live: true },
+  // Secondary markets (kept but deprioritized in order)
+  { label: 'Tourism Resilience Report', live: true },
+  { label: 'Investment Committee Report', live: true },
+  { label: 'Governance Review', live: true },
+  // Future templates
   { label: 'UNDP Templates', live: false },
   { label: 'EU Templates', live: false },
   { label: 'USAID Templates', live: false },
@@ -338,7 +352,7 @@ function HomeInner() {
         <div className="mx-auto max-w-7xl px-6 pb-16 pt-14 lg:px-10 lg:pb-24 lg:pt-20">
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Africa&apos;s Decision Intelligence Platform</div>
           <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn information into <span className="text-[#159A62]">trusted decisions.</span></h1>
-          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#667085]">Upload reports, proposals, business plans, budgets, evaluations, financial statements, policies, tourism strategies, research reports, or programme documents. Kulima FLEX analyzes evidence, verifies trust, discovers signals, and generates decision-ready intelligence.</p>
+          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#667085]">Upload proposals, annual reports, budgets, M&E reports, policy documents, or programme assessments. Kulima FLEX analyzes evidence, verifies trust, discovers signals, and generates decision-ready intelligence for NGOs and development programmes.</p>
 
           {/* Gigantic dropzone — one action, no forms initially */}
           <label
@@ -380,6 +394,34 @@ function HomeInner() {
                         <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
                       ))}
                     </div>
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {TYPE_LABELS[assessmentType]}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organization</div>
+                  {showEdit ? (
+                    <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].organization} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {organization || 'Detected from documents'}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
+                  {showEdit ? (
+                    <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].lead} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {founderOrLead || 'Detected from documents'}</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Keywords</div>
+                  {showEdit ? (
+                    <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].keywords} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
+                  ) : (
+                    <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {keywords || 'Detected from documents'}</div>
+                  )}
+                </div>
                   ) : (
                     <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {TYPE_LABELS[assessmentType]}</div>
                   )}

@@ -204,13 +204,14 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
 # â”€â”€ TXT Exports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # ── Entity-adaptive report type labels (Phase 6 follow-through) ────────────
+# PRIMARY EXPERIENCE: NGO and Development Program reports prioritized for V1
 
 _ENTITY_REPORT_LABELS = {
-    "startup": "Investment Committee Report",
     "ngo": "Institutional Capacity Review",
     "development_program": "Program Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
+    "startup": "Investment Committee Report",
 }
 _ENTITY_LABEL_INHERIT = {
     "research_institution": "ngo",

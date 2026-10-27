@@ -34,18 +34,8 @@ export type EntityConfig = {
   scoreLabel: string
 }
 
+// PRIMARY EXPERIENCE: NGO and Development Program configurations prioritized for V1
 export const ENTITY_CONFIGS: EntityConfig[] = [
-  {
-    type: 'startup',
-    label: 'Startup',
-    description: 'Early-stage to growth-stage venture seeking investment or evaluation.',
-    fields: {
-      primary:   { key: 'founderName',   label: 'Founder Name',  placeholder: 'e.g. Amara Diallo' },
-      secondary: { key: 'entityName',    label: 'Startup Name',  placeholder: 'e.g. AgroTech East Africa' },
-    },
-    uploadGuidance: 'Upload pitch deck, financial projections, market analysis, team bios, product roadmap',
-    scoreLabel: 'Investment Readiness',
-  },
   {
     type: 'ngo',
     label: 'NGO',
@@ -55,6 +45,17 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
       secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. Food Security Initiative' },
     },
     uploadGuidance: 'Upload monitoring reports, impact assessments, donor reports, financial statements, annual reports',
+    scoreLabel: 'Program Readiness',
+  },
+  {
+    type: 'development_program',
+    label: 'Development Program',
+    description: 'Development finance program under DFI or bilateral-agency evaluation.',
+    fields: {
+      primary:   { key: 'entityName',    label: 'Organisation',  placeholder: 'e.g. USAID East Africa' },
+      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. Resilient Food Systems' },
+    },
+    uploadGuidance: 'Upload program frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
     scoreLabel: 'Program Readiness',
   },
   {
@@ -69,17 +70,6 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     scoreLabel: 'Program Performance',
   },
   {
-    type: 'development_program',
-    label: 'Development Program',
-    description: 'Development finance program under DFI or bilateral-agency evaluation.',
-    fields: {
-      primary:   { key: 'entityName',    label: 'Organisation',  placeholder: 'e.g. USAID East Africa' },
-      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. Resilient Food Systems' },
-    },
-    uploadGuidance: 'Upload program frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
-    scoreLabel: 'Program Readiness',
-  },
-  {
     type: 'tourism_sme',
     label: 'Tourism SME',
     description: 'Tourism, hospitality, or destination business under impact and viability review.',
@@ -89,6 +79,17 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     },
     uploadGuidance: 'Upload visitor statistics, sustainability reports, destination impact data, business licenses, financial statements',
     scoreLabel: 'Tourism Impact',
+  },
+  {
+    type: 'startup',
+    label: 'Startup',
+    description: 'Early-stage to growth-stage venture seeking investment or evaluation.',
+    fields: {
+      primary:   { key: 'founderName',   label: 'Founder Name',  placeholder: 'e.g. Amara Diallo' },
+      secondary: { key: 'entityName',    label: 'Startup Name',  placeholder: 'e.g. AgroTech East Africa' },
+    },
+    uploadGuidance: 'Upload pitch deck, financial projections, market analysis, team bios, product roadmap',
+    scoreLabel: 'Investment Readiness',
   },
   {
     type: 'accelerator',
@@ -105,12 +106,13 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
 ]
 
 /** The five canonical assessment types shown in the landing-page intake. */
+// PRIMARY EXPERIENCE: NGOs and Development Programs are the primary customer segment for V1
 export const INTAKE_ENTITY_TYPES: EntityType[] = [
-  'startup',
-  'ngo',
-  'government_program',
-  'development_program',
-  'tourism_sme',
+  'ngo',                           // Primary customer
+  'development_program',           // Primary customer
+  'government_program',            // Secondary customer
+  'tourism_sme',                  // Secondary customer
+  'startup',                      // Secondary customer
 ]
 
 export function getEntityConfig(type: EntityType): EntityConfig {
