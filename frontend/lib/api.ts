@@ -1101,3 +1101,57 @@ export async function getOutcomeIntelligence(): Promise<Record<string, any>> {
   return parseJsonResponse<Record<string, any>>(res, 'getOutcomeIntelligence')
 }
 
+// ── Outcome Layer V1: DecisionRecord + 30-day follow-up ─────────────────────
+
+export type DecisionRecord = {
+  runId: number
+  entityName: string | null
+  recommendation: string | null
+  trustScore: number | null
+  integrityGrade: string | null
+  decisionSnapshotAt: string
+  followupDueAt: string
+  followupStatus: string          // 'pending' | 'answered'
+  decisionTaken: string | null    // yes | no | in_progress | unknown
+  recommendationFollowed: string | null  // fully | partially | no | not_yet | unknown
+  decisionComment: string
+  answeredAt: string | null
+}
+
+export async function getDueFollowups(): Promise<{ followups: DecisionRecord[]; total: number }> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/due`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getDueFollowups failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<{ followups: DecisionRecord[]; total: number }>(res, 'getDueFollowups')
+}
+
+export async function getDecisionRecord(runId: number | string): Promise<DecisionRecord> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/${encodeURIComponent(String(runId))}/decision-record`, {
+    headers: withAuth(),
+  })
+  if (!res.ok) throw new Error(`getDecisionRecord failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<DecisionRecord>(res, 'getDecisionRecord')
+}
+
+export async function saveFollowupAnswer(
+  runId: number | string,
+  answers: { decisionTaken: string; recommendationFollowed: string; comment?: string },
+): Promise<DecisionRecord> {
+  const res = await fetch(`${API_BASE}/api/v1/outcomes/${encodeURIComponent(String(runId))}/decision-record/answer`, {
+    method: 'POST',
+    headers: withAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(answers),
+  })
+  if (!res.ok) throw new Error(`saveFollowupAnswer failed: ${res.status} ${await readResponseText(res)}`)
+  return parseJsonResponse<DecisionRecord>(res, 'saveFollowupAnswer')
+}
+
+// Outcome Review Report: recommendation, decision taken, comments, lessons.
+export function outcomeReviewDownloadHref(
+  runId: number | string,
+  format: 'pdf' | 'txt' = 'pdf',
+): string {
+  return `/api/v1/outcomes/${encodeURIComponent(String(runId))}/outcome-review?format=${format}`
+}
+

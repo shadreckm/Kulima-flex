@@ -18,6 +18,7 @@ sidebar/management surface.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
@@ -26,6 +27,11 @@ from ..core.rate_limit import check_rate_limit
 from ..schemas.dtos import ConversationCreateRequest, ConversationRenameRequest
 from ..services import conversation_service
 from ..services.conversation_service import ConversationError
+from kulima.core.billing.service import (
+    BillingBlocked,
+    assessment_history_window_days,
+    assert_feature,
+)
 from kulima.core.orgs.models import Permission
 
 _log = logging.getLogger(__name__)
@@ -40,18 +46,48 @@ def _handle_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail={"error": True, "message": str(exc)})
 
 
+def _raise_billing_block(exc: BillingBlocked) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
+
+
+def _raise_conversation_gate(org_id: str) -> None:
+    """Conversation history is a Professional+ feature (no-op while billing
+    enforcement is disabled — pilot experience unchanged)."""
+    try:
+        assert_feature(org_id, "conversation_history")
+    except BillingBlocked as exc:
+        _raise_billing_block(exc)
+
+
 @router.get("/history")
 async def get_assessment_history(
     limit: int = 50,
     current: OrgContext = Depends(require_permission(Permission.VIEW)),
 ):
     """Phase 5: assessment history sidebar — name, type, trust score, date,
-    conversation count. Reopenable."""
+    conversation count. Reopenable. Starter is limited to a 30-day window."""
     check_rate_limit(current.user_id, "conversations:history")
     try:
-        return conversation_service.assessment_history(current.user_id, current.org_id, limit)
+        data = conversation_service.assessment_history(current.user_id, current.org_id, limit)
     except Exception as exc:  # noqa: BLE001
         raise _handle_error(exc)
+    # Plan history window (Starter = 30 days, paid plans = unlimited).
+    window = assessment_history_window_days(current.org_id)
+    if window and isinstance(data, dict):
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window)
+        kept = []
+        for item in data.get("assessments", []):
+            raw = item.get("createdAt") if isinstance(item, dict) else None
+            try:
+                created = datetime.fromisoformat(str(raw))
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if created >= cutoff:
+                    kept.append(item)
+            except (TypeError, ValueError):
+                kept.append(item)  # unparseable dates stay visible — never hide data by accident
+        data = {**data, "assessments": kept, "historyWindowDays": window}
+    return data
 
 
 @router.get("/{assessment_id}")
@@ -61,6 +97,7 @@ async def list_conversations(
 ):
     """Phase 2: conversation list for ONE assessment (auto-provisions Chat 1)."""
     check_rate_limit(current.user_id, "conversations:list")
+    _raise_conversation_gate(current.org_id)
     try:
         return conversation_service.list_conversations(
             assessment_id, current.user_id, current.org_id
@@ -77,6 +114,7 @@ async def create_conversation(
 ):
     """Phase 6: + New Conversation inside an assessment."""
     check_rate_limit(current.user_id, "conversations:create")
+    _raise_conversation_gate(current.org_id)
     try:
         return conversation_service.create_conversation(
             assessment_id, current.user_id, current.org_id, payload.title
@@ -93,6 +131,7 @@ async def get_conversation_messages(
 ):
     """Messages of ONE conversation — cross-assessment reads are blocked."""
     check_rate_limit(current.user_id, "conversations:messages")
+    _raise_conversation_gate(current.org_id)
     try:
         result = conversation_service.get_conversation_messages(
             conversation_id, current.user_id, current.org_id

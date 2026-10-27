@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
     pending_plan TEXT,
     paychangu_ref TEXT,
+    activation_state TEXT,
     last_error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -69,6 +70,7 @@ _PATCHABLE = (
     "cancel_at_period_end",
     "pending_plan",
     "paychangu_ref",
+    "activation_state",
     "last_error",
 )
 
@@ -94,6 +96,13 @@ class BillingRepository:
     def _initialize(self) -> None:
         with self._connect() as conn:
             conn.executescript(BILLING_SCHEMA)
+            # Schema migration for databases created before the Enterprise
+            # activation workflow existed. Must precede any index creation on
+            # the new column (none today) so older builds never see it missing.
+            try:
+                conn.execute("ALTER TABLE subscriptions ADD COLUMN activation_state TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already present
             conn.commit()
 
     # ── Subscriptions ────────────────────────────────────────────────────

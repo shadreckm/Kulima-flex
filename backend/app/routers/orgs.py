@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from kulima.core.audit import record_event
 from kulima.core.billing.plans import get_plan
+from kulima.core.billing.service import BillingBlocked, assert_feature
 from kulima.core.orgs.models import (
     ROLE_LABELS,
     Permission,
@@ -142,6 +143,12 @@ async def add_member(
             status_code=422,
             detail={"error": True, "message": "Invalid role. Use owner, admin, reviewer, contributor or viewer."},
         )
+    # Collaboration is a Professional+ feature (blocked only while billing
+    # enforcement is enabled; Starter additionally caps at 1 user by quota).
+    try:
+        assert_feature(current.org_id, "collaboration")
+    except BillingBlocked as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
     existing = _repo().get_membership_for_org(current.org_id, payload.userId)
     if existing is None:
         _enforce_member_quota(current.org_id, current.plan)

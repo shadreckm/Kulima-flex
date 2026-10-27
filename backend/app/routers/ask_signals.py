@@ -5,6 +5,7 @@ from ..services.orchestrator_adapter import ask_signals, get_brief_for_run, get_
 from ..core.auth import OrgContext, require_permission
 from ..core.rate_limit import check_rate_limit
 from ..services.demo_chat import doc_intelligence_ask_signals_answer
+from kulima.core.billing.service import BillingBlocked, assert_feature
 from kulima.core.orgs.models import Permission
 import asyncio
 import json
@@ -14,6 +15,16 @@ import random
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _signals_gate(org_id: str) -> None:
+    """Signals access follows the plan catalogue: every plan includes
+    basic_signals, so this only blocks plans/workspaces that lose the feature
+    (e.g. after suspension policy changes) while enforcement is enabled."""
+    try:
+        assert_feature(org_id, "basic_signals")
+    except BillingBlocked as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
 
 _DOC_INTEL_SIGNALS_WAIT = (
     "**📄 Document Intelligence Mode**\n\n"
@@ -45,6 +56,7 @@ def _make_signals_doc_intel_fallback(run_id: str, question: str, user_id: str | 
 async def post_ask_signals(req: AskRequest, current: OrgContext = Depends(require_permission(Permission.VIEW))):
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "ask_signals:post")
+    _signals_gate(current.org_id)
 
     info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:
@@ -66,6 +78,7 @@ async def post_ask_signals(req: AskRequest, current: OrgContext = Depends(requir
 async def post_ask_signals_stream(req: AskRequest, current: OrgContext = Depends(require_permission(Permission.VIEW))):
     # Rate limit hook (no-op in pre-beta)
     check_rate_limit(current.user_id, "ask_signals:stream")
+    _signals_gate(current.org_id)
 
     info = get_run_status(req.runId, current.user_id, org_id=current.org_id)
     if not info:

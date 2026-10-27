@@ -4,12 +4,13 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { archiveRun, deleteRun, isDemoRunRecord, listLiveRuns, listStoredRuns, reopenRun, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
+import { archiveRun, deleteRun, getDueFollowups, isDemoRunRecord, listLiveRuns, listStoredRuns, reopenRun, type DecisionRecord, type LiveRunRecord, type StoredRunRecord } from '../../lib/api'
 
 export default function RunsPage() {
   const { status: authStatus } = useSession()
   const [liveRuns, setLiveRuns] = useState<LiveRunRecord[]>([])
   const [storedRuns, setStoredRuns] = useState<StoredRunRecord[]>([])
+  const [dueFollowups, setDueFollowups] = useState<DecisionRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -17,9 +18,14 @@ export default function RunsPage() {
   async function loadRuns() {
     setLoading(true)
     try {
-      const [liveRes, storedRes] = await Promise.all([listLiveRuns(50), listStoredRuns(50, true)])
+      const [liveRes, storedRes, dueRes] = await Promise.all([
+        listLiveRuns(50),
+        listStoredRuns(50, true),
+        getDueFollowups().catch(() => ({ followups: [] as DecisionRecord[], total: 0 })),
+      ])
       setLiveRuns(liveRes.runs.filter(run => run.userId != null))
       setStoredRuns(storedRes.runs.filter(run => !isDemoRunRecord(run)))
+      setDueFollowups(dueRes.followups || [])
     } finally {
       setLoading(false)
     }
@@ -153,6 +159,14 @@ export default function RunsPage() {
                 <div className="text-[10px] text-slate-400 mt-1.5">
                   Run #{run.runId} · Score: {run.overallScore ?? '—'} · Trust: {run.trustScore ?? '—'} · Grade: {run.integrityGrade ?? '—'}
                 </div>
+                {dueFollowups.some(f => Number(f.runId) === Number(run.runId)) ? (
+                  <Link
+                    href="/outcomes"
+                    className="mt-2 block px-3 py-2 rounded-lg bg-[#FFFAEB] border border-[#FEDF89] text-[11px] font-bold text-[#B54708] hover:border-[#F5B464] transition"
+                  >
+                    ⏳ Follow-up waiting — this assessment completed 30+ days ago. Help us learn if the recommendation worked →
+                  </Link>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {isDemoRunRecord(run) ? (
                     <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[11px] border border-emerald-200">

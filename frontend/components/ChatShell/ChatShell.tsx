@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import MessageList from '../MessageList/MessageList'
 import Composer from '../Composer/Composer'
 import ConversationSidebar from '../ConversationSidebar/ConversationSidebar'
@@ -7,6 +8,17 @@ import { Button } from '../shadcn/Button'
 import { Badge } from '../shadcn/Badge'
 
 interface Message { id: string; role: 'user' | 'assistant' | 'system'; content: string }
+
+// Outcome Layer V1 follow-up answer labels (mirrors the Outcomes workspace).
+const FOLLOWUP_LABELS: Record<string, string> = {
+  yes: 'Yes',
+  no: 'No',
+  in_progress: 'In progress',
+  unknown: 'Unknown',
+  fully: 'Fully',
+  partially: 'Partially',
+  not_yet: 'Not yet',
+}
 
 import * as api from '../../lib/api'
 import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
@@ -40,6 +52,27 @@ export default function ChatShell({
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
+
+  // Outcome Layer V1: 30-day follow-up reminder + post-decision quick questions.
+  const [followupRecord, setFollowupRecord] = useState<api.DecisionRecord | null>(null)
+  useEffect(() => {
+    setFollowupRecord(null)
+    // Decision records are keyed by the numeric stored-run id; live run uuids
+    // have no decision record yet.
+    if (!runId || !/^\d+$/.test(String(runId))) return
+    let cancelled = false
+    api.getDecisionRecord(runId)
+      .then(rec => { if (!cancelled) setFollowupRecord(rec) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [runId])
+
+  const followupQuestions = [
+    'What happened after this recommendation?',
+    'What changed?',
+    'Was a decision taken?',
+    'Was the recommendation followed?',
+  ]
 
   // Build use-case context hint to send as the first system message
   // This removes the need for AI Analyst to ask the user what they're evaluating.
@@ -369,6 +402,29 @@ export default function ChatShell({
           ) : null}
         </header>
 
+        {/* Outcome Layer V1: 30-day follow-up reminder strip (in-product only) */}
+        {runId && followupRecord ? (
+          followupRecord.followupStatus === 'answered' ? (
+            <div className="px-4 py-2 bg-[#EAF3FF] border-b border-[#D6E8FF] text-[11px] font-bold text-[#004085]">
+              ✓ 30-day follow-up recorded — decision: {FOLLOWUP_LABELS[followupRecord.decisionTaken || ''] || followupRecord.decisionTaken};
+              recommendation followed: {FOLLOWUP_LABELS[followupRecord.recommendationFollowed || ''] || followupRecord.recommendationFollowed}.
+              Ask me what happened after this recommendation.
+            </div>
+          ) : new Date(followupRecord.followupDueAt).getTime() <= Date.now() ? (
+            <div className="px-4 py-2 bg-[#FFFAEB] border-b border-[#FEDF89] flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-[#B54708]">
+                ⏳ This assessment completed 30+ days ago — follow-up waiting. Help us learn if this recommendation worked.
+              </span>
+              <Link
+                href="/outcomes"
+                className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-[#0B5D3B] text-white hover:bg-[#08482E] transition shrink-0"
+              >
+                Record follow-up →
+              </Link>
+            </div>
+          ) : null
+        ) : null}
+
         <div ref={containerRef} className="flex-1 p-4 overflow-auto scroll-area" style={{ minHeight: 0 }}>
           <MessageList messages={messages} streamingMessageId={streamingMessageId} showCursor={isStreaming} />
           {typing && (
@@ -389,6 +445,21 @@ export default function ChatShell({
         )}
 
         <div id="documents" className="kulima-composer sticky bottom-0 bg-white border-t">
+          {runId ? (
+            <div className="px-3 pt-2.5 flex flex-wrap gap-1.5">
+              {followupQuestions.map(q => (
+                <button
+                  key={q}
+                  type="button"
+                  disabled={isStreaming}
+                  onClick={() => handleSend(q)}
+                  className="px-2.5 py-1 rounded-full border border-[#DDE6F0] bg-[#F5F8FC] text-[10px] font-bold text-slate-600 hover:bg-[#EAF3FF] hover:text-[#004085] disabled:opacity-50 transition"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="p-3">
             <Composer onSend={handleSend} runId={runId} />
           </div>

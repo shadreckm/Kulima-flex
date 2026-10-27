@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
-import { listAssessments, type AssessmentWorkspacePayload } from '../../lib/api'
+import { getDueFollowups, listAssessments, type AssessmentWorkspacePayload, type DecisionRecord } from '../../lib/api'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const [assessments, setAssessments] = useState<AssessmentWorkspacePayload[]>([])
   const [activeAssessment, setActiveAssessment] = useState<AssessmentWorkspacePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [dueFollowups, setDueFollowups] = useState<DecisionRecord[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -27,6 +28,13 @@ export default function DashboardPage() {
         }
       } catch (err) {
         if (!cancelled) setError(String(err))
+      }
+      // Outcome Layer V1: 30-day follow-up reminder (best-effort, never blocks the page)
+      try {
+        const dueRes = await getDueFollowups()
+        if (!cancelled) setDueFollowups(dueRes.followups || [])
+      } catch {
+        // reminders are optional surface — ignore failures
       }
     }
     if (authStatus === 'authenticated') {
@@ -94,6 +102,46 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Outcome Layer V1: 30-day follow-up widget — pending, due date, recommendation, assessment */}
+      {dueFollowups.length > 0 ? (
+        <section className="rounded-[12px] bg-[#FFFAEB] border border-[#FEDF89] overflow-hidden">
+          <Link href="/outcomes" className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:border-[#F5B464] transition">
+            <div>
+              <div className="text-sm font-extrabold text-[#B54708]">
+                Pending Follow-Ups ({dueFollowups.length}) — assessments completed 30+ days ago
+              </div>
+              <div className="text-xs text-slate-600 mt-0.5">
+                Help us learn if these recommendations worked: two quick questions, 30 seconds each.
+              </div>
+            </div>
+            <span className="px-3 py-1.5 rounded-lg bg-[#0B5D3B] text-white text-[10px] font-extrabold uppercase tracking-wider shrink-0">
+              Record follow-up →
+            </span>
+          </Link>
+          <div className="border-t border-[#FEDF89] divide-y divide-[#FEDF89] bg-white">
+            {dueFollowups.slice(0, 3).map(f => (
+              <Link
+                key={f.runId}
+                href="/outcomes"
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 hover:bg-[#F5F8FC] transition"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold text-slate-900 truncate">
+                    {f.entityName || `Assessment #${f.runId}`}
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate">
+                    Recommendation: <strong>{f.recommendation || '—'}</strong>
+                  </div>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] px-2 py-1 rounded-full shrink-0">
+                  Due {new Date(f.followupDueAt).toLocaleDateString()}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* KPI Hero Row — above the fold */}
       <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">

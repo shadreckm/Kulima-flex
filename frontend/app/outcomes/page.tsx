@@ -6,9 +6,13 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import {
   getDecisionHistory,
+  getDueFollowups,
   getOutcomeIntelligence,
   isDemoRunRecord,
+  outcomeReviewDownloadHref,
+  saveFollowupAnswer,
   saveOutcome,
+  type DecisionRecord,
   type OutcomeUpdatePayload,
 } from '../../lib/api'
 
@@ -24,6 +28,129 @@ const OUTCOME_COLORS: Record<string, string> = {
   'Pending': 'bg-slate-100 text-slate-700 border border-slate-300',
 }
 
+// Outcome Layer V1: the two 30-day follow-up questions.
+const DECISION_TAKEN_OPTIONS = [
+  { value: 'yes', label: 'Yes — decision taken' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'no', label: 'No — nothing decided yet' },
+  { value: 'unknown', label: 'Unknown' },
+]
+const RECOMMENDATION_FOLLOWED_OPTIONS = [
+  { value: 'fully', label: 'Fully followed' },
+  { value: 'partially', label: 'Partially followed' },
+  { value: 'no', label: 'Not followed / diverged' },
+  { value: 'not_yet', label: 'Too early to tell' },
+  { value: 'unknown', label: 'Unknown' },
+]
+const ANSWER_LABELS: Record<string, string> = Object.fromEntries(
+  [...DECISION_TAKEN_OPTIONS, ...RECOMMENDATION_FOLLOWED_OPTIONS].map(o => [o.value, o.label]),
+)
+
+function _daysSince(iso: string | null): number | null {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
+}
+
+function FollowUpCard({ record, onAnswered }: {
+  record: DecisionRecord
+  onAnswered: (updated: DecisionRecord) => void
+}) {
+  const [decisionTaken, setDecisionTaken] = useState('')
+  const [followed, setFollowed] = useState('')
+  const [comment, setComment] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const canSave = decisionTaken !== '' && followed !== '' && !saving
+  const daysSince = _daysSince(record.decisionSnapshotAt)
+
+  async function submit() {
+    setSaving(true)
+    setErr(null)
+    try {
+      onAnswered(await saveFollowupAnswer(record.runId, { decisionTaken, recommendationFollowed: followed, comment: comment.trim() }))
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-[12px] border border-[#FEDF89] shadow-saas p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-extrabold text-slate-900">
+          {record.entityName || `Run #${record.runId}`}
+          <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]">
+            Follow-up waiting
+          </span>
+        </div>
+        <div className="text-xs text-slate-500">
+          {daysSince !== null ? `Assessment completed ${daysSince} days ago` : 'Assessment completed'} · we recommended <strong className="text-slate-800">{record.recommendation || '—'}</strong>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+        We check in 30 days after every assessment to see whether the decision moved.
+        Two quick questions — takes about 30 seconds. Your answer appears next to this
+        decision in the registry and in the Outcome Snapshot section of future report exports.
+        Nothing is scored and nothing breaks if you skip it — the request just stays here until you answer.
+      </p>
+      {err ? <div className="mt-3 p-2 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-medium">{err}</div> : null}
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            1. Was a decision taken?
+          </label>
+          <select
+            className="w-full p-2 border border-[#DDE6F0] rounded-lg bg-white text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0B5D3B]"
+            value={decisionTaken}
+            onChange={e => setDecisionTaken(e.target.value)}
+          >
+            <option value="">Select…</option>
+            {DECISION_TAKEN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+            2. Was the recommendation followed?
+          </label>
+          <select
+            className="w-full p-2 border border-[#DDE6F0] rounded-lg bg-white text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0B5D3B]"
+            value={followed}
+            onChange={e => setFollowed(e.target.value)}
+          >
+            <option value="">Select…</option>
+            {RECOMMENDATION_FOLLOWED_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="mt-4">
+        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+          3. Comments <span className="normal-case font-bold text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          className="w-full p-2 border border-[#DDE6F0] rounded-lg bg-white text-sm text-slate-900 focus:outline-none focus:border-[#0B5D3B] resize-y min-h-[64px]"
+          placeholder="What actually happened? Any context we should know about this decision…"
+          value={comment}
+          maxLength={2000}
+          onChange={e => setComment(e.target.value)}
+        />
+      </div>
+      <button
+        onClick={submit}
+        disabled={!canSave}
+        className={`mt-4 px-5 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider transition shadow-sm ${
+          canSave ? 'bg-[#0B5D3B] hover:bg-[#08482E] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+        }`}
+      >
+        {saving ? 'Saving…' : 'Record follow-up answer'}
+      </button>
+    </div>
+  )
+}
+
 export default function OutcomesPage() {
   const { status: authStatus } = useSession()
   const [activeTab, setActiveTab] = useState<Tab>('history')
@@ -34,6 +161,8 @@ export default function OutcomesPage() {
   const [savingId, setSavingId] = useState<number | null>(null)
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  // Outcome Layer V1: 30-day follow-up queue
+  const [dueFollowups, setDueFollowups] = useState<DecisionRecord[]>([])
 
   // Local mutation state for outcome updates
   const [draftOutcomes, setDraftOutcomes] = useState<Record<number, OutcomeUpdatePayload>>({})
@@ -42,9 +171,10 @@ export default function OutcomesPage() {
     setLoading(true)
     setError(null)
     try {
-      const [hist, intel] = await Promise.all([
+      const [hist, intel, due] = await Promise.all([
         getDecisionHistory(100),
         getOutcomeIntelligence(),
+        getDueFollowups(),
       ])
       setDecisions(hist.decisions.filter(decision => !isDemoRunRecord({
         runId: decision.run_id || decision.id || '',
@@ -52,6 +182,7 @@ export default function OutcomesPage() {
         userId: decision.user_id,
       })))
       setIntelligence(intel)
+      setDueFollowups(due.followups)
     } catch (err: any) {
       setError(err.message || String(err))
     } finally {
@@ -218,6 +349,33 @@ export default function OutcomesPage() {
       {/* Tab: Decision History */}
       {activeTab === 'history' ? (
         <section className="space-y-4">
+          {dueFollowups.length > 0 ? (
+            <div className="space-y-3">
+              <div className="p-4 rounded-[12px] bg-[#FFFAEB] border border-[#FEDF89]">
+                <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#B54708]">
+                  30-Day Follow-ups Waiting ({dueFollowups.length})
+                </h2>
+                <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                  These assessments were completed more than 30 days ago. Help us learn whether
+                  the recommendation worked — just two questions each: <strong>was a decision
+                  taken</strong>, and <strong>was the recommendation followed</strong>.
+                  Answers are stored with the decision and shown in report exports. They are
+                  optional: ignoring them blocks nothing, and the request stays in this queue.
+                </p>
+              </div>
+              {dueFollowups.map(f => (
+                <FollowUpCard
+                  key={f.runId}
+                  record={f}
+                  onAnswered={updated => {
+                    setDueFollowups(prev => prev.filter(x => x.runId !== updated.runId))
+                    setSaveSuccess(`Follow-up recorded for ${updated.entityName || `run #${updated.runId}`}`)
+                    loadAll().catch(() => {})
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-700">
               Decision Registry ({decisions.length} records)
@@ -260,6 +418,14 @@ export default function OutcomesPage() {
                     <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${OUTCOME_COLORS[d.outcome_status || 'Pending'] || OUTCOME_COLORS['Pending']}`}>
                       {d.outcome_status || 'Pending'}
                     </span>
+                    {d.followup_status === 'answered' ? (
+                      <span
+                        className="text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]"
+                        title={`Follow-up: ${ANSWER_LABELS[d.decision_taken] || d.decision_taken} · ${ANSWER_LABELS[d.recommendation_followed] || d.recommendation_followed}`}
+                      >
+                        Follow-up ✓
+                      </span>
+                    ) : null}
                     <TrustGauge score={d.trust_score ?? 0} size="sm" showLabel={false} />
                     <svg className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
@@ -301,6 +467,33 @@ export default function OutcomesPage() {
                           onChange={e => patchDraft(runId, { outcome_notes: e.target.value })}
                         />
                       </div>
+                    </div>
+
+                    {/* Outcome Layer V1: Decision Outcome — follow-up answers */}
+                    <div className="p-3 rounded-lg bg-white border border-[#DDE6F0]">
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">Decision Outcome (30-day follow-up)</div>
+                      {d.followup_status === 'answered' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-bold text-slate-800">
+                          <div>Was a decision taken? <span className="text-[#0B5D3B]">{ANSWER_LABELS[d.decision_taken] || d.decision_taken}</span></div>
+                          <div>Was the recommendation followed? <span className="text-[#0B5D3B]">{ANSWER_LABELS[d.recommendation_followed] || d.recommendation_followed}</span></div>
+                          {d.decision_comment ? (
+                            <div className="md:col-span-2 text-xs text-slate-600 italic">Comment: “{d.decision_comment}”</div>
+                          ) : null}
+                          <div className="md:col-span-2">
+                            <a
+                              href={outcomeReviewDownloadHref(runId, 'pdf')}
+                              className="inline-block px-3 py-1.5 rounded-lg bg-[#0B5D3B] hover:bg-[#08482E] text-white text-[10px] font-extrabold uppercase tracking-wider transition"
+                            >
+                              ↓ Outcome Review Report
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">
+                          No follow-up recorded yet{d.followup_due_at ? ` — window opened ${new Date(d.followup_due_at).toLocaleDateString()}` : ''}.
+                          Answer the two questions in the 30-day follow-up queue above.
+                        </p>
+                      )}
                     </div>
 
                     {/* Lessons Learned */}

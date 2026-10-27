@@ -4,17 +4,20 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import {
+  approveEnterpriseActivation,
   cancelSubscription,
   confirmDemoCheckout,
   downgradePlan,
   getBillingHistory,
   getBillingPlans,
   getBillingStatus,
+  getEnterpriseActivation,
   reactivateSubscription,
   returnFromCheckout,
   startCheckout,
   type BillingPlan,
   type BillingStatusPayload,
+  type EnterpriseActivationResult,
   type LinkReturnResult,
   type PaymentEventRecord,
 } from '../../lib/enterprise'
@@ -26,6 +29,32 @@ const OUTCOME_STYLES: Record<LinkReturnResult['outcome'], { box: string; title: 
   pending: { box: 'bg-[#FFF7EB] border-[#F5DEB8] text-[#B54708]', title: 'Payment Pending' },
   failed: { box: 'bg-[#FEF3F2] border-[#FDA29B] text-[#B42318]', title: 'Payment Failed' },
   cancelled: { box: 'bg-[#F5F8FC] border-[#DDE6F0] text-slate-700', title: 'Payment Cancelled' },
+}
+
+// Phase 3: Enterprise activation states for the admin chip.
+const ACTIVATION_LABELS: Record<string, { text: string; cls: string }> = {
+  requested: { text: 'Activation requested', cls: 'bg-[#FFF7EB] text-[#B54708] border-[#F5DEB8]' },
+  approved: { text: 'Agreement approved — ready for payment', cls: 'bg-[#EAF7EF] text-[#0B5D3B] border-[#C9EBD8]' },
+  activated: { text: 'Enterprise activated', cls: 'bg-[#EAF7EF] text-[#0B5D3B] border-[#C9EBD8]' },
+}
+
+// Phase 6: Payment Status chip derived from the latest money-moving event.
+const PAYMENT_STATUS_LABELS: Record<string, { text: string; cls: string }> = {
+  payment_success: { text: 'Last payment: Success', cls: 'bg-[#EAF7EF] text-[#0B5D3B] border-[#C9EBD8]' },
+  webhook_payment: { text: 'Last payment: Verified', cls: 'bg-[#EAF7EF] text-[#0B5D3B] border-[#C9EBD8]' },
+  link_payment: { text: 'Last payment: Verified (link)', cls: 'bg-[#EAF7EF] text-[#0B5D3B] border-[#C9EBD8]' },
+  demo_payment: { text: 'Last payment: Demo success', cls: 'bg-[#EFF8FF] text-[#004085] border-[#D6E8FF]' },
+  payment_failed: { text: 'Last payment: Failed', cls: 'bg-[#FEF3F2] text-[#B42318] border-[#FDA29B]' },
+  payment_pending: { text: 'Last payment: Pending', cls: 'bg-[#FFF7EB] text-[#B54708] border-[#F5DEB8]' },
+  payment_cancelled: { text: 'Last payment: Cancelled', cls: 'bg-[#F5F8FC] text-slate-600 border-[#DDE6F0]' },
+}
+
+// The error text thrown by lib/enterprise call() embeds the raw JSON body —
+// extract the machine-readable code so we can react to billing gates.
+function extractErrorCode(err: unknown): string | null {
+  const raw = err instanceof Error ? err.message : String(err)
+  const match = raw.match(/"code"\s*:\s*"([A-Z_]+)"/)
+  return match ? match[1] : null
 }
 
 function formatMoney(amount: number, currency: string): string {
@@ -57,7 +86,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function BillingPage() {
-  const { status: authStatus } = useSession()
+  const { status: authStatus, update: refreshSession } = useSession()
   const [plans, setPlans] = useState<BillingPlan[]>([])
   const [billing, setBilling] = useState<BillingStatusPayload | null>(null)
   const [history, setHistory] = useState<PaymentEventRecord[]>([])
@@ -66,6 +95,11 @@ export default function BillingPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [demoTx, setDemoTx] = useState<{ txRef: string; plan: string } | null>(null)
   const [paymentOutcome, setPaymentOutcome] = useState<LinkReturnResult | null>(null)
+  // Phase 3: Enterprise activation workflow state.
+  const [activation, setActivation] = useState<EnterpriseActivationResult | null>(null)
+  const [showAgreement, setShowAgreement] = useState(false)
+  const [agreementChecked, setAgreementChecked] = useState(false)
+  const [enterpriseBlocked, setEnterpriseBlocked] = useState(false)
 
   const load = useCallback(async () => {
     const [plansRes, statusRes, historyRes] = await Promise.all([
@@ -76,6 +110,12 @@ export default function BillingPage() {
     setPlans(plansRes.plans)
     setBilling(statusRes)
     setHistory(historyRes.events)
+    // Activation state is informational — a failure here must not hide billing.
+    try {
+      setActivation(await getEnterpriseActivation())
+    } catch {
+      setActivation(null)
+    }
   }, [])
 
   useEffect(() => {
@@ -101,6 +141,11 @@ export default function BillingPage() {
         if (ignored) return
         setPaymentOutcome(res)
         setBilling(res.status)
+        if (res.outcome === 'active') {
+          // Phase 4: refresh the session and re-read the workspace so the
+          // newly-paid plan's features unlock automatically.
+          void refreshSession()
+        }
         load().catch(() => {})
       })
       .catch(err => {
@@ -137,9 +182,27 @@ export default function BillingPage() {
         await downgradePlan(planId)
         return `Downgrade to ${planId} scheduled.`
       }
-      const result = await startCheckout(planId, {
-        returnUrl: typeof window !== 'undefined' ? `${window.location.origin}/billing` : undefined,
-      })
+      // Phase 3: Enterprise checkout requires organization approval + custom
+      // agreement first. The backend answers with 422 + a machine code.
+      if (planId === 'enterprise' && activation && !activation.checkoutAllowed) {
+        setAgreementChecked(false)
+        setShowAgreement(true)
+        return null
+      }
+      let result
+      try {
+        result = await startCheckout(planId, {
+          returnUrl: typeof window !== 'undefined' ? `${window.location.origin}/billing` : undefined,
+        })
+      } catch (err) {
+        if (extractErrorCode(err) === 'ENTERPRISE_ACTIVATION_REQUIRED') {
+          setEnterpriseBlocked(true)
+          setAgreementChecked(false)
+          setShowAgreement(true)
+          return null
+        }
+        throw err
+      }
       if (result.demoMode && result.txRef) {
         setDemoTx({ txRef: result.txRef, plan: planId })
         return 'PayChangu is not configured on this deployment — demo checkout prepared.'
@@ -152,6 +215,30 @@ export default function BillingPage() {
         return 'Plan change applied.'
       }
       return 'Checkout started.'
+    })
+
+  // Phase 3: accept the custom agreement → backend marks the org approved →
+  // immediately continue to the PayChangu Enterprise payment link.
+  const handleAcceptAgreement = () =>
+    run('enterprise-agreement', async () => {
+      const result = await approveEnterpriseActivation(agreementChecked, {
+        orgName: billing?.orgName || undefined,
+      })
+      setActivation(result)
+      setShowAgreement(false)
+      setEnterpriseBlocked(false)
+      const checkout = await startCheckout('enterprise', {
+        returnUrl: typeof window !== 'undefined' ? `${window.location.origin}/billing` : undefined,
+      })
+      if (checkout.demoMode && checkout.txRef) {
+        setDemoTx({ txRef: checkout.txRef, plan: 'enterprise' })
+        return 'Agreement approved. PayChangu is not configured on this deployment — demo checkout prepared.'
+      }
+      if (checkout.checkoutUrl) {
+        window.location.href = checkout.checkoutUrl
+        return null
+      }
+      return 'Agreement approved — Enterprise activation can proceed.'
     })
 
   const handleConfirmDemo = () =>
@@ -269,6 +356,19 @@ export default function BillingPage() {
                     {billing.pendingPlan} scheduled
                   </span>
                 ) : null}
+                {billing.activationState && ACTIVATION_LABELS[billing.activationState] ? (
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border ${ACTIVATION_LABELS[billing.activationState].cls}`}>
+                    {ACTIVATION_LABELS[billing.activationState].text}
+                  </span>
+                ) : null}
+                {billing.latestPayment && PAYMENT_STATUS_LABELS[billing.latestPayment.eventType] ? (
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border ${PAYMENT_STATUS_LABELS[billing.latestPayment.eventType].cls}`}
+                    title={`${billing.latestPayment.txRef || ''} ${formatWhen(billing.latestPayment.createdAt)}`}
+                  >
+                    {PAYMENT_STATUS_LABELS[billing.latestPayment.eventType].text}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="text-right text-xs text-slate-500">
@@ -285,6 +385,12 @@ export default function BillingPage() {
                     : billing.status === 'suspended'
                       ? 'Suspended — payment required'
                       : `Auto-renews ${formatWhen(billing.periodEnd)}`}
+              </div>
+              <div className="mt-0.5 font-semibold text-slate-600">
+                Payment Status:{' '}
+                {billing.latestPayment
+                  ? `${(PAYMENT_STATUS_LABELS[billing.latestPayment.eventType]?.text || billing.latestPayment.eventType).replace('Last payment: ', '')} · ${formatWhen(billing.latestPayment.createdAt)}`
+                  : 'No payments recorded'}
               </div>
             </div>
           </div>
@@ -351,6 +457,57 @@ export default function BillingPage() {
         </section>
       ) : null}
 
+      {/* Phase 3: Enterprise activation — organization approval + custom agreement. */}
+      {showAgreement ? (
+        <section className="p-5 bg-white rounded-[12px] border-2 border-[#0B5D3B] shadow-saas">
+          <div className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Enterprise activation required</div>
+          <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+            Enterprise is onboarded through a custom agreement with a minimum onboarding value of{' '}
+            <span className="font-black text-slate-900">
+              {billing?.currency || 'USD'} {Math.round(activation?.minimumValueUsd ?? billing?.minimumValueUsd ?? 250)} equivalent
+            </span>
+            . Variable access is scoped by the agreement — unlimited free-form access is not included. Your organization must
+            review and accept the agreement before the Enterprise payment link unlocks activation.
+          </p>
+          {enterpriseBlocked ? (
+            <div className="mt-3 p-3 bg-[#FFF7EB] border border-[#F5DEB8] rounded-lg text-xs text-[#B54708] font-semibold">
+              The Enterprise payment link is protected — complete the steps below first.
+            </div>
+          ) : null}
+          <label className="mt-4 flex items-start gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreementChecked}
+              onChange={e => setAgreementChecked(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[#0B5D3B]"
+            />
+            <span>
+              On behalf of {billing?.orgName || 'this organization'}, I approve this organization’s participation and accept the
+              custom Enterprise agreement, including the minimum onboarding value and the scoped access terms.
+            </span>
+          </label>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleAcceptAgreement}
+              disabled={!agreementChecked || busy !== null}
+              className="px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition disabled:opacity-50"
+            >
+              {busy === 'enterprise-agreement' ? 'Working…' : 'Accept agreement & continue to payment'}
+            </button>
+            <button
+              onClick={() => {
+                setShowAgreement(false)
+                setEnterpriseBlocked(false)
+              }}
+              disabled={busy !== null}
+              className="px-4 py-2 rounded-lg border border-[#DDE6F0] text-xs font-bold text-slate-700 hover:bg-[#F5F8FC] transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {plans.map(plan => {
           const isCurrent = billing?.planId === plan.planId
@@ -377,6 +534,9 @@ export default function BillingPage() {
               <div className="mt-3 space-y-1.5 text-[11px] text-slate-600 flex-1">
                 <div className="font-bold text-slate-700">{plan.assessmentQuotaLabel}</div>
                 <div className="font-bold text-slate-700">{plan.memberQuotaLabel}</div>
+                {plan.historyLabel ? (
+                  <div className="font-bold text-slate-700">{plan.historyLabel}</div>
+                ) : null}
                 {plan.featureLabels.map(feature => (
                   <div key={feature} className="flex items-start gap-1.5">
                     <span className="text-[#12B76A] font-black">✓</span>
@@ -402,9 +562,11 @@ export default function BillingPage() {
                       ? 'Working…'
                       : plan.planId === 'free'
                         ? 'Schedule downgrade'
-                        : (PLAN_ORDER[plan.planId] ?? 0) < (PLAN_ORDER[billing?.planId || 'free'] ?? 0)
-                          ? `Downgrade to ${plan.name}`
-                          : `Upgrade to ${plan.name}`}
+                        : plan.requiresApproval && activation && !activation.checkoutAllowed
+                          ? 'Activate Enterprise'
+                          : (PLAN_ORDER[plan.planId] ?? 0) < (PLAN_ORDER[billing?.planId || 'free'] ?? 0)
+                            ? `Downgrade to ${plan.name}`
+                            : `Upgrade to ${plan.name}`}
                 </button>
               ) : null}
             </div>

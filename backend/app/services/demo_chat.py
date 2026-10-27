@@ -161,11 +161,17 @@ def doc_intelligence_ask_ic_answer(
     question: str,
     *,
     assessment_context: dict | None = None,
+    outcome: dict | None = None,
 ) -> str:
     """Production fallback: answers from stored evaluation data when OpenAI is unavailable.
 
     Uses: uploaded documents, evidence store, evidence/trust/risk/completeness scores,
     stored evaluation, and generated reports. Never fails silently.
+
+    ``outcome`` is the optional Outcome Layer V1 DecisionRecord — the stored
+    30-day follow-up answers ("was a decision taken", "was the recommendation
+    followed"). Post-decision questions are answered ONLY from it; when no
+    follow-up exists the answer says so plainly instead of inventing one.
     """
     q = (question or "").lower()
     rec = getattr(brief.recommendation, "value", str(brief.recommendation))
@@ -242,6 +248,61 @@ def doc_intelligence_ask_ic_answer(
             if isinstance(overall, (int, float)):
                 context_lines.append(f"Assessment score: {overall:.0f}/100")
         context_section = "\n\n**Shared Assessment Context:**\n" + "\n".join(context_lines)
+
+    _DECISION_TAKEN_LABELS = {
+        "yes": "Yes — a decision was taken",
+        "no": "No — no decision taken yet",
+        "in_progress": "In progress — still being decided",
+        "unknown": "Unknown — not verified",
+    }
+    _FOLLOWED_LABELS = {
+        "fully": "Fully followed",
+        "partially": "Partially followed",
+        "no": "Not followed / diverged",
+        "not_yet": "Too early to tell",
+        "unknown": "Unknown — not verified",
+    }
+    _OUTCOME_QUESTION_KEYS = (
+        "what happened", "what changed", "decision taken", "was a decision",
+        "recommendation followed", "followed", "follow-up", "follow up", "followup",
+        "outcome", "after this recommendation",
+        "after the recommendation", "30-day", "30 day", "implement",
+    )
+
+    if any(k in q for k in _OUTCOME_QUESTION_KEYS):
+        if outcome and outcome.get("followup_status") == "answered":
+            decision_line = _DECISION_TAKEN_LABELS.get(str(outcome.get("decision_taken")), str(outcome.get("decision_taken") or "—"))
+            followed_line = _FOLLOWED_LABELS.get(str(outcome.get("recommendation_followed")), str(outcome.get("recommendation_followed") or "—"))
+            comment_line = str(outcome.get("decision_comment") or "").strip()
+            body = (
+                f"**Follow-up recorded for {brief.startup_name}:**\n\n"
+                f"- Assessment completed {str(outcome.get('decision_snapshot_at'))[:10]} — recommendation: **{outcome.get('recommendation') or rec}**\n"
+                f"- Was a decision taken? **{decision_line}**\n"
+                f"- Was the recommendation followed? **{followed_line}**\n"
+                + (f"- Team comment: \u201c{comment_line}\u201d\n" if comment_line else "")
+                + f"- Reported {str(outcome.get('answered_at'))[:10]}\n\n"
+                f"**Next:** Update the full outcome (Successful / Partially / Unsuccessful) with lessons "
+                f"learned in the **Outcomes** workspace when the result becomes clear."
+            )
+        elif outcome:
+            body = (
+                f"**Follow-up still waiting for {brief.startup_name}:**\n\n"
+                f"The assessment completed {str(outcome.get('decision_snapshot_at'))[:10]} with recommendation "
+                f"**{outcome.get('recommendation') or rec}**; the 30-day follow-up "
+                f"(was a decision taken? was the recommendation followed?) has **not been recorded yet** — "
+                f"no one has reported back, so what actually happened is unknown and will not be guessed.\n\n"
+                f"**Next:** Answer the two questions in the **Outcomes** workspace — 30 seconds — and this "
+                f"analyst will quote your answer from then on."
+            )
+        else:
+            body = (
+                f"**No follow-up on file for {brief.startup_name}:**\n\n"
+                f"There is no stored record of what happened after the **{rec}** recommendation. "
+                f"Kulima only reports follow-ups the team actually recorded — it will not invent an outcome.\n\n"
+                f"**Next:** Open the **Outcomes** workspace and record the 30-day follow-up "
+                f"(was a decision taken? was the recommendation followed?)."
+            )
+        return _doc_intelligence_banner(brief) + body + context_section
 
     if any(k in q for k in ("invest", "recommend", "should i", "verdict", "decision")):
         body = (

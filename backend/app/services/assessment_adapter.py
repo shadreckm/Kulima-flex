@@ -137,6 +137,17 @@ def serialize_context(ctx: AssessmentContext) -> dict[str, Any]:
 
     # Build research payload
     research_payload = dict(ctx.research or {})
+    # Research Intelligence is a Professional+ feature: while enforcement is on,
+    # the server presents lower-plan runs in Document Intelligence Mode and
+    # withholds external sources (covers the durable-job run path too).
+    try:
+        from kulima.core.billing.service import feature_check as _feature_check
+
+        if ctx.org_id and not _feature_check(ctx.org_id, "research_intelligence")["allowed"]:
+            research_payload = {**research_payload, "mode": "document_intelligence",
+                                "sources": [], "tavily_findings": []}
+    except Exception:  # noqa: BLE001 — billing must never break the workspace
+        pass
     # Phase 7 reliability: top-level AI mode so every workspace shows either
     # "AI Available" or "Document Intelligence Mode Active". Never silent.
     offline_research = (

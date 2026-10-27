@@ -243,7 +243,13 @@ def _climate_signals(case: Case) -> List[Signal]:
 
     if found_doc or found_web or any(t in corpus for t in climate_terms):
         primary_ref = found_doc["ref"] if found_doc else (found_web["ref"] if found_web else "EVIDENCE_CORPUS")
-        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        # RC certification (P5): honest provenance — never claim Tavily OSINT
+        # when the match came only from the local assessment evidence base.
+        source_label = (
+            "uploaded primary document" if found_doc
+            else "Tavily OSINT intelligence" if found_web
+            else "the assessment evidence base"
+        )
         snippet = (found_doc or found_web or {}).get("snippet", "")
         
         # Opportunity: Clean tech / adaptation
@@ -297,7 +303,13 @@ def _environmental_signals(case: Case) -> List[Signal]:
 
     if found_doc or found_web or any(t in corpus for t in env_terms):
         primary_ref = found_doc["ref"] if found_doc else (found_web["ref"] if found_web else "EVIDENCE_CORPUS")
-        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        # RC certification (P5): honest provenance — never claim Tavily OSINT
+        # when the match came only from the local assessment evidence base.
+        source_label = (
+            "uploaded primary document" if found_doc
+            else "Tavily OSINT intelligence" if found_web
+            else "the assessment evidence base"
+        )
         signals.append(
             Signal(
                 id=f"{case.id}-env-circularity",
@@ -347,7 +359,13 @@ def _tourism_signals(case: Case) -> List[Signal]:
 
     if found_doc or found_web or any(t in corpus for t in tourism_terms):
         primary_ref = found_doc["ref"] if found_doc else (found_web["ref"] if found_web else "EVIDENCE_CORPUS")
-        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        # RC certification (P5): honest provenance — never claim Tavily OSINT
+        # when the match came only from the local assessment evidence base.
+        source_label = (
+            "uploaded primary document" if found_doc
+            else "Tavily OSINT intelligence" if found_web
+            else "the assessment evidence base"
+        )
         signals.append(
             Signal(
                 id=f"{case.id}-tourism-ecosystem",
@@ -397,7 +415,13 @@ def _community_impact_signals(case: Case) -> List[Signal]:
 
     if found_doc or found_web or any(t in corpus for t in impact_terms):
         primary_ref = found_doc["ref"] if found_doc else (found_web["ref"] if found_web else "EVIDENCE_CORPUS")
-        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        # RC certification (P5): honest provenance — never claim Tavily OSINT
+        # when the match came only from the local assessment evidence base.
+        source_label = (
+            "uploaded primary document" if found_doc
+            else "Tavily OSINT intelligence" if found_web
+            else "the assessment evidence base"
+        )
         signals.append(
             Signal(
                 id=f"{case.id}-community-livelihoods",
@@ -458,7 +482,13 @@ def _program_delivery_signals(case: Case) -> List[Signal]:
 
     if found_doc or found_web:
         primary_ref = found_doc["ref"] if found_doc else found_web["ref"]
-        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        # RC certification (P5): honest provenance — never claim Tavily OSINT
+        # when the match came only from the local assessment evidence base.
+        source_label = (
+            "uploaded primary document" if found_doc
+            else "Tavily OSINT intelligence" if found_web
+            else "the assessment evidence base"
+        )
         matched = [t for t in delivery_terms if t in (found_doc or found_web)["snippet"].lower()]
         signals.append(
             Signal(

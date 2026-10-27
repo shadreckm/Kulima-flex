@@ -23,14 +23,18 @@ from kulima.core.billing.plans import (
 from kulima.core.billing.repository import BillingRepository
 from kulima.core.billing.service import (
     activate_plan,
+    approve_enterprise_activation,
     billing_status,
     cancel_at_period_end,
     change_plan,
     demo_mode_enabled,
+    enterprise_activation_status,
+    enterprise_checkout_allowed,
     handle_payment_failed,
     link_autoconfirm_enabled,
     reactivate,
     record_checkout,
+    request_enterprise_activation,
     usage_summary,
 )
 from kulima.core.orgs.models import Permission
@@ -71,6 +75,12 @@ class PlanChangeRequest(BaseModel):
     plan: str = Field(min_length=1, max_length=32)
 
 
+class EnterpriseActivationRequest(BaseModel):
+    orgName: str | None = None
+    contact: str | None = None
+    agreementAccepted: bool = False
+
+
 # ── Catalog & status ─────────────────────────────────────────────────────────
 
 
@@ -99,6 +109,59 @@ async def get_status(current: OrgContext = Depends(get_current_org)):
 @router.get("/history")
 async def payment_history(current: OrgContext = Depends(get_current_org)):
     return {"events": _repo().list_payment_events(current.org_id, limit=100)}
+
+
+# ── Enterprise activation (Phase 3: approval + custom agreement) ────────────
+
+
+def _enterprise_activation_payload(current: OrgContext) -> dict:
+    plan = get_plan("enterprise")
+    state = enterprise_activation_status(current.org_id)
+    return {
+        "state": state,
+        "checkoutAllowed": enterprise_checkout_allowed(current.org_id),
+        "requiresApproval": plan.requires_approval,
+        "minimumValueUsd": plan.minimum_value_usd,
+        "paymentLink": plan.payment_link,
+        "currency": plan.currency,
+    }
+
+
+@router.get("/enterprise/activation")
+async def get_enterprise_activation(current: OrgContext = Depends(get_current_org)):
+    return _enterprise_activation_payload(current)
+
+
+@router.post("/enterprise/activation/request")
+async def request_enterprise(
+    payload: EnterpriseActivationRequest,
+    current: OrgContext = Depends(require_permission(Permission.MANAGE_BILLING)),
+):
+    """Step 1 — the organization requests Enterprise activation."""
+    request_enterprise_activation(current.org_id, org_name=payload.orgName or current.org.name, contact=payload.contact)
+    return _enterprise_activation_payload(current)
+
+
+@router.post("/enterprise/activation/approve")
+async def approve_enterprise(
+    payload: EnterpriseActivationRequest,
+    current: OrgContext = Depends(require_permission(Permission.MANAGE_BILLING)),
+):
+    """Step 2 — organization approval of the custom agreement (minimum onboarding
+    value USD 250 equivalent). Only then may the Enterprise payment link be used."""
+    if not payload.agreementAccepted:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": True, "code": "AGREEMENT_REQUIRED",
+                    "message": "The custom Enterprise agreement must be accepted before activation."},
+        )
+    if enterprise_activation_status(current.org_id) is None:
+        request_enterprise_activation(current.org_id, org_name=payload.orgName or current.org.name, contact=payload.contact)
+    try:
+        approve_enterprise_activation(current.org_id, agreement_accepted=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": True, "code": str(exc).upper(), "message": str(exc)})
+    return _enterprise_activation_payload(current)
 
 
 # ── Checkout ─────────────────────────────────────────────────────────────────
@@ -131,6 +194,22 @@ async def start_checkout(
         # Starter target = downgrade / scheduled change, never a payment.
         result = change_plan(current.org_id, target)
         return {"status": "applied", "result": result}
+
+    if plan.requires_approval and not enterprise_checkout_allowed(current.org_id):
+        # Enterprise is not free-form self-serve: organization approval + custom
+        # agreement (min USD 250 equivalent) must precede the payment link.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": True,
+                "code": "ENTERPRISE_ACTIVATION_REQUIRED",
+                "message": (
+                    "Enterprise requires organization approval and a custom agreement "
+                    f"(minimum onboarding value USD {plan.minimum_value_usd:,.0f} equivalent). "
+                    "Accept the agreement below to unlock payment."
+                ),
+            },
+        )
 
     tx_ref = PayChanguClient.new_tx_ref(prefix=f"kulima-{target}")
     client = PayChanguClient()
@@ -232,6 +311,12 @@ async def confirm_checkout(
         )
     target = str(payload.plan or "").strip().lower()
     plan = get_plan(target)
+    if plan.requires_approval and not enterprise_checkout_allowed(current.org_id):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": True, "code": "ENTERPRISE_ACTIVATION_REQUIRED",
+                    "message": "Enterprise requires the approved custom agreement before activation."},
+        )
     event = _repo().find_event_by_tx_ref(payload.txRef)
     if event is not None and event.get("orgId") != current.org_id:
         raise HTTPException(status_code=404, detail={"error": True, "message": "Unknown transaction reference"})
@@ -493,6 +578,15 @@ async def downgrade_plan(
     target = str(payload.plan or "").strip().lower()
     if target not in {"free", "pro", "enterprise"}:
         raise HTTPException(status_code=422, detail={"error": True, "message": "Unknown plan"})
+    if target == "enterprise" and not enterprise_checkout_allowed(current.org_id):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": True,
+                "code": "ENTERPRISE_ACTIVATION_REQUIRED",
+                "message": "Enterprise cannot be applied without organization approval and the custom agreement.",
+            },
+        )
     result = change_plan(current.org_id, target)
     return {"result": result, "status": billing_status(current.org_id)}
 

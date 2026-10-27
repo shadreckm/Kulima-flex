@@ -405,6 +405,18 @@ def start_intelligence_run(
     run_id = str(uuid.uuid4())
     # Persist run record so it survives restarts
     _run_repo.create_run(run_id, status="running", user_id=user_id, org_id=org_id)
+    # Research Intelligence (Professional+): while billing enforcement is on,
+    # plans without the feature run in Document Intelligence Mode — the empty
+    # bundle below skips the live Tavily sweep and the pipeline degrades the
+    # same way it does when no research provider is available.
+    research_allowed = True
+    if org_id:
+        try:
+            from kulima.core.billing.service import feature_check as _feature_check
+            research_allowed = _feature_check(org_id, "research_intelligence")["allowed"]
+        except Exception:  # noqa: BLE001 — never block a run on billing state
+            research_allowed = True
+    _empty_bundle: dict = {"founder": [], "startup": [], "market": [], "risks": []}
     # Audit: an external (Tavily) research pass is about to be triggered. The
     # payload never includes document content — only public metadata fields.
     record_event(
@@ -413,7 +425,8 @@ def start_intelligence_run(
         user_id=user_id,
         run_id=run_id,
         assessment_id=assessment_id,
-        metadata={"provider": "tavily", "founder": founder, "startup": startup, "mode": "metadata_only"},
+        metadata={"provider": "tavily" if research_allowed else "document_intelligence",
+                  "founder": founder, "startup": startup, "mode": "metadata_only"},
     )
 
     # Phase 4 Enterprise: Use job queue if available, otherwise fall back to threads
@@ -464,6 +477,7 @@ def start_intelligence_run(
                 startup,
                 user_id=owner_id,
                 sector_hint=sector_hint,
+                research_results=None if research_allowed else _empty_bundle,
                 entity_profile=entity_profile_payload or None,
                 document_trust_scores=document_trust_scores or None,
             )
@@ -1007,12 +1021,16 @@ def ask_ic(
     except Exception as exc:  # noqa: BLE001
         _log.warning("Ask IC domain signal grounding unavailable: %s", exc)
 
+    # Outcome Layer V1: numeric stored-run ids carry the 30-day follow-up
+    # record into the analyst context; live uuid runs have no record yet.
+    db_run_id: int | None = int(run_id) if str(run_id).isdigit() else None
+
     try:
         return answer_ask_ic_question(
             brief,
             question,
             history,
-            run_id=None,
+            run_id=db_run_id,
             user_id=user_id,
             assessment_context=assessment_context,
             domain_overviews=domain_overviews,
@@ -1021,10 +1039,18 @@ def ask_ic(
         _log.warning("Ask IC live failed (%s) — answering from stored assessment data.", exc)
         from .demo_chat import doc_intelligence_ask_ic_answer
 
+        outcome_record = None
+        if db_run_id is not None:
+            try:
+                outcome_record = _repo.ensure_decision_record(db_run_id)
+            except Exception:  # noqa: BLE001 — outcome grounding is additive
+                outcome_record = None
+
         return doc_intelligence_ask_ic_answer(
             brief,
             question,
             assessment_context=assessment_context,
+            outcome=outcome_record,
         )
 
 

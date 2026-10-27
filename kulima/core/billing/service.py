@@ -187,6 +187,12 @@ def billing_status(org_id: str) -> dict:
         "featureLabels": {},
         "usage": usage_summary(org_id),
         "canAssess": status != STATUS_SUSPENDED,
+        # Enterprise activation + admin visibility (Phases 3 & 6)
+        "requiresApproval": plan.requires_approval,
+        "minimumValueUsd": plan.minimum_value_usd,
+        "activationState": sub.get("activation_state"),
+        "historyWindowDays": plan.history_window_days if enforcement_enabled() else None,
+        "latestPayment": latest_payment_status(org_id),
     }
 
 
@@ -281,6 +287,9 @@ def activate_plan(
         pending_plan=None,
         cancel_at_period_end=0,
         paychangu_ref=tx_ref,
+        # Enterprise payment success completes the activation workflow; other
+        # plans carry no activation state.
+        activation_state=(ACTIVATION_ACTIVATED if plan.requires_approval else None),
         last_error=None,
     )
     _repo.record_payment_event(
@@ -404,6 +413,88 @@ def cancel_at_period_end(org_id: str) -> dict:
     sub = _repo.update_subscription(org_id, cancel_at_period_end=1, pending_plan="free")
     record_event("billing.plan_changed", org_id=org_id, metadata={"plan": "free", "effective": "period_end", "reason": "canceled"})
     return sub
+
+
+# ── Enterprise activation (approval + custom agreement) ─────────────────────
+# Enterprise is not free-form self-serve: the organization must request
+# activation, accept the custom agreement (minimum onboarding value USD 250
+# equivalent), and only then may the PayChangu hosted link be used. Payment
+# success marks the workspace 'activated'.
+
+ACTIVATION_REQUESTED = "requested"
+ACTIVATION_APPROVED = "approved"
+ACTIVATION_ACTIVATED = "activated"
+
+
+def enterprise_activation_status(org_id: str) -> str | None:
+    sub = _repo.ensure_subscription(org_id)
+    state = sub.get("activation_state")
+    return str(state) if state else None
+
+
+def request_enterprise_activation(org_id: str, *, org_name: str | None = None, contact: str | None = None) -> dict:
+    """Step 1 — the organization formally requests Enterprise activation."""
+    sub = _repo.update_subscription(org_id, activation_state=ACTIVATION_REQUESTED)
+    _repo.record_payment_event(
+        org_id, "enterprise_activation_requested", plan="enterprise", status=ACTIVATION_REQUESTED,
+        payload={"orgName": org_name, "contact": contact},
+    )
+    record_event("billing.enterprise_activation_requested", org_id=org_id, metadata={"orgName": org_name})
+    return sub
+
+
+def approve_enterprise_activation(org_id: str, *, agreement_accepted: bool) -> dict:
+    """Step 2 — organization approval: the custom agreement is accepted.
+    Requires a prior request so the sequence cannot be skipped."""
+    if not agreement_accepted:
+        raise ValueError("agreement_required")
+    sub = _repo.ensure_subscription(org_id)
+    if sub.get("activation_state") not in {ACTIVATION_REQUESTED, ACTIVATION_APPROVED, ACTIVATION_ACTIVATED}:
+        raise ValueError("activation_not_requested")
+    sub = _repo.update_subscription(org_id, activation_state=ACTIVATION_APPROVED)
+    _repo.record_payment_event(
+        org_id, "enterprise_agreement_approved", plan="enterprise", status=ACTIVATION_APPROVED,
+        payload={"minimumValueUsd": get_plan("enterprise").minimum_value_usd},
+    )
+    record_event("billing.enterprise_agreement_approved", org_id=org_id, metadata={"plan": "enterprise"})
+    return sub
+
+
+def enterprise_checkout_allowed(org_id: str) -> bool:
+    """A plan-change or payment for Enterprise may only proceed once the
+    agreement was approved (or the workspace is already activated)."""
+    return enterprise_activation_status(org_id) in {ACTIVATION_APPROVED, ACTIVATION_ACTIVATED}
+
+
+def assessment_history_window_days(org_id: str) -> int | None:
+    """Retention window for the assessment-history sidebar. Starter is capped
+    at 30 days; paid plans are unlimited. Applied only while enforcement is on
+    (pilot-safe, same policy as quotas)."""
+    sub = _repo.ensure_subscription(org_id)
+    plan = get_plan(sub.get("plan"))
+    if not enforcement_enabled():
+        return None
+    return plan.history_window_days
+
+
+def latest_payment_status(org_id: str) -> dict | None:
+    """Most recent money-moving event — powers the 'Payment Status' admin view."""
+    payment_types = {
+        "payment_success", "webhook_payment", "demo_payment", "link_payment",
+        "payment_failed", "payment_pending", "payment_cancelled",
+    }
+    for event in _repo.list_payment_events(org_id, limit=50):
+        if event.get("eventType") in payment_types:
+            return {
+                "eventType": event["eventType"],
+                "status": event.get("status"),
+                "plan": event.get("plan"),
+                "amount": event.get("amount"),
+                "currency": event.get("currency"),
+                "txRef": event.get("txRef"),
+                "createdAt": event.get("createdAt"),
+            }
+    return None
 
 
 def apply_due_changes(org_id: str | None = None) -> dict | list[str] | None:

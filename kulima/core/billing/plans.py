@@ -33,17 +33,19 @@ FEATURE_LABELS: dict[str, str] = {
     "enterprise_reports": "Reports",
     "basic_reports": "Basic reports",
     "document_intelligence": "Document Intelligence Mode",
+    "research_intelligence": "Research Intelligence",
     "assessment_history": "Assessment history",
+    "conversation_history": "Conversation history",
     "collaboration": "Collaboration",
     "priority_support": "Priority support",
     "governance_dashboard": "Trust & Governance dashboard",
     "audit_log": "Audit logs",
     "rbac": "Role-based access control",
-    "multiple_organizations": "Multiple organizations",
-    "dedicated_workspace": "Dedicated workspace",
-    "custom_reports": "Custom reports",
+    "multiple_organizations": "Multi-Organization Support",
+    "dedicated_workspace": "Dedicated Workspace",
+    "custom_reports": "Custom Reports",
     "private_deployment": "Private deployment",
-    "api_integration": "API access",
+    "api_integration": "API Access",
     "custom_integrations": "Custom integrations",
     "document_security": "Encrypted storage metadata",
 }
@@ -64,6 +66,9 @@ class PlanSpec:
     target: str = ""                    # who the plan is built for
     payment_link: str = ""             # PayChangu hosted payment link (SC-…)
     price_label: str = ""              # overrides the numeric price display (e.g. "Custom")
+    history_window_days: int | None = None   # assessment-history retention cap (None = unlimited)
+    requires_approval: bool = False    # activation needs org approval + custom agreement
+    minimum_value_usd: float = 0.0     # minimum onboarding value (Enterprise: 250)
 
     @property
     def is_paid(self) -> bool:
@@ -79,6 +84,12 @@ class PlanSpec:
         if self.monthly_price <= 0:
             return "Free"
         return f"{self.currency} {self.monthly_price:,.0f}/month"
+
+    @property
+    def history_label(self) -> str:
+        if self.history_window_days:
+            return f"Assessment history ({self.history_window_days} days)"
+        return "Assessment history (unlimited)"
 
     def to_payload(self) -> dict:
         return {
@@ -96,6 +107,10 @@ class PlanSpec:
             "assessmentQuotaLabel": "Unlimited assessments" if self.assessment_quota is None else f"{self.assessment_quota} assessments/month",
             "memberQuota": self.member_quota,
             "memberQuotaLabel": "Unlimited users" if self.member_quota is None else f"{self.member_quota} user(s)",
+            "historyWindowDays": self.history_window_days,
+            "historyLabel": self.history_label,
+            "requiresApproval": self.requires_approval,
+            "minimumValueUsd": self.minimum_value_usd,
             "features": sorted(self.features),
             "featureLabels": [FEATURE_LABELS.get(f, f) for f in sorted(self.features)],
         }
@@ -119,25 +134,27 @@ def load_plans() -> dict[str, PlanSpec]:
     plans: dict[str, PlanSpec] = {
         "free": PlanSpec(
             plan_id="free",
-            name="Starter",
+            name="Free",
             description="Document Intelligence for students, researchers and small NGOs — run your first assessments and export basic reports.",
             target="Students · Researchers · Small NGOs",
             monthly_price=0.0,
             currency=currency,
             assessment_quota=3,
             member_quota=1,
+            history_window_days=30,
             features=frozenset({
                 "basic_signals",
                 "community_signals",
                 "basic_reports",
                 "document_intelligence",
+                "assessment_history",
                 "document_security",
             }),
         ),
         "pro": PlanSpec(
             plan_id="pro",
             name="Professional",
-            description="Unlimited assessments with the AI Analyst, full signals and reports, assessment history and collaboration for NGOs, programmes and consultants.",
+            description="Unlimited assessments with the AI Analyst, advanced signals, full reports, conversation history, research intelligence, collaboration and priority support.",
             target="NGOs · Development Programs · Tourism SMEs · Consultants",
             monthly_price=49.0,
             currency=currency,
@@ -152,7 +169,9 @@ def load_plans() -> dict[str, PlanSpec]:
                 "enterprise_reports",
                 "basic_reports",
                 "document_intelligence",
+                "research_intelligence",
                 "assessment_history",
+                "conversation_history",
                 "collaboration",
                 "priority_support",
                 "document_security",
@@ -162,13 +181,15 @@ def load_plans() -> dict[str, PlanSpec]:
         "enterprise": PlanSpec(
             plan_id="enterprise",
             name="Enterprise",
-            description="Dedicated workspace with RBAC, audit logs, multiple organizations, API access and custom reports for governments, DFIs, universities and large NGOs.",
+            description="Dedicated workspace with RBAC, audit logs, multi-organization support, API access, Trust & Governance dashboard and custom reports. Custom agreement required — minimum onboarding value USD 250 equivalent.",
             target="Governments · DFIs · Universities · Donors · Large NGOs",
             monthly_price=0.0,
             price_label="Custom",
             currency=currency,
             assessment_quota=None,
             member_quota=None,
+            requires_approval=True,
+            minimum_value_usd=250.0,
             features=frozenset(ALL_FEATURES),
             payment_link=_enterprise_payment_link(),
         ),
@@ -194,6 +215,9 @@ def load_plans() -> dict[str, PlanSpec]:
                     member_quota=patch.get("member_quota", base.member_quota),
                     features=base.features,
                     payment_link=str(patch.get("payment_link", base.payment_link)),
+                    history_window_days=patch.get("history_window_days", base.history_window_days),
+                    requires_approval=bool(patch.get("requires_approval", base.requires_approval)),
+                    minimum_value_usd=float(patch.get("minimum_value_usd", base.minimum_value_usd)),
                 )
         except (ValueError, TypeError) as exc:
             _log.warning("Invalid KULIMA_PLAN_PRICING_JSON ignored: %s", exc)

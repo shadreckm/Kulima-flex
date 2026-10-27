@@ -116,6 +116,57 @@ def _format_domain_section(domain_overviews: dict[str, dict]) -> list[str]:
     return lines
 
 
+def _format_outcome_section(run_id: int) -> list[str]:
+    """Render the 30-day follow-up record (Outcome Layer V1) as a block.
+
+    Answers the post-decision questions — what happened after this
+    recommendation, was a decision taken, was the recommendation followed —
+    from the stored DecisionRecord only. Never raises: an unavailable or
+    unreadable record simply means no block is emitted.
+    """
+    labels = {
+        "yes": "Yes — a decision was taken",
+        "no": "No — no decision taken yet",
+        "in_progress": "In progress — decision still being made",
+        "unknown": "Unknown — not verified",
+        "fully": "Fully followed",
+        "partially": "Partially followed",
+        "not_yet": "Too early to tell",
+    }
+    try:
+        from kulima.db import IntelligenceRepository
+        record = IntelligenceRepository().ensure_decision_record(run_id)
+    except Exception:  # noqa: BLE001 — grounding must never break Ask IC
+        return []
+    if not record:
+        return []
+    lines: list[str] = ["[OUTCOME_FOLLOWUP]"]
+    lines.append(
+        f"Decision snapshot: recommendation '{record.get('recommendation') or '—'}' "
+        f"recorded {str(record.get('decision_snapshot_at'))[:10]}; "
+        f"30-day follow-up due {str(record.get('followup_due_at'))[:10]}."
+    )
+    if record.get("followup_status") == "answered":
+        lines.append(
+            "Follow-up answered "
+            f"{str(record.get('answered_at'))[:10]} — "
+            "Was a decision taken? "
+            f"{labels.get(record.get('decision_taken'), record.get('decision_taken'))}. "
+            "Was the recommendation followed? "
+            f"{labels.get(record.get('recommendation_followed'), record.get('recommendation_followed'))}."
+        )
+        comment = str(record.get("decision_comment") or "").strip()
+        if comment:
+            lines.append(f"Team comment (verbatim): {comment}")
+    else:
+        lines.append(
+            "Follow-up status: PENDING — the user has not yet reported what happened "
+            "after this recommendation. Do not invent an outcome; say the follow-up has "
+            "not been recorded and point them to the Outcomes workspace to record it."
+        )
+    return lines
+
+
 def build_ask_ic_context(
     brief: InvestmentBrief,
     *,
@@ -155,6 +206,18 @@ def build_ask_ic_context(
     readiness_label = (
         "Investment readiness" if is_venture else "Funding & delivery readiness"
     )
+    # RC certification (P2): the analyst must see the SAME recommendation the
+    # reports show — the entity-framework label, with the calibrated tier kept.
+    recommendation_line = f"Recommendation: {brief.recommendation.value}"
+    try:
+        from kulima.intelligence.report_quality import single_recommendation
+        _canon = single_recommendation(brief)
+        if _canon and brief.recommendation.value.lower() not in _canon.lower():
+            recommendation_line = (
+                f"Recommendation: {_canon} (calibrated tier: {brief.recommendation.value})"
+            )
+    except Exception:  # noqa: BLE001 — grounding must never break on a label
+        pass
     sections: list[str] = [
         "[REPORT]",
         f"{lead_label}: {brief.founder_name}",
@@ -162,7 +225,7 @@ def build_ask_ic_context(
         f"Sector: {brief.sector or 'Unknown'}",
         f"Geography: {brief.geography or 'Unknown'}",
         f"Stage: {brief.stage or 'Unknown'}",
-        f"Recommendation: {brief.recommendation.value}",
+        recommendation_line,
         f"Overall score: {brief.overall_score:.0f}/100",
         f"Founder score: {brief.founder_score:.0f}/100",
         f"Startup score: {brief.startup_score:.0f}/100",
@@ -187,6 +250,13 @@ def build_ask_ic_context(
         sections.extend(_format_assessment_section(assessment_context))
     if domain_overviews:
         sections.extend(_format_domain_section(domain_overviews))
+    # Outcome Layer V1: the stored 30-day follow-up answers, when a DB run id
+    # is known. This is the only source of post-decision facts — never invented.
+    if run_id is not None:
+        try:
+            sections.extend(_format_outcome_section(int(run_id)))
+        except (TypeError, ValueError):
+            pass  # live run uuids have no decision record yet
 
     tm = brief.thesis_match
     if tm is None and is_venture:
@@ -488,6 +558,13 @@ def answer_ask_ic_question(
           the analysis should reason through them: Community, Trust, Funding,
           Programme Delivery, Risk, Opportunity, Climate, Environment, Market,
           Tourism. Cite [DOMAIN_SIGNALS] for domain exposure questions.
+        - The [OUTCOME_FOLLOWUP] section is the STORED 30-day follow-up record:
+          what the user reported happened after the recommendation (was a
+          decision taken; was the recommendation followed). It is the ONLY
+          source of post-decision facts. Cite [OUTCOME_FOLLOWUP] for outcome
+          questions. If it says PENDING, state plainly that the follow-up has
+          not been recorded yet and can be added in the Outcomes workspace —
+          NEVER guess or invent an outcome.
 
         Special handling for key questions:
         - If the user asks "{decision_question}" (or similar):
@@ -515,6 +592,17 @@ def answer_ask_ic_question(
           * Why it matters
           * Impact on the decision
           * How to improve confidence
+          * Next question I'd ask
+        - If the user asks "what happened after this recommendation?",
+          "what happened?", "what changed?", "was a decision taken?", or
+          "was the recommendation followed?":
+          * Answer ONLY from [OUTCOME_FOLLOWUP] — the stored 30-day follow-up.
+          * When answered: state the recorded decision status and follow-through,
+            with the answer date; include any team comment verbatim; note the
+            original recommendation for context.
+          * When pending/absent: say the follow-up has not been recorded yet,
+            what that means (no one has reported back), and that it takes two
+            quick questions in the Outcomes workspace.
           * Next question I'd ask
         - If the user asks to "{summary_target}":
           * Verdict

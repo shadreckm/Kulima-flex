@@ -95,37 +95,49 @@ def _load_brief_model(run_id: str | int, user_id: str | None = None, org_id: str
 
 # Report kinds gated behind the PRO/Enterprise "enterprise_reports" feature
 # (pass-through while KULIMA_BILLING_ENFORCEMENT is disabled).
-_ENTERPRISE_REPORT_KINDS = {"memo", "report", "due-diligence", "one-pager"}
+_ENTERPRISE_REPORT_KINDS = {"report", "due-diligence", "signals"}
+# Starter-accessible reports — every plan includes "basic_reports".
+_BASIC_REPORT_KINDS = {"memo", "one-pager"}
 
 
 def _raise_billing_block(exc: BillingBlocked) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
 
 
-def _report_payload(brief: InvestmentBrief, report_kind: str, fmt: str) -> tuple[bytes, str, str]:
+def _report_payload(
+    brief: InvestmentBrief,
+    report_kind: str,
+    fmt: str,
+    outcome: dict | None = None,
+) -> tuple[bytes, str, str]:
+    """Render one report export. ``outcome`` is the stored Outcome Layer V1
+    DecisionRecord — when a follow-up answer exists, the export carries an
+    Outcome Snapshot section (facts only, no scoring)."""
+    from kulima.export import outcome_snapshot_markdown
+
     report_kind = report_kind.lower().strip()
     fmt = fmt.lower().strip()
 
     if report_kind == "memo":
         if fmt == "pdf":
-            return build_memo_pdf(brief), "application/pdf", "pdf"
-        return build_memo_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+            return build_memo_pdf(brief, outcome), "application/pdf", "pdf"
+        return (build_memo_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8"), "text/plain; charset=utf-8", "txt"
     if report_kind == "report":
         if fmt == "pdf":
-            return build_full_ic_report_pdf(brief), "application/pdf", "pdf"
-        return build_full_ic_report_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+            return build_full_ic_report_pdf(brief, outcome), "application/pdf", "pdf"
+        return (build_full_ic_report_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8"), "text/plain; charset=utf-8", "txt"
     if report_kind == "signals":
         if fmt == "pdf":
-            return build_signals_report_pdf(brief), "application/pdf", "pdf"
-        return build_signals_report_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+            return build_signals_report_pdf(brief, outcome), "application/pdf", "pdf"
+        return (build_signals_report_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8"), "text/plain; charset=utf-8", "txt"
     if report_kind == "due-diligence":
         if fmt == "pdf":
-            return build_due_diligence_summary_pdf(brief), "application/pdf", "pdf"
-        return build_due_diligence_summary_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+            return build_due_diligence_summary_pdf(brief, outcome), "application/pdf", "pdf"
+        return (build_due_diligence_summary_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8"), "text/plain; charset=utf-8", "txt"
     if report_kind == "one-pager":
         if fmt == "pdf":
-            return build_executive_one_pager_pdf(brief), "application/pdf", "pdf"
-        return build_executive_one_pager_text(brief).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+            return build_executive_one_pager_pdf(brief, outcome), "application/pdf", "pdf"
+        return (build_executive_one_pager_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8"), "text/plain; charset=utf-8", "txt"
     raise HTTPException(status_code=404, detail="report not found")
 
 
@@ -330,8 +342,25 @@ async def download_report(
             assert_feature(current.org_id, "enterprise_reports")
         except BillingBlocked as exc:
             _raise_billing_block(exc)
+    elif kind in _BASIC_REPORT_KINDS:
+        # Starter keeps basic reports (memo + one-pager); Plans without the
+        # feature are blocked only while KULIMA_BILLING_ENFORCEMENT is on.
+        try:
+            assert_feature(current.org_id, "basic_reports")
+        except BillingBlocked as exc:
+            _raise_billing_block(exc)
     brief = _load_brief_model(run_id, current.user_id, org_id=current.org_id)
-    body, media_type, ext = _report_payload(brief, report_kind, format)
+    # Outcome Layer V1: attach the stored 30-day follow-up as an Outcome
+    # Snapshot in the export — only when a follow-up answer actually exists.
+    outcome_record = None
+    if str(run_id).isdigit():
+        try:
+            rec = _brief_repo.ensure_decision_record(int(run_id))
+            if rec and rec.get("followup_status") == "answered":
+                outcome_record = rec
+        except Exception:  # noqa: BLE001 — snapshot is additive, never blocks export
+            outcome_record = None
+    body, media_type, ext = _report_payload(brief, report_kind, format, outcome_record)
     try:
         from kulima.export import _entity_report_label
         _label = _entity_report_label(brief, "Investment Memo")

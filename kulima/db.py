@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
 from kulima.config import get_settings
@@ -78,6 +78,24 @@ CREATE TABLE IF NOT EXISTS decision_outcomes (
     updated_at TEXT NOT NULL,
     FOREIGN KEY (run_id) REFERENCES intelligence_runs(id)
 );
+
+CREATE TABLE IF NOT EXISTS decision_records (
+    run_id INTEGER PRIMARY KEY,
+    org_id TEXT,
+    user_id TEXT,
+    entity_name TEXT,
+    recommendation TEXT,
+    trust_score REAL,
+    integrity_grade TEXT,
+    decision_snapshot_at TEXT NOT NULL,
+    followup_due_at TEXT NOT NULL,
+    followup_status TEXT NOT NULL DEFAULT 'pending',
+    decision_taken TEXT,
+    recommendation_followed TEXT,
+    decision_comment TEXT DEFAULT '',
+    answered_at TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -143,6 +161,44 @@ class IntelligenceRepository:
                 "ALTER TABLE intelligence_runs ADD COLUMN org_id TEXT DEFAULT NULL"
             )
             _log.debug("_migrate_schema: added column org_id")
+        # Outcome Layer V1: decision_records must exist before its index is
+        # created (databases built before the table existed land here first).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_records (
+                run_id INTEGER PRIMARY KEY,
+                org_id TEXT,
+                user_id TEXT,
+                entity_name TEXT,
+                recommendation TEXT,
+                trust_score REAL,
+                integrity_grade TEXT,
+                decision_snapshot_at TEXT NOT NULL,
+                followup_due_at TEXT NOT NULL,
+                followup_status TEXT NOT NULL DEFAULT 'pending',
+                decision_taken TEXT,
+                recommendation_followed TEXT,
+                decision_comment TEXT DEFAULT '',
+                answered_at TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_records_followup "
+            "ON decision_records(followup_status, followup_due_at)"
+        )
+        # Outcome Layer V1 follow-up comments: databases created before the
+        # column existed get it added in place (answers are optional free text).
+        dr_cols = [
+            r[1] for r in conn.execute("PRAGMA table_info(decision_records)").fetchall()
+        ]
+        if "decision_comment" not in dr_cols:
+            conn.execute(
+                "ALTER TABLE decision_records "
+                "ADD COLUMN decision_comment TEXT DEFAULT ''"
+            )
+            _log.debug("_migrate_schema: added column decision_comment")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -592,6 +648,137 @@ class IntelligenceRepository:
             ).fetchone()
             return dict(row) if row else None
 
+    # ── Outcome Layer V1: decision records + 30-day follow-up ────────────────
+
+    def ensure_decision_record(self, run_id: int) -> dict[str, Any] | None:
+        """Idempotently create the DecisionRecord snapshot for a completed run.
+
+        The record freezes what was recommended at decision time and opens a
+        30-day follow-up window. V1 creates records lazily — whenever the
+        outcomes surfaces (or this method) touch a run — so no pipeline hook
+        is required and historical runs are covered automatically.
+        """
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM decision_records WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if existing is not None:
+                return dict(existing)
+            run_row = conn.execute(
+                "SELECT id, created_at, startup_name, recommendation, trust_score,"
+                " integrity_grade, user_id, org_id FROM intelligence_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            if run_row is None:
+                return None
+            try:
+                decision_at = datetime.fromisoformat(str(run_row["created_at"]))
+                if decision_at.tzinfo is None:
+                    decision_at = decision_at.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                decision_at = now
+            due_at = decision_at + timedelta(days=30)
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO decision_records (
+                    run_id, org_id, user_id, entity_name, recommendation,
+                    trust_score, integrity_grade, decision_snapshot_at,
+                    followup_due_at, followup_status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (
+                    run_id,
+                    run_row["org_id"],
+                    run_row["user_id"],
+                    run_row["startup_name"],
+                    run_row["recommendation"],
+                    run_row["trust_score"],
+                    run_row["integrity_grade"],
+                    decision_at.isoformat(),
+                    due_at.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM decision_records WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_decision_records(
+        self,
+        org_id: str | None = None,
+        only_due: bool = False,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """DecisionRecords with follow-up state; optionally only unanswered
+        rows whose 30-day window has opened."""
+        self.ensure_decision_records_backfill(org_id=org_id)
+        now = datetime.now(timezone.utc).isoformat()
+        query = "SELECT * FROM decision_records WHERE 1=1"
+        params: list[Any] = []
+        if org_id is not None:
+            query += " AND (org_id = ? OR user_id IS NULL)"
+            params.append(org_id)
+        if only_due:
+            query += " AND followup_status = 'pending' AND followup_due_at <= ?"
+            params.append(now)
+        query += " ORDER BY followup_due_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
+
+    def ensure_decision_records_backfill(self, org_id: str | None = None) -> int:
+        """Create records for completed runs that pre-date Outcome V1.
+        Returns the number of records created."""
+        with self._connect() as conn:
+            query = (
+                "SELECT r.id FROM intelligence_runs r "
+                "LEFT JOIN decision_records d ON d.run_id = r.id "
+                "WHERE r.archived_at IS NULL AND d.run_id IS NULL"
+            )
+            params: list[Any] = []
+            if org_id is not None:
+                query += " AND (r.org_id = ? OR r.user_id IS NULL)"
+                params.append(org_id)
+            run_ids = [row[0] for row in conn.execute(query, tuple(params)).fetchall()]
+        created = 0
+        for run_id in run_ids:
+            if self.ensure_decision_record(int(run_id)) is not None:
+                created += 1
+        return created
+
+    def save_followup_answer(
+        self,
+        run_id: int,
+        decision_taken: str,
+        recommendation_followed: str,
+        comment: str = "",
+    ) -> dict[str, Any] | None:
+        """Store the follow-up answers (plus optional comment) and close the cycle."""
+        self.ensure_decision_record(run_id)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE decision_records
+                   SET decision_taken = ?,
+                       recommendation_followed = ?,
+                       decision_comment = ?,
+                       followup_status = 'answered',
+                       answered_at = ?
+                 WHERE run_id = ?
+                """,
+                (decision_taken, recommendation_followed, comment or "", now, run_id),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM decision_records WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
     def list_decision_history(
         self,
         user_id: str | None = None,
@@ -606,9 +793,13 @@ class IntelligenceRepository:
                        r.integrity_grade, r.user_id,
                        o.outcome_status, o.outcome_date, o.outcome_notes,
                        o.what_happened, o.what_was_predicted, o.what_was_missed,
-                       o.what_worked, o.what_failed
+                       o.what_worked, o.what_failed,
+                       d.followup_status, d.followup_due_at, d.answered_at,
+                       d.decision_taken, d.recommendation_followed,
+                       d.decision_comment
                 FROM intelligence_runs r
                 LEFT JOIN decision_outcomes o ON r.id = o.run_id
+                LEFT JOIN decision_records d ON r.id = d.run_id
                 WHERE r.archived_at IS NULL
             """
             params: list[Any] = []

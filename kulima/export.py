@@ -227,6 +227,23 @@ def _brief_entity_type(brief: "InvestmentBrief") -> str:
     return detect_entity_type(brief)
 
 
+_STARTUP_ENTITIES = ("startup", "social_enterprise", "cooperative")
+
+
+def _leadership_evidence_block(brief: "InvestmentBrief") -> tuple[str, str]:
+    """Entity-aware leadership evidence status (RC certification, Phase 4).
+
+    Startup reports keep the FOUNDER EVIDENCE STATUS heading; NGO, programme
+    and tourism subjects get LEADERSHIP EVIDENCE STATUS — a non-startup report
+    must never surface a 'founder gap' that its entity type makes meaningless.
+    """
+    status = founder_evidence_status(brief)
+    if _brief_entity_type(brief) in _STARTUP_ENTITIES:
+        return "FOUNDER EVIDENCE STATUS", status
+    body = status.replace("Founder", "Leadership").replace("founder", "leadership")
+    return "LEADERSHIP EVIDENCE STATUS", body
+
+
 def _entity_report_label(brief: "InvestmentBrief", fallback: str) -> str:
     """Entity-aware report type label; entity titles never default to startup.
 
@@ -287,6 +304,180 @@ SECTOR:          {brief.sector or "â€”"} | GEOGRAPHY: {brief.geography or "
 """
 
 
+# ── Outcome Layer V1: Outcome Snapshot (facts only — no scoring) ─────────────
+
+_OUTCOME_DECISION_LABELS = {
+    "yes": "Yes — a decision was taken",
+    "no": "No — no decision was taken",
+    "in_progress": "In progress — decision still being made",
+    "unknown": "Unknown",
+}
+_OUTCOME_FOLLOWED_LABELS = {
+    "fully": "Fully followed",
+    "partially": "Partially followed",
+    "no": "Not followed / diverged",
+    "not_yet": "Too early to tell",
+    "unknown": "Unknown",
+}
+
+
+def outcome_snapshot_lines(outcome: dict | None) -> list[str]:
+    """Plain factual lines for the report Outcome Snapshot block.
+
+    Only rendered when a 30-day follow-up answer exists. Returns an empty
+    list when there is nothing recorded — reports must not imply an outcome
+    that nobody reported.
+    """
+    if not outcome or outcome.get("followup_status") != "answered":
+        return []
+    decision = _OUTCOME_DECISION_LABELS.get(
+        str(outcome.get("decision_taken")), str(outcome.get("decision_taken") or "Unknown")
+    )
+    followed = _OUTCOME_FOLLOWED_LABELS.get(
+        str(outcome.get("recommendation_followed")),
+        str(outcome.get("recommendation_followed") or "Unknown"),
+    )
+    lines = [
+        f"Assessment completed: {str(outcome.get('decision_snapshot_at'))[:10]}",
+        f"Recommendation at decision time: {outcome.get('recommendation') or '—'}",
+        f"Was a decision taken? {decision}",
+        f"Was the recommendation followed? {followed}",
+        f"Follow-up recorded: {str(outcome.get('answered_at'))[:10]}",
+    ]
+    comment = str(outcome.get("decision_comment") or "").strip()
+    if comment:
+        lines.append(f"Comments: {comment}")
+    return lines
+
+
+def outcome_snapshot_markdown(outcome: dict | None) -> str:
+    """Markdown block appended to text exports, or '' when no follow-up exists."""
+    lines = outcome_snapshot_lines(outcome)
+    if not lines:
+        return ""
+    return "\n\n## Outcome Snapshot (30-Day Follow-up)\n\n" + "\n".join(f"- {line}" for line in lines) + "\n"
+
+
+# ── Outcome Layer V1: Outcome Review Report ──────────────────────────────────
+# A single-decision review: recommendation, decision taken, comments, lessons.
+# Facts recorded by the team only — nothing scored, nothing inferred.
+
+def _outcome_review_lessons(record: dict) -> list[str]:
+    """Descriptive read-back of what the team reported. No scoring, no models."""
+    if record.get("followup_status") != "answered":
+        return [
+            "No lessons can be drawn yet — this review only reflects what the "
+            "team actually reports back at the follow-up date."
+        ]
+    decision = str(record.get("decision_taken") or "")
+    followed = str(record.get("recommendation_followed") or "")
+    lessons: list[str] = []
+    if decision == "yes" and followed in {"fully", "partially"}:
+        lessons.append(
+            "The team took a decision and followed the recommendation (fully or "
+            "partially). This decision is now a confirmed data point that the "
+            "advice was usable in practice."
+        )
+    elif decision == "yes":
+        lessons.append(
+            "A decision was taken, but the recommendation was not followed as "
+            "advised. The team's own path is recorded as feedback on the advice "
+            "— not a judgment of the team."
+        )
+    elif decision == "in_progress":
+        lessons.append(
+            "The decision is still in progress. The recommendation remains live "
+            "for the team; a later follow-up will close the loop."
+        )
+    elif decision == "no":
+        lessons.append(
+            "No decision was taken after the assessment. That is a usable "
+            "signal about timing or confidence, recorded exactly as reported."
+        )
+    else:
+        lessons.append("The team reported the decision status as unknown.")
+    if followed == "not_yet":
+        lessons.append(
+            "Implementation has not started yet — the 30-day window may simply "
+            "have been too early to tell."
+        )
+    comment = str(record.get("decision_comment") or "").strip()
+    if comment:
+        lessons.append(f"Team comment, verbatim: “{comment}”")
+    return lessons
+
+
+def outcome_review_sections(
+    brief: InvestmentBrief, record: dict | None
+) -> list[tuple[str, list[str]]]:
+    """Section list (title, bullet lines) shared by the review TXT and PDF."""
+    record = record or {}
+    answered = record.get("followup_status") == "answered"
+    decision_raw = str(record.get("decision_taken") or "")
+    decision = _OUTCOME_DECISION_LABELS.get(decision_raw, decision_raw or "Not recorded yet")
+    followed_raw = str(record.get("recommendation_followed") or "")
+    followed = _OUTCOME_FOLLOWED_LABELS.get(followed_raw, followed_raw or "Not recorded yet")
+    comment = str(record.get("decision_comment") or "").strip()
+    trust = record.get("trust_score")
+    trust_text = f"{trust}" if trust is not None else "—"
+
+    recommendation = [
+        f"Entity: {record.get('entity_name') or brief.startup_name}",
+        f"Assessment completed: {str(record.get('decision_snapshot_at') or '')[:10] or '—'}",
+        f"Recommendation at decision time: {record.get('recommendation') or '—'}",
+        f"Trust score at decision time: {trust_text} · Integrity grade: {record.get('integrity_grade') or '—'}",
+        f"Follow-up due: {str(record.get('followup_due_at') or '')[:10] or '—'}",
+    ]
+    decision_taken = (
+        [
+            f"Was a decision taken? {decision}",
+            f"Was the recommendation followed? {followed}",
+            f"Follow-up recorded: {str(record.get('answered_at') or '')[:10] or '—'}",
+        ]
+        if answered
+        else ["Follow-up still waiting — no answer has been recorded yet."]
+    )
+    comments = (
+        [comment] if comment
+        else (["No comments were added with the follow-up."] if answered
+              else ["Comments appear here once the team answers the follow-up."])
+    )
+    return [
+        ("Recommendation", recommendation),
+        ("Decision Taken", decision_taken),
+        ("Comments", comments),
+        ("Lessons", _outcome_review_lessons(record)),
+    ]
+
+
+def build_outcome_review_text(brief: InvestmentBrief, record: dict | None) -> str:
+    """Plain-text Outcome Review Report."""
+    header = _txt_header("Outcome Review Report", brief)
+    body_lines: list[str] = []
+    for title, lines in outcome_review_sections(brief, record):
+        body_lines.append(f"\n{title}\n" + "-" * len(title))
+        body_lines.extend(f"  - {line}" for line in lines)
+    return header + "\n".join(body_lines) + "\n"
+
+
+def build_outcome_review_pdf(brief: InvestmentBrief, record: dict | None) -> bytes:
+    """Styled PDF Outcome Review Report (falls back to text when reportlab
+    is unavailable, matching the other export builders)."""
+    sections = outcome_review_sections(brief, record)
+    try:
+        return _build_styled_report_pdf(
+            brief=brief,
+            report_title="Outcome Review Report",
+            sections=sections,
+        )
+    except ImportError:
+        text = "\n".join(
+            f"## {title}\n\n" + "\n".join(f"- {line}" for line in lines) + "\n"
+            for title, lines in sections
+        )
+        return (build_outcome_review_text(brief, record) + "\n" + text).encode("utf-8")
+
+
 def build_memo_text(brief: InvestmentBrief) -> str:
     steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(brief.next_steps, 1)) or "  â€”"
     memo_label = _entity_report_label(brief, "Investment Memo")
@@ -340,7 +531,7 @@ reviewed sources. Evidence Depth: {depth_label}.
         scorecard_readiness = "Institutional Readiness"
         verification_section = verification_section.replace("Before IC presentation", "Before committee review")
     elif etype == "tourism_sme":
-        memo_title = "TOURISIM RESILIENCE REPORT"
+        memo_title = "TOURISM RESILIENCE REPORT"
         entity_line_label = "Enterprise:"
         founder_label = "LEADERSHIP & MANAGEMENT ASSESSMENT"
         startup_sec_label = "TOURISM OPERATIONS & DESTINATION ASSESSMENT"
@@ -375,6 +566,8 @@ reviewed sources. Evidence Depth: {depth_label}.
         scorecard_org = "Startup"
         scorecard_readiness = "Investment Readiness"
 
+    ev_title, ev_body = _leadership_evidence_block(brief)
+
     return f"""{header}
 KULIMA FLEX — {memo_title}
 ========================================
@@ -392,9 +585,9 @@ EXECUTIVE SUMMARY
 ----------------------------------------
 {sanitize_founder_reasoning(sanitize_runtime_artifacts(brief.founder_assessment or '—'), brief)}
 
-FOUNDER EVIDENCE STATUS
+{ev_title}
 ----------------------------------------
-{founder_evidence_status(brief)}
+{ev_body}
 
 {startup_sec_label}
 ----------------------------------------
@@ -552,9 +745,10 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
         parts.append(line)
     parts.append("")
 
-    parts.append("FOUNDER EVIDENCE STATUS")
+    ev_title, ev_body = _leadership_evidence_block(brief)
+    parts.append(ev_title)
     parts.append("-" * 40)
-    parts.append(founder_evidence_status(brief))
+    parts.append(ev_body)
     parts.append("")
 
     parts.append("CONTINENTAL FUTURES SIMULATOR")
@@ -718,15 +912,16 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
             ]
         )
 
+    ev_title, ev_body = _leadership_evidence_block(brief)
     lines.extend([
         "",
         "MARKET VALIDATION (FROM UPLOADED DOCUMENTS & RESEARCH)",
         "-" * 40,
         *market_validation_lines(brief),
         "",
-        "FOUNDER EVIDENCE STATUS",
+        ev_title,
         "-" * 40,
-        founder_evidence_status(brief),
+        ev_body,
         "",
         "NEXT STEPS",
         "-" * 40,
@@ -1105,7 +1300,7 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
 
 # â”€â”€ PDF Build Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
+def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict | None = None) -> bytes:
     if any(
         symbol is None
         for symbol in (
@@ -1124,7 +1319,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
         )
     ):
         text = build_full_ic_report_text(brief) if full_report else build_memo_text(brief)
-        return text.encode("utf-8")
+        return (text + outcome_snapshot_markdown(outcome)).encode("utf-8")
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1317,6 +1512,13 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
                     )
                 )
 
+    # Outcome Layer V1: Outcome Snapshot — stored follow-up facts only.
+    snapshot_lines = outcome_snapshot_lines(outcome)
+    if snapshot_lines:
+        story.append(Paragraph("Outcome Snapshot (30-Day Follow-up)", styles["KulimaH2"]))
+        for line in snapshot_lines:
+            story.append(Paragraph(_esc(line), styles["KulimaBullet"]))
+
     if canvas and NumberedCanvas:
         doc.build(story, canvasmaker=NumberedCanvas)
     else:
@@ -1324,12 +1526,12 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False) -> bytes:
     return buffer.getvalue()
 
 
-def build_memo_pdf(brief: InvestmentBrief) -> bytes:
-    return _build_pdf(brief, full_report=False)
+def build_memo_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
+    return _build_pdf(brief, full_report=False, outcome=outcome)
 
 
-def build_full_ic_report_pdf(brief: InvestmentBrief) -> bytes:
-    return _build_pdf(brief, full_report=True)
+def build_full_ic_report_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
+    return _build_pdf(brief, full_report=True, outcome=outcome)
 
 
 def _brief_case_and_signals(brief: InvestmentBrief) -> tuple[object, list[Signal]]:
@@ -1354,7 +1556,7 @@ def _brief_document_lines(brief: InvestmentBrief, max_documents: int = 3) -> lis
     return [line for line in doc_section.splitlines() if line.strip()]
 
 
-def build_signals_report_pdf(brief: InvestmentBrief) -> bytes:
+def build_signals_report_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
     _, signals = _brief_case_and_signals(brief)
     counts = count_signals_by_level(signals)
     from kulima.signals.models import SignalLevel
@@ -1386,10 +1588,11 @@ def build_signals_report_pdf(brief: InvestmentBrief) -> bytes:
         brief=brief,
         report_title="Signals Intelligence Pack",
         sections=section_lines,
+        outcome=outcome,
     )
 
 
-def build_due_diligence_summary_pdf(brief: InvestmentBrief) -> bytes:
+def build_due_diligence_summary_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
     section_lines: list[tuple[str, list[str]]] = [
         (
             "Research Results",
@@ -1459,10 +1662,11 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief) -> bytes:
         brief=brief,
         report_title="Due Diligence & Research Summary",
         sections=section_lines,
+        outcome=outcome,
     )
 
 
-def build_executive_one_pager_pdf(brief: InvestmentBrief) -> bytes:
+def build_executive_one_pager_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
     top_reasons = [brief.executive_summary or "â€”"]
     if brief.investment_recommendation:
         top_reasons.append(brief.investment_recommendation)
@@ -1483,6 +1687,7 @@ def build_executive_one_pager_pdf(brief: InvestmentBrief) -> bytes:
         brief=brief,
         report_title="Executive One Pager",
         sections=section_lines,
+        outcome=outcome,
     )
 
 
@@ -1491,9 +1696,15 @@ def _build_styled_report_pdf(
     brief: InvestmentBrief,
     report_title: str,
     sections: list[tuple[str, list[str]]],
+    outcome: dict | None = None,
 ) -> bytes:
     if any(symbol is None for symbol in (colors, TA_CENTER, A4, ParagraphStyle, getSampleStyleSheet, inch, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle)):
-        return build_executive_one_pager_text(brief).encode("utf-8")
+        return (build_executive_one_pager_text(brief) + outcome_snapshot_markdown(outcome)).encode("utf-8")
+
+    # Outcome Layer V1: Outcome Snapshot — stored follow-up facts only, no scoring.
+    snapshot_lines = outcome_snapshot_lines(outcome)
+    if snapshot_lines:
+        sections = sections + [("Outcome Snapshot (30-Day Follow-up)", snapshot_lines)]
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

@@ -125,10 +125,20 @@ def _make_doc_intel_fallback(
             org_id=org_id,
         )
         assessment_payload = assessment_adapter.serialize_context(assessment) if assessment else None
+        # Outcome Layer V1: pass the stored 30-day follow-up so post-decision
+        # questions are answered from the record instead of guessed.
+        outcome_record = None
+        if run_id.isdigit():
+            try:
+                from kulima.db import IntelligenceRepository
+                outcome_record = IntelligenceRepository().ensure_decision_record(int(run_id))
+            except Exception:  # noqa: BLE001 — outcome grounding is additive
+                outcome_record = None
         return doc_intelligence_ask_ic_answer(
             brief,
             question,
             assessment_context=assessment_payload,
+            outcome=outcome_record,
         )
     except Exception as exc:  # noqa: BLE001
         _log.warning("doc_intelligence_ask_ic_answer fallback also failed: %s", exc)

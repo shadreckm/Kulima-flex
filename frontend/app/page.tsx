@@ -105,9 +105,9 @@ const REPORT_KINDS = [
 ]
 
 const PRICING = [
-  { name: 'Starter', price: '$0', detail: '3 assessments · basic reports · basic signals · Document Intelligence Mode. For students, researchers and small NGOs.', cta: 'Start free', href: '#upload' },
-  { name: 'Professional', price: '$49/mo', detail: 'Unlimited assessments, AI Analyst, Signals, Reports, assessment history, collaboration and priority support.', cta: 'Go Professional', href: '/pricing', featured: true },
-  { name: 'Enterprise', price: 'Custom', detail: 'Dedicated workspace, RBAC, audit logs, multiple organizations, API access and custom reports.', cta: 'See Enterprise', href: '/pricing' },
+  { name: 'Free', price: '$0', detail: '3 assessments per month · 1 user · Document Intelligence Mode · basic signals · basic reports · community signals · 30-day assessment history.', cta: 'Start free', href: '#upload' },
+  { name: 'Professional', price: '$49/mo', detail: 'Unlimited assessments, AI Analyst, advanced signals, Reports, conversation history, collaboration, Research Intelligence and priority support.', cta: 'Go Professional', href: '/pricing', featured: true },
+  { name: 'Enterprise', price: 'Custom', detail: 'Organization approval, custom agreement and enterprise activation (min $250 equivalent). API Access, RBAC, Trust & Governance Dashboard, Custom Reports, Dedicated Workspace, advanced Tourism/Climate intelligence, multi-organization support.', cta: 'See Enterprise', href: '/pricing' },
 ]
 
 // REDIRECT LOOP FIX (landing side): a per-mount ref resets every time the

@@ -132,6 +132,10 @@ export type BillingPlan = {
   assessmentQuotaLabel: string
   memberQuota: number | null
   memberQuotaLabel: string
+  historyWindowDays: number | null
+  historyLabel: string
+  requiresApproval: boolean
+  minimumValueUsd: number
   features: string[]
   featureLabels: string[]
 }
@@ -169,6 +173,22 @@ export type BillingStatusPayload = {
   orgName: string
   role: string
   canManageBilling: boolean
+  // Enterprise activation + admin visibility (Mission 3 Phases 3 & 6):
+  requiresApproval: boolean
+  minimumValueUsd: number
+  activationState: string | null
+  historyWindowDays: number | null
+  latestPayment: LatestPaymentRecord | null
+}
+
+export type LatestPaymentRecord = {
+  eventType: string
+  status: string | null
+  plan: string | null
+  amount: number | null
+  currency: string | null
+  txRef: string | null
+  createdAt: string
 }
 
 export type PaymentEventRecord = {
@@ -253,6 +273,35 @@ export function cancelSubscription(): Promise<{ status: BillingStatusPayload }> 
 
 export function reactivateSubscription(): Promise<{ status: BillingStatusPayload }> {
   return call('/api/v1/billing/reactivate', { method: 'POST' }, 'reactivateSubscription')
+}
+
+// ── Enterprise activation (Mission 3 Phase 3) ────────────────────────────────
+// Enterprise requires organization approval + custom agreement before the
+// payment link may be used. Minimum onboarding value: USD 250 equivalent.
+
+export type EnterpriseActivationResult = {
+  state: string | null          // null | 'requested' | 'approved' | 'activated'
+  checkoutAllowed: boolean
+  requiresApproval: boolean
+  minimumValueUsd: number
+  paymentLink: string
+  currency: string
+}
+
+export function getEnterpriseActivation(): Promise<EnterpriseActivationResult> {
+  return call('/api/v1/billing/enterprise/activation', undefined, 'getEnterpriseActivation')
+}
+
+export function requestEnterpriseActivation(payload: { orgName?: string; contact?: string } = {}): Promise<EnterpriseActivationResult> {
+  return call('/api/v1/billing/enterprise/activation/request', jsonInit('POST', payload), 'requestEnterpriseActivation')
+}
+
+export function approveEnterpriseActivation(agreementAccepted: boolean, payload: { orgName?: string; contact?: string } = {}): Promise<EnterpriseActivationResult> {
+  return call(
+    '/api/v1/billing/enterprise/activation/approve',
+    jsonInit('POST', { ...payload, agreementAccepted }),
+    'approveEnterpriseActivation',
+  )
 }
 
 // ── Governance (Phases 1, 4, 9) ──────────────────────────────────────────────
