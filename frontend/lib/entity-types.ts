@@ -2,10 +2,11 @@
  * Entity-based evaluation intake types.
  * Kulima FLEX evaluates any organisation type, not just startups.
  *
- * The five canonical assessment types collected by the single intake engine
- * (landing page) are: Startup, NGO, Government Program, Development Program,
- * Tourism SME. `accelerator` is retained as a legacy alias so contexts stored
- * before Tourism SME existed keep loading.
+ * The canonical assessment types collected by the single intake engine
+ * (landing page) are, NGO-first: NGO, Development Program (primary), then
+ * Government Program, Tourism SME and Startup (grouped behind "Advanced
+ * Assessment Types"). `accelerator` is retained as a legacy alias so contexts
+ * stored before Tourism SME existed keep loading.
  */
 
 export type EntityType =
@@ -105,14 +106,24 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
   },
 ]
 
-/** The five canonical assessment types shown in the landing-page intake. */
-// PRIMARY EXPERIENCE: NGOs and Development Programs are the primary customer segment for V1
+/** The canonical assessment types shown in the landing-page intake. */
+// PRIMARY EXPERIENCE: NGOs and Development Programs are the primary customer
+// segment for V1. Secondary types stay fully supported but are grouped behind
+// an "Advanced Assessment Types" disclosure so the default UX path is NGO-first.
+export const PRIMARY_INTAKE_ENTITY_TYPES: EntityType[] = [
+  'ngo',                    // Primary customer — first
+  'development_program',    // Primary customer — second
+]
+
+export const ADVANCED_INTAKE_ENTITY_TYPES: EntityType[] = [
+  'government_program',     // Secondary customer
+  'tourism_sme',            // Secondary customer
+  'startup',                // Secondary customer
+]
+
 export const INTAKE_ENTITY_TYPES: EntityType[] = [
-  'ngo',                           // Primary customer
-  'development_program',           // Primary customer
-  'government_program',            // Secondary customer
-  'tourism_sme',                  // Secondary customer
-  'startup',                      // Secondary customer
+  ...PRIMARY_INTAKE_ENTITY_TYPES,
+  ...ADVANCED_INTAKE_ENTITY_TYPES,
 ]
 
 export function getEntityConfig(type: EntityType): EntityConfig {

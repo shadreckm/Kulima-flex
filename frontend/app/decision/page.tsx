@@ -138,7 +138,7 @@ export default function DecisionWorkspacePage() {
       recommendation={recommendation}
       trustScore={trustScore || undefined}
       assessmentCtx={ctx ? {
-        entityType: (ctx.assessmentType as any) || 'startup',
+        entityType: (ctx.assessmentType as any) || 'ngo',
         entityLabel: ctx.assessmentTypeLabel || 'Assessment',
         entityName: ctx.displayEntity || ctx.organizationName || ctx.startupName || '',
         founderOrLead: ctx.founderName || '',

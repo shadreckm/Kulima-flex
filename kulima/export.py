@@ -208,7 +208,7 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
 
 _ENTITY_REPORT_LABELS = {
     "ngo": "Institutional Capacity Review",
-    "development_program": "Program Performance Review",
+    "development_program": "Programme Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
     "startup": "Investment Committee Report",
@@ -349,8 +349,8 @@ reviewed sources. Evidence Depth: {depth_label}.
         scorecard_readiness = "Growth Readiness"
         verification_section = verification_section.replace("Before IC presentation", "Before underwriting decision")
     elif etype in ("development_program", "farmer_organization"):
-        memo_title = "PROGRAM PERFORMANCE REVIEW"
-        entity_line_label = "Program:"
+        memo_title = "PROGRAMME PERFORMANCE REVIEW"
+        entity_line_label = "Programme:"
         founder_label = "PROGRAM LEADERSHIP & MANAGEMENT ASSESSMENT"
         startup_sec_label = "PROGRAM IMPLEMENTATION & PERFORMANCE ASSESSMENT"
         market_sec_label = "BENEFICIARY & IMPLEMENTATION CONTEXT"

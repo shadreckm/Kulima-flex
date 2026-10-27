@@ -339,16 +339,24 @@ def test_research_engine_sanitizes_query_before_egress():
 
 def test_plan_catalog_quotas_and_features():
     free = get_plan("free")
-    assert free.assessment_quota == 5
+    assert free.name == "Starter"
+    assert free.assessment_quota == 3
     assert free.monthly_price == 0.0
-    assert {"basic_signals", "community_signals"} <= set(free.features)
+    assert not free.is_paid
+    assert {"basic_signals", "community_signals", "basic_reports", "document_intelligence"} <= set(free.features)
     assert "ask_ic" not in free.features
 
     pro = get_plan("pro")
+    assert pro.name == "Professional"
+    assert pro.monthly_price == 49.0
+    assert pro.payment_link == "https://pay.paychangu.com/SC-GDDYA0"
     assert pro.assessment_quota is None
     assert {"climate_signals", "tourism_signals", "ask_ic", "enterprise_reports"} <= set(pro.features)
 
     enterprise = get_plan("enterprise")
+    assert enterprise.price_label == "Custom"
+    assert enterprise.is_paid  # Custom price still means a paid plan
+    assert enterprise.payment_link == "https://pay.paychangu.com/SC-MBXJF6"
     assert enterprise.member_quota is None
     assert set(enterprise.features) == set(ALL_FEATURES)
     assert {"rbac", "audit_log", "private_deployment", "api_integration", "governance_dashboard"} <= set(
@@ -376,7 +384,7 @@ def test_quota_gate_only_when_enforcement_enabled(billing, monkeypatch):
     assert billing_service.assert_can_assess(org) is None  # enforcement off → passes
 
     summary = billing_service.usage_summary(org)
-    assert summary["assessmentQuota"] == 5
+    assert summary["assessmentQuota"] == 3
     assert summary["remaining"] == 0
 
     monkeypatch.setenv("KULIMA_BILLING_ENFORCEMENT", "true")

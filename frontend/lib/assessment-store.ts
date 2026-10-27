@@ -248,8 +248,8 @@ export function deriveAssessmentContext(
   entityTypeInput?: string,
   fileOrName?: File | string | null,
 ): AssessmentContext {
-  const entityType = (entityTypeInput || 'startup') as AssessmentContext['entityType']
-  const label = USE_CASE_LABELS[entityType] || 'Startup / Investor'
+  const entityType = (entityTypeInput || 'ngo') as AssessmentContext['entityType']
+  const label = USE_CASE_LABELS[entityType] || 'NGO / Development Programme'
   const fileObj: File | null = isFileLike(fileOrName) ? fileOrName : null
   let fileName = typeof fileOrName === 'string' ? fileOrName : fileObj?.name || ''
   const fileSize = fileObj ? fileObj.size : undefined

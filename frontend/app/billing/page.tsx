@@ -11,13 +11,22 @@ import {
   getBillingPlans,
   getBillingStatus,
   reactivateSubscription,
+  returnFromCheckout,
   startCheckout,
   type BillingPlan,
   type BillingStatusPayload,
+  type LinkReturnResult,
   type PaymentEventRecord,
 } from '../../lib/enterprise'
 
 const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, enterprise: 2 }
+
+const OUTCOME_STYLES: Record<LinkReturnResult['outcome'], { box: string; title: string }> = {
+  active: { box: 'bg-[#EAF7EF] border-[#C9EBD8] text-[#0B5D3B]', title: 'Payment Successful' },
+  pending: { box: 'bg-[#FFF7EB] border-[#F5DEB8] text-[#B54708]', title: 'Payment Pending' },
+  failed: { box: 'bg-[#FEF3F2] border-[#FDA29B] text-[#B42318]', title: 'Payment Failed' },
+  cancelled: { box: 'bg-[#F5F8FC] border-[#DDE6F0] text-slate-700', title: 'Payment Cancelled' },
+}
 
 function formatMoney(amount: number, currency: string): string {
   if (amount === 0) return 'Free'
@@ -56,6 +65,7 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [demoTx, setDemoTx] = useState<{ txRef: string; plan: string } | null>(null)
+  const [paymentOutcome, setPaymentOutcome] = useState<LinkReturnResult | null>(null)
 
   const load = useCallback(async () => {
     const [plansRes, statusRes, historyRes] = await Promise.all([
@@ -71,6 +81,37 @@ export default function BillingPage() {
   useEffect(() => {
     if (authStatus === 'authenticated') {
       load().catch(err => setError(String(err)))
+    }
+  }, [authStatus, load])
+
+  // Phase 4/5: PayChangu hosted link lands back on /billing?tx=…&payment=… —
+  // finalize the outcome (upgrade plan / show failed, pending or cancelled).
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const tx = params.get('tx')
+    if (!tx) return
+    const raw = (params.get('payment') || 'completed').toLowerCase()
+    const result = (['completed', 'pending', 'failed', 'cancelled'] as const).includes(raw as never)
+      ? (raw as 'completed' | 'pending' | 'failed' | 'cancelled')
+      : 'completed'
+    let ignored = false
+    returnFromCheckout(tx, result)
+      .then(res => {
+        if (ignored) return
+        setPaymentOutcome(res)
+        setBilling(res.status)
+        load().catch(() => {})
+      })
+      .catch(err => {
+        if (!ignored) setError(String(err))
+      })
+      .finally(() => {
+        // Keep the URL clean so a refresh does not re-submit the outcome.
+        window.history.replaceState(null, '', window.location.pathname)
+      })
+    return () => {
+      ignored = true
     }
   }, [authStatus, load])
 
@@ -96,7 +137,9 @@ export default function BillingPage() {
         await downgradePlan(planId)
         return `Downgrade to ${planId} scheduled.`
       }
-      const result = await startCheckout(planId)
+      const result = await startCheckout(planId, {
+        returnUrl: typeof window !== 'undefined' ? `${window.location.origin}/billing` : undefined,
+      })
       if (result.demoMode && result.txRef) {
         setDemoTx({ txRef: result.txRef, plan: planId })
         return 'PayChangu is not configured on this deployment — demo checkout prepared.'
@@ -177,6 +220,37 @@ export default function BillingPage() {
         <div className="p-4 bg-[#EAF7EF] text-[#0B5D3B] rounded-[12px] border border-[#C9EBD8] text-sm font-medium">{notice}</div>
       ) : null}
 
+      {paymentOutcome ? (
+        <section className={`p-4 rounded-[12px] border text-sm font-medium ${OUTCOME_STYLES[paymentOutcome.outcome].box}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-base font-black">{OUTCOME_STYLES[paymentOutcome.outcome].title}</div>
+              <p className="mt-1 text-xs font-semibold opacity-90">
+                {paymentOutcome.outcome === 'active'
+                  ? paymentOutcome.message || `Welcome to ${paymentOutcome.status.planName}! Your workspace has been updated.`
+                  : paymentOutcome.message}
+              </p>
+            </div>
+            {paymentOutcome.outcome === 'active' ? (
+              <a
+                href="/flex"
+                className="px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition whitespace-nowrap"
+              >
+                Go to your workspace →
+              </a>
+            ) : paymentOutcome.outcome !== 'cancelled' && canManage ? (
+              <button
+                onClick={() => handleChoose(paymentOutcome.status.planId === 'free' ? 'pro' : paymentOutcome.status.planId)}
+                disabled={busy !== null}
+                className="px-4 py-2 rounded-lg bg-[#0B5D3B] text-white text-xs font-bold hover:bg-[#08482E] transition disabled:opacity-50 whitespace-nowrap"
+              >
+                {busy !== null ? 'Working…' : 'Retry payment'}
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {billing ? (
         <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#DDE6F0]">
@@ -201,6 +275,16 @@ export default function BillingPage() {
               <div>{billing.orgName}</div>
               <div className="mt-0.5">
                 Current period: {formatWhen(billing.periodStart)} → {formatWhen(billing.periodEnd)}
+              </div>
+              <div className="mt-0.5 font-semibold text-slate-600">
+                Renewal:{' '}
+                {billing.cancelAtPeriodEnd
+                  ? `Cancels ${formatWhen(billing.periodEnd)}`
+                  : billing.planId === 'free'
+                    ? 'Free plan — no renewal'
+                    : billing.status === 'suspended'
+                      ? 'Suspended — payment required'
+                      : `Auto-renews ${formatWhen(billing.periodEnd)}`}
               </div>
             </div>
           </div>
@@ -285,7 +369,10 @@ export default function BillingPage() {
                   </span>
                 ) : null}
               </div>
-              <div className="mt-2 text-lg font-black text-slate-900">{formatMoney(plan.monthlyPrice, plan.currency)}</div>
+              <div className="mt-2 text-lg font-black text-slate-900">{plan.priceLabel || formatMoney(plan.monthlyPrice, plan.currency)}</div>
+              {plan.target ? (
+                <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{plan.target}</div>
+              ) : null}
               <p className="mt-2 text-xs text-slate-500 leading-relaxed">{plan.description}</p>
               <div className="mt-3 space-y-1.5 text-[11px] text-slate-600 flex-1">
                 <div className="font-bold text-slate-700">{plan.assessmentQuotaLabel}</div>

@@ -222,15 +222,23 @@ def classify_entity(
             entity_type=best_type, label=ENTITY_LABELS[best_type],
             confidence=min(0.8, 0.4 + 0.1 * best_hits), source="inferred",
         )
-    return EntityClassification("startup", "Startup", 0.4, "inferred")
+    # Nothing declared and nothing detected: V1's primary customer is an NGO /
+    # development programme, so the default reasoning frame is institutional —
+    # never the startup lens. Startup remains fully supported when selected.
+    return EntityClassification("ngo", "NGO", 0.4, "inferred")
 
 
 # ── Phase 3: Entity-aware signal domains ─────────────────────────────────
-
+#
+# PRIMARY CUSTOMERS (V1): NGOs and Development Programmes. Their domain set is
+# the six-dimension reasoning framework the whole product is built around:
+# Institutional Capacity · Programme Performance · Community Reach · Funding
+# Sustainability · Partnership Strength · Monitoring Quality.
+# Secondary entity types keep their own lenses — nothing is removed.
 ENTITY_SIGNAL_DOMAINS: Dict[str, Tuple[str, ...]] = {
+    "ngo": ("Institutional Capacity", "Programme Performance", "Community Reach", "Funding Sustainability", "Partnership Strength", "Monitoring Quality"),
+    "development_program": ("Programme Performance", "Institutional Capacity", "Community Reach", "Funding Sustainability", "Partnership Strength", "Monitoring Quality"),
     "startup": ("Founder Risk", "Market Readiness", "Revenue Potential", "Investment Readiness"),
-    "ngo": ("Institutional Capacity", "Program Delivery", "Partnership Strength", "Funding Diversity", "Monitoring Capacity", "Community Reach"),
-    "development_program": ("Program Performance", "Implementation Readiness", "Beneficiary Reach", "Impact Evidence"),
     "government_program": ("Governance", "Policy Alignment", "Delivery Capacity", "Public Value"),
     "tourism_sme": ("Tourism Signals", "Climate Signals", "Community Signals", "Destination Readiness", "Visitor Economy Signals"),
     "research_institution": ("Research Quality", "Partnership Strength", "Funding Diversity", "Knowledge Transfer"),
@@ -246,13 +254,16 @@ _DOMAIN_DETECTORS: Dict[str, Tuple[str, ...]] = {
     "Market Readiness": ("market", "customers", "demand", "validation", "pilot", "adoption", "target segment", "tam"),
     "Revenue Potential": ("revenue", "pricing", "business model", "monetisation", "monetization", "profit", "margins", "contract"),
     "Investment Readiness": ("funding", "investment", "raise", "round", "capital", "ask", "valuation", "use of funds", "roadmap"),
-    "Institutional Capacity": ("board", "governance", "organisation structure", "organization structure", "staff", "policies", "systems"),
+    "Institutional Capacity": ("board", "governance", "organisation structure", "organization structure", "staff", "policies", "systems", "capacity", "audit", "compliance"),
+    "Programme Performance": ("programme", "program", "performance", "results", "achieved", "delivered", "targets", "outcomes", "outputs", "milestones", "workplan", "work plan", "logframe", "theory of change"),
     "Program Delivery": ("program", "programme", "delivery", "implementation", "activities", "beneficiaries", "reached"),
-    "Partnership Strength": ("partner", "partnership", "memorandum of understanding", "mou", "collaboration", "consortium"),
-    "Funding Diversity": ("grant", "donor", "funding sources", "diversif", "income streams", "crowdfunding", "earned income"),
-    "Monitoring Capacity": ("monitoring", "evaluation", "m&e", "indicators", "data collection", "reporting", "learning"),
-    "Community Reach": ("community", "beneficiar", "women", "youth", "households", "villages", "outreach"),
     "Program Performance": ("performance", "results", "achieved", "delivered", "targets", "outcomes"),
+    "Partnership Strength": ("partner", "partnership", "memorandum of understanding", "mou", "collaboration", "consortium", "implementing partner", "donor"),
+    "Funding Sustainability": ("grant", "donor", "funding sources", "diversif", "income streams", "crowdfunding", "earned income", "sustainability", "budget", "expenditure", "cost share"),
+    "Funding Diversity": ("grant", "donor", "funding sources", "diversif", "income streams", "crowdfunding", "earned income"),
+    "Monitoring Quality": ("monitoring", "evaluation", "m&e", "meal", "indicators", "data collection", "reporting", "learning", "verification", "baseline", "endline", "results framework"),
+    "Monitoring Capacity": ("monitoring", "evaluation", "m&e", "indicators", "data collection", "reporting", "learning"),
+    "Community Reach": ("community", "beneficiar", "women", "youth", "households", "villages", "outreach", "reach", "coverage"),
     "Implementation Readiness": ("implementation", "workplan", "work plan", "timeline", "milestones", "gantt", "phases"),
     "Beneficiary Reach": ("beneficiar", "households", "farmers", "reach", "coverage", "participants"),
     "Impact Evidence": ("impact", "outcomes", "evidence", "evaluation", "baseline", "endline", "attribution"),
@@ -274,7 +285,9 @@ _DOMAIN_DETECTORS: Dict[str, Tuple[str, ...]] = {
 
 
 def entity_signal_domains(entity_type: str) -> Tuple[str, ...]:
-    return ENTITY_SIGNAL_DOMAINS.get(entity_type, ENTITY_SIGNAL_DOMAINS["startup"])
+    # Unknown entity types are assessed with the primary customer's framework
+    # (NGO / development programme), never the startup lens.
+    return ENTITY_SIGNAL_DOMAINS.get(entity_type, ENTITY_SIGNAL_DOMAINS["ngo"])
 
 
 def detect_domain_evidence(corpus: str, domains: Iterable[str]) -> Dict[str, List[str]]:
@@ -288,11 +301,28 @@ def detect_domain_evidence(corpus: str, domains: Iterable[str]) -> Dict[str, Lis
 
 
 # ── Phase 4: Entity-aware research focus ─────────────────────────────────
-
+#
+# PRIMARY CUSTOMERS (V1): NGO and Development Programme queries come first and
+# are phrased around the documents those organisations actually hold — proposal,
+# annual report, budget, M&E report, workplan, theory of change, logframe and
+# donor reports. Startup queries are retained verbatim for Startup assessments.
 ENTITY_RESEARCH_QUERIES: Dict[str, Tuple[str, ...]] = {
-    "startup": ("{name} funding round investment", "{name} market traction customers", "{sector} startup market size Africa", "{name} competitors market"),
-    "ngo": ("{name} annual report programs", "{name} donors partners funding", "{sector} NGO program impact", "{name} beneficiaries outcomes"),
-    "development_program": ("{name} program results implementation", "{name} beneficiaries impact evaluation", "{sector} development program outcomes", "{name} donor funding"),
+    "ngo": (
+        "{name} annual report programmes",
+        "{name} donors partners funding grants",
+        "{name} proposal budget workplan theory of change",
+        "{name} monitoring evaluation report beneficiaries outcomes",
+        "{sector} NGO programme delivery community reach Africa",
+        "{name} logframe results framework indicators",
+    ),
+    "development_program": (
+        "{name} programme results implementation",
+        "{name} beneficiaries impact evaluation",
+        "{name} donor report workplan milestones",
+        "{name} theory of change logframe budget",
+        "{sector} development programme outcomes Africa",
+        "{name} M&E monitoring quality",
+    ),
     "government_program": ("{name} policy implementation", "{name} public service delivery", "{sector} government program outcomes", "{name} governance oversight"),
     "tourism_sme": ("{name} tourism lodge reviews", "{sector} tourism destination trends Africa", "climate risk tourism {country}", "{name} visitor economy hospitality"),
     "research_institution": ("{name} research publications", "{name} partnerships funding", "{sector} research findings"),
@@ -300,12 +330,14 @@ ENTITY_RESEARCH_QUERIES: Dict[str, Tuple[str, ...]] = {
     "foundation": ("{name} grantmaking portfolio", "{name} foundation programs", "{sector} foundation funding"),
     "cooperative": ("{name} cooperative members", "{name} market sales", "{sector} cooperative development"),
     "farmer_organization": ("{name} farmer organization programs", "{sector} smallholder market access", "{name} members impact"),
+    "startup": ("{name} funding round investment", "{name} market traction customers", "{sector} startup market size Africa", "{name} competitors market"),
 }
 
 
 def entity_research_queries(entity_type: str, name: str, sector: str = "", country: str = "") -> Tuple[str, ...]:
+    # Unrecognised types use the primary-customer (NGO/programme) focus.
     templates = ENTITY_RESEARCH_QUERIES.get(
-        entity_type, ENTITY_RESEARCH_QUERIES["startup"]
+        entity_type, ENTITY_RESEARCH_QUERIES["ngo"]
     )
     subs = {"name": name or "", "sector": sector or "", "country": country or ""}
     return tuple(t.format(**subs).strip() for t in templates)
@@ -363,8 +395,9 @@ def entity_decision_framework(entity_type: str) -> DecisionFramework:
     fw = ENTITY_DECISION_FRAMEWORKS.get(entity_type)
     if fw:
         return fw
-    parent = ENTITY_DECISION_FRAMEWORKS.get(_INHERIT.get(entity_type, "startup"))
-    return parent or ENTITY_DECISION_FRAMEWORKS["startup"]
+    # Unknown types fall back to the primary customer's capacity framework.
+    parent = ENTITY_DECISION_FRAMEWORKS.get(_INHERIT.get(entity_type, "ngo"))
+    return parent or ENTITY_DECISION_FRAMEWORKS["ngo"]
 
 
 def entity_decision(score: float, entity_type: str) -> Tuple[str, str]:
@@ -378,23 +411,28 @@ def entity_decision(score: float, entity_type: str) -> Tuple[str, str]:
 
 
 # ── Phase 6: Entity-adaptive report titles ───────────────────────────────
-
+#
+# DEFAULT REPORTS (V1): an NGO is reviewed as an Institutional Capacity Review
+# and a development programme as a Programme Performance Review. The
+# Investment Committee Report is reserved for Startup assessments (and the
+# venture-shaped sub-families that inherit the Invest/Observe/Pass ladder).
 ENTITY_REPORT_TITLES: Dict[str, str] = {
-    "startup": "Investment Committee Report",
     "ngo": "Institutional Capacity Review",
-    "development_program": "Program Performance Review",
+    "development_program": "Programme Performance Review",
+    "research_institution": "Institutional Capacity Review",
+    "foundation": "Institutional Capacity Review",
+    "farmer_organization": "Programme Performance Review",
     "government_program": "Governance Review",
     "tourism_sme": "Tourism Resilience Report",
-    "research_institution": "Institutional Capacity Review",
+    "startup": "Investment Committee Report",
     "social_enterprise": "Investment Committee Report",
-    "foundation": "Institutional Capacity Review",
     "cooperative": "Investment Committee Report",
-    "farmer_organization": "Program Performance Review",
 }
 
 
 def entity_report_title(entity_type: str) -> str:
-    return ENTITY_REPORT_TITLES.get(entity_type, ENTITY_REPORT_TITLES["startup"])
+    # Default report is the primary customer's review, never an IC report.
+    return ENTITY_REPORT_TITLES.get(entity_type, ENTITY_REPORT_TITLES["ngo"])
 
 
 # ── One-shot profile ─────────────────────────────────────────────────────

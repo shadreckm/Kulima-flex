@@ -9,6 +9,7 @@ When ``PAYCHANGU_SECRET_KEY`` is absent the checkout endpoint returns a clean
 from __future__ import annotations
 
 import json
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ from kulima.core.billing.service import (
     change_plan,
     demo_mode_enabled,
     handle_payment_failed,
+    link_autoconfirm_enabled,
     reactivate,
     record_checkout,
     usage_summary,
@@ -56,6 +58,13 @@ class CheckoutRequest(BaseModel):
 class ConfirmRequest(BaseModel):
     txRef: str = Field(min_length=1, max_length=120)
     plan: str = Field(min_length=1, max_length=32)
+
+
+class LinkReturnRequest(BaseModel):
+    """Outcome reported when the customer lands back from a PayChangu hosted link."""
+
+    txRef: str = Field(min_length=1, max_length=120)
+    result: str = Field(default="completed")  # completed | pending | failed | cancelled
 
 
 class PlanChangeRequest(BaseModel):
@@ -95,6 +104,18 @@ async def payment_history(current: OrgContext = Depends(get_current_org)):
 # ── Checkout ─────────────────────────────────────────────────────────────────
 
 
+def _hosted_link_redirect(link: str, return_url: str | None, tx_ref: str) -> str:
+    """PayChangu hosted links accept a ``redirectUrl`` param. We tack the tx ref
+    onto it so the billing page can finalize the payment outcome on return."""
+    base = (return_url or "").strip()
+    if not base:
+        return link
+    sep = "&" if "?" in base else "?"
+    base = f"{base}{sep}tx={quote(tx_ref, safe='')}&payment=completed"
+    link_sep = "&" if "?" in link else "?"
+    return f"{link}{link_sep}redirectUrl={quote(base, safe='')}"
+
+
 @router.post("/checkout")
 async def start_checkout(
     payload: CheckoutRequest,
@@ -106,13 +127,33 @@ async def start_checkout(
         raise HTTPException(status_code=422, detail={"error": True, "message": "Unknown plan"})
     plan = get_plan(target)
 
-    if plan.monthly_price <= 0:
-        # Free target = downgrade/schedule, never a payment.
+    if not plan.is_paid:
+        # Starter target = downgrade / scheduled change, never a payment.
         result = change_plan(current.org_id, target)
         return {"status": "applied", "result": result}
 
     tx_ref = PayChanguClient.new_tx_ref(prefix=f"kulima-{target}")
     client = PayChanguClient()
+
+    # Phase 3 primary path: PayChangu hosted payment link (pay.paychangu.com/SC-…).
+    # Simplest and most reliable — send the customer straight to the hosted page;
+    # the outcome lands back on /billing and is finalized via /checkout/return.
+    if plan.payment_link:
+        record_checkout(
+            current.org_id,
+            target,
+            tx_ref=tx_ref,
+            amount=plan.monthly_price or None,
+            currency=plan.currency,
+        )
+        return {
+            "txRef": tx_ref,
+            "checkoutUrl": _hosted_link_redirect(plan.payment_link, payload.returnUrl, tx_ref),
+            "paymentLink": True,
+            "plan": target,
+            "amount": plan.monthly_price,
+            "currency": plan.currency,
+        }
 
     if not client.configured:
         if demo_mode_enabled():
@@ -205,6 +246,102 @@ async def confirm_checkout(
     return {"status": "active", "planId": sub.get("plan"), "txRef": payload.txRef}
 
 
+@router.post("/checkout/return")
+async def return_from_hosted_link(
+    payload: LinkReturnRequest,
+    current: OrgContext = Depends(require_permission(Permission.MANAGE_BILLING)),
+):
+    """Phase 4/5: finalize a PayChangu hosted-link payment when the customer is
+    back on /billing. Success upgrades the plan and stores the billing event;
+    failure opens the grace window; pending/cancelled leave the plan untouched."""
+    event = _repo().find_event_by_tx_ref(payload.txRef)
+    if event is None or event.get("orgId") != current.org_id:
+        raise HTTPException(status_code=404, detail={"error": True, "message": "Unknown transaction reference"})
+    result = str(payload.result or "completed").strip().lower()
+    plan = get_plan(event.get("plan") or "pro")
+
+    if event.get("eventType") in {"payment_success", "webhook_payment", "demo_payment", "link_payment"}:
+        return {"outcome": "active", "planId": plan.plan_id, "alreadyProcessed": True, "status": billing_status(current.org_id)}
+
+    if result == "cancelled":
+        _repo().record_payment_event(
+            current.org_id, "payment_cancelled", tx_ref=payload.txRef, plan=plan.plan_id, status="cancelled",
+        )
+        return {
+            "outcome": "cancelled",
+            "message": "Payment cancelled. Your plan is unchanged and everything you had stays available.",
+            "status": billing_status(current.org_id),
+        }
+
+    if result == "pending":
+        _repo().record_payment_event(
+            current.org_id, "payment_pending", tx_ref=payload.txRef, plan=plan.plan_id,
+            amount=plan.monthly_price or None, currency=plan.currency, status="pending",
+        )
+        return {
+            "outcome": "pending",
+            "message": "Payment pending. We will activate your plan the moment PayChangu confirms it.",
+            "status": billing_status(current.org_id),
+        }
+
+    if result == "failed":
+        handle_payment_failed(current.org_id, tx_ref=payload.txRef, reason="hosted_link_failed")
+        return {
+            "outcome": "failed",
+            "message": "Payment failed. Your workspace keeps a grace window — retry the payment to restore full access.",
+            "status": billing_status(current.org_id),
+        }
+
+    # Completed: verify with PayChangu when the API is configured, otherwise
+    # auto-confirm the hosted-link redirect (webhook stays authoritative).
+    client = PayChanguClient()
+    if client.configured:
+        try:
+            verified = client.verify_payment(payload.txRef)
+            data = verified.get("data") or {}
+            status_value = str(data.get("status") or verified.get("status") or "").lower()
+            if status_value in {"success", "successful", "paid", "completed"}:
+                amount = data.get("amount") or plan.monthly_price or None
+                sub = activate_plan(
+                    current.org_id, plan.plan_id,
+                    amount=float(amount) if amount else None,
+                    currency=str(data.get("currency") or plan.currency),
+                    tx_ref=payload.txRef, event_type="payment_success",
+                )
+                return {"outcome": "active", "planId": sub.get("plan"), "status": billing_status(current.org_id)}
+            if status_value in {"failed", "failure"}:
+                handle_payment_failed(current.org_id, tx_ref=payload.txRef, reason="verify_failed")
+                return {"outcome": "failed", "message": "Payment failed.", "status": billing_status(current.org_id)}
+            return {"outcome": "pending", "message": "Payment pending.", "status": billing_status(current.org_id)}
+        except PayChanguError as exc:
+            if not link_autoconfirm_enabled():
+                raise HTTPException(
+                    status_code=502,
+                    detail={"error": True, "code": "PAYCHANGU_ERROR", "message": str(exc)},
+                )
+
+    if not link_autoconfirm_enabled():
+        return {
+            "outcome": "pending",
+            "message": "Payment pending verification. Set KULIMA_BILLING_LINK_AUTOCONFIRM=true to activate on return.",
+            "status": billing_status(current.org_id),
+        }
+
+    sub = activate_plan(
+        current.org_id, plan.plan_id,
+        amount=plan.monthly_price or None,
+        currency=plan.currency,
+        tx_ref=payload.txRef,
+        event_type="link_payment",
+    )
+    return {
+        "outcome": "active",
+        "planId": sub.get("plan"),
+        "message": f"Welcome to {plan.name}! Your workspace is updated.",
+        "status": billing_status(current.org_id),
+    }
+
+
 @router.post("/verify/{tx_ref}")
 async def verify_checkout(
     tx_ref: str,
@@ -214,7 +351,7 @@ async def verify_checkout(
     event = _repo().find_event_by_tx_ref(tx_ref)
     if event is None or event.get("orgId") != current.org_id:
         raise HTTPException(status_code=404, detail={"error": True, "message": "Unknown transaction reference"})
-    if event.get("eventType") in {"payment_success", "webhook_payment", "demo_payment"}:
+    if event.get("eventType") in {"payment_success", "webhook_payment", "demo_payment", "link_payment"}:
         return {"status": "active", "processed": False, "reason": "already_processed"}
 
     plan = get_plan(event.get("plan") or "pro")

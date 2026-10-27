@@ -1,4 +1,9 @@
-"""Grounded follow-up Q&A for the Ask the Investment Committee tab."""
+"""Grounded follow-up Q&A for the AI Analyst (Ask the IC) tab.
+
+The analyst is entity-aware: NGOs and development programmes (V1's primary
+customers) are answered from an institutional-capacity / programme-performance
+frame, while Startup runs keep the Investment Committee frame.
+"""
 
 from __future__ import annotations
 
@@ -79,11 +84,20 @@ def _format_assessment_section(assessment: dict[str, Any]) -> list[str]:
 
 
 def _format_domain_section(domain_overviews: dict[str, dict]) -> list[str]:
-    """Render the nine dashboard domains as a [DOMAIN_SIGNALS] block."""
-    order = (
-        "trust", "risk", "opportunity", "market", "funding",
-        "climate", "environmental", "tourism", "community_impact",
-    )
+    """Render the dashboard domains as a [DOMAIN_SIGNALS] block.
+
+    Order follows ``DISPLAY_DOMAINS`` (Community, Trust, Funding, Programme
+    Delivery, Risk, Opportunity, Climate, ...) so the AI Analyst reads the
+    primary customer's domains first.
+    """
+    try:
+        from kulima.signals.signals_summary import DISPLAY_DOMAINS
+        order = tuple(domain.value for domain in DISPLAY_DOMAINS)
+    except Exception:  # noqa: BLE001 — grounding must never break Ask IC
+        order = (
+            "community_impact", "trust", "funding", "program_delivery", "risk",
+            "opportunity", "climate", "environmental", "market", "tourism",
+        )
     lines: list[str] = ["[DOMAIN_SIGNALS]"]
     for key in order:
         entry = domain_overviews.get(key)
@@ -110,16 +124,41 @@ def build_ask_ic_context(
     assessment_context: dict[str, Any] | None = None,
     domain_overviews: dict[str, dict] | None = None,
 ) -> str:
-    """Build a bounded, citable context pack from only generated IC artifacts.
+    """Build a bounded, citable context pack from only generated artifacts.
 
     ``assessment_context`` / ``domain_overviews`` are optional additive
     grounding packs sourced from the shared Assessment Context; when absent,
     the context pack is identical to previous releases.
+
+    The field labels inside the pack follow the entity: an NGO or programme
+    is described in institutional terms, a Startup in investment terms — the
+    underlying scores are the same.
     """
+    declared_type = ""
+    if assessment_context:
+        declared_type = str(
+            assessment_context.get("entityType")
+            or assessment_context.get("assessment_type")
+            or assessment_context.get("assessmentType")
+            or ""
+        ).lower()
+    if not declared_type or declared_type in ("unknown", "none"):
+        try:
+            from kulima.intelligence.report_quality import detect_entity_type
+            declared_type = detect_entity_type(brief)
+        except Exception:  # noqa: BLE001 — labelling must never break grounding
+            declared_type = "ngo"
+    is_venture = declared_type in ("startup", "social_enterprise", "cooperative", "accelerator")
+
+    entity_kind_label = "Venture" if is_venture else "Organisation / programme"
+    lead_label = "Founder" if is_venture else "Lead / accountable person"
+    readiness_label = (
+        "Investment readiness" if is_venture else "Funding & delivery readiness"
+    )
     sections: list[str] = [
         "[REPORT]",
-        f"Founder: {brief.founder_name}",
-        f"Startup: {brief.startup_name}",
+        f"{lead_label}: {brief.founder_name}",
+        f"{entity_kind_label}: {brief.startup_name}",
         f"Sector: {brief.sector or 'Unknown'}",
         f"Geography: {brief.geography or 'Unknown'}",
         f"Stage: {brief.stage or 'Unknown'}",
@@ -131,14 +170,14 @@ def build_ask_ic_context(
         f"Trust score: {brief.trust_score:.0f}/100",
         f"Risk score: {brief.risk_score:.0f}/100 (lower is better)",
         f"Growth potential: {brief.growth_potential:.0f}/100",
-        f"Investment readiness: {brief.investment_readiness:.0f}/100",
+        f"{readiness_label}: {brief.investment_readiness:.0f}/100",
         f"Confidence: {brief.confidence_level.value} ({brief.confidence:.2f})",
         f"Executive summary: {_clip(brief.executive_summary, 1800)}",
         f"Founder assessment: {_clip(brief.founder_assessment, 1600)}",
-        f"Startup assessment: {_clip(brief.startup_assessment, 1600)}",
-        f"Market assessment: {_clip(brief.market_assessment, 1600)}",
+        f"{'Startup' if is_venture else 'Organisation / programme'} assessment: {_clip(brief.startup_assessment, 1600)}",
+        f"{'Market' if is_venture else 'Delivery & sector context'} assessment: {_clip(brief.market_assessment, 1600)}",
         f"Risk assessment: {_clip(brief.risk_assessment, 1600)}",
-        f"Investment recommendation: {_clip(brief.investment_recommendation, 1600)}",
+        f"{'Investment' if is_venture else 'Funding / partnership'} recommendation: {_clip(brief.investment_recommendation, 1600)}",
         "Next steps:\n" + _bullet_list(brief.next_steps),
         "Explainability:\n" + _bullet_list(brief.explainability, 12),
     ]
@@ -150,14 +189,14 @@ def build_ask_ic_context(
         sections.extend(_format_domain_section(domain_overviews))
 
     tm = brief.thesis_match
-    if tm is None:
+    if tm is None and is_venture:
         try:
             from kulima.thesis import evaluate_thesis_match
             tm = evaluate_thesis_match(brief)
         except Exception:
             tm = None
 
-    if tm:
+    if tm and is_venture:
         sections.append("[THESIS_FIT]")
         st_str = tm.status.value if hasattr(tm.status, "value") else str(tm.status)
         sections.append(
@@ -316,27 +355,55 @@ def answer_ask_ic_question(
         assessment_context=assessment_context,
         domain_overviews=domain_overviews,
     )
-    etype = "startup"
+    etype = "ngo"
     if assessment_context:
         etype = str(assessment_context.get("entityType") or assessment_context.get("assessment_type") or "").lower()
     if not etype or etype in ("unknown", "none"):
         from kulima.intelligence.report_quality import detect_entity_type
         etype = detect_entity_type(brief)
-    etype = etype or "startup"
+    # V1's primary customers are NGOs and development programmes: an entity
+    # that cannot be identified is reviewed with the institutional framework,
+    # never the startup lens. Startup reasoning stays intact for Startup runs.
+    etype = etype or "ngo"
+
+    # The default reasoning framework for the primary customers (Phase 2).
+    ngo_framework = (
+        "Use the NGO / Development Programme capacity framework across six "
+        "dimensions, in this order: (1) Institutional Capacity — governance, "
+        "systems, policies, staff and audit readiness; (2) Programme "
+        "Performance — workplan, milestones, logframe/results-framework "
+        "targets versus actual delivery; (3) Community Reach — beneficiaries "
+        "reached, inclusion of women, youth and marginalised groups; (4) "
+        "Funding Sustainability — donor base, budget integrity, cost "
+        "effectiveness, reliance and diversification; (5) Partnership Strength "
+        "— implementing partners, consortia, MOUs and donor accountability; "
+        "(6) Monitoring Quality — M&E/MEAL systems, indicator definitions, "
+        "data verification and learning. Verdict bands: Strong Capacity, "
+        "Moderate Capacity, Needs Strengthening. Never use startup/VC jargon "
+        "such as 'invest', 'pass', 'seed round', 'term sheet', 'traction' or "
+        "'exit'."
+    )
 
     # Entity-specific AI Analyst personas and reasoning frameworks (Phase 4 & 5)
     if etype in ("ngo", "research_institution", "foundation"):
         role_title = "Senior Institutional Capacity & Grant Review Analyst for Kulima FLEX"
-        mission_desc = "help donor representatives, trustees, and evaluation committees assess institutional capacity, program delivery, partnership strength, funding diversity, and community reach using the intelligence already generated."
-        framework_note = "Use the NGO capacity framework: Strong Capacity, Moderate Capacity, Needs Strengthening. Never use startup/VC jargon such as 'invest', 'pass', 'seed round', or 'term sheet'."
+        mission_desc = "help donor representatives, trustees, and evaluation committees assess institutional capacity, programme performance, community reach, funding sustainability, partnership strength, and monitoring quality using the intelligence already generated."
+        framework_note = ngo_framework
         decision_question = "Should we fund or partner with this organization?"
         decision_label = "Capacity Verdict"
         pass_trigger_label = "What would trigger a 'Needs Strengthening' verdict"
         summary_target = "summarize for institutional capacity review"
     elif etype in ("development_program", "farmer_organization"):
         role_title = "Senior Program Performance & Impact Reviewer for Kulima FLEX"
-        mission_desc = "help program steering committees, DFIs, and portfolio directors review program performance, implementation readiness, beneficiary reach, and impact evidence using the intelligence already generated."
-        framework_note = "Use the Program framework: Ready, Requires Support, At Risk. Focus on logframe outcomes, milestones, theory of change, and beneficiary reach."
+        mission_desc = "help program steering committees, DFIs, and portfolio directors review programme performance, institutional capacity, beneficiary reach, funding sustainability, partnership strength, and monitoring quality using the intelligence already generated."
+        framework_note = (
+            "Use the Development Programme framework across the same six "
+            "dimensions, leading with Programme Performance: workplan, "
+            "milestones, logframe outcomes, theory of change and beneficiary "
+            "reach, then institutional capacity, funding sustainability, "
+            "partnership strength and monitoring quality. Verdict bands: "
+            "Ready, Requires Support, At Risk."
+        )
         decision_question = "Is this program ready for implementation and funding?"
         decision_label = "Performance Verdict"
         pass_trigger_label = "What would trigger an 'At Risk' verdict"
@@ -357,7 +424,7 @@ def answer_ask_ic_question(
         decision_label = "Resilience Verdict"
         pass_trigger_label = "What would trigger a 'High Risk' verdict"
         summary_target = "summarize for tourism resilience review"
-    else:
+    elif etype in ("startup", "social_enterprise", "cooperative", "accelerator"):
         role_title = "Senior Investment Committee Associate for Kulima FLEX"
         mission_desc = "help a Partner decide whether to invest in this startup using the intelligence already generated."
         framework_note = "Use the Investment framework: Invest, Observe, Pass. Focus on customer discovery, market validation, roadmap, revenue model, and funding ask."
@@ -365,6 +432,15 @@ def answer_ask_ic_question(
         decision_label = "Investment Recommendation"
         pass_trigger_label = "What would make this a pass"
         summary_target = "summarize for investment committee"
+    else:
+        # Unrecognised entity: default to the primary customer's framework.
+        role_title = "Senior Institutional Capacity & Grant Review Analyst for Kulima FLEX"
+        mission_desc = "help donor representatives, trustees, and evaluation committees assess institutional capacity, programme performance, community reach, funding sustainability, partnership strength, and monitoring quality using the intelligence already generated."
+        framework_note = ngo_framework
+        decision_question = "Should we fund or partner with this organization?"
+        decision_label = "Capacity Verdict"
+        pass_trigger_label = "What would trigger a 'Needs Strengthening' verdict"
+        summary_target = "summarize for institutional capacity review"
 
     system = textwrap.dedent(
         f"""
@@ -408,9 +484,10 @@ def answer_ask_ic_question(
           [S#] for web sources, and [D#] for document evidence.
         - The [ASSESSMENT_CONTEXT] section contains intake facts (assessment type,
           organisation, founder/lead, sector, country, uploaded documents, trust score).
-        - The [DOMAIN_SIGNALS] section carries the nine signal domains (Trust, Risk,
-          Opportunity, Market, Funding, Climate, Environment, Tourism, Community).
-          Cite [DOMAIN_SIGNALS] for domain exposure questions.
+        - The [DOMAIN_SIGNALS] section carries the signal domains in the order
+          the analysis should reason through them: Community, Trust, Funding,
+          Programme Delivery, Risk, Opportunity, Climate, Environment, Market,
+          Tourism. Cite [DOMAIN_SIGNALS] for domain exposure questions.
 
         Special handling for key questions:
         - If the user asks "{decision_question}" (or similar):

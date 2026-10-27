@@ -1,8 +1,8 @@
 """Expanded Decision Engine (Step 7).
 
-The decision layer consumes the full signal picture — evidence, trust, risk,
-opportunity, market, funding, climate, environment, tourism, and community
-impact — instead of only trust + risk.
+The decision layer consumes the full signal picture — evidence, community
+impact, trust, funding, programme delivery, risk, opportunity, climate,
+environment, market and tourism — instead of only trust + risk.
 
 Design notes:
 
@@ -30,68 +30,89 @@ from kulima.signals.signals_summary import (
 )
 
 # Relative importance of each display domain in the composite score.
-# Weights sum to 1.0. This is the default (startup-leaning) profile.
+# Weights sum to 1.0. This is the default profile: it is programme-shaped
+# (community reach, trust and delivery carry the most weight) because NGOs and
+# development programmes are the primary customers of V1. Startup-specific
+# weightings live in ENTITY_DOMAIN_WEIGHTS["startup"] and apply only when a
+# Startup assessment is selected.
 DOMAIN_WEIGHTS: dict[str, float] = {
-    "trust": 0.16,
-    "risk": 0.18,
-    "opportunity": 0.10,
-    "market": 0.12,
-    "funding": 0.10,
-    "climate": 0.09,
-    "environmental": 0.08,
-    "tourism": 0.07,
-    "community_impact": 0.10,
+    "community_impact": 0.14,
+    "trust": 0.14,
+    "funding": 0.11,
+    "program_delivery": 0.12,
+    "risk": 0.14,
+    "opportunity": 0.08,
+    "climate": 0.07,
+    "environmental": 0.06,
+    "market": 0.08,
+    "tourism": 0.06,
 }
 
 # Phase 5: entity-aware weight profiles so that domains that are CORE to an
 # entity type materially drive its decision instead of being garnish.
-# Tourism/Climate/Community are the business for a Tourism SME; program
-# delivery and community reach are the business for NGOs and programs.
+# Programme delivery + community reach are the business for NGOs and programs;
+# Tourism/Climate are the business for a Tourism SME; market/traction/funding
+# are the business for a Startup. Profiles are listed primary-customer first.
 ENTITY_DOMAIN_WEIGHTS: dict[str, dict[str, float]] = {
-    "startup": DOMAIN_WEIGHTS,
-    "tourism_sme": {
-        "trust": 0.13,
-        "risk": 0.14,
-        "opportunity": 0.09,
-        "market": 0.10,
-        "funding": 0.08,
-        "climate": 0.16,
-        "environmental": 0.10,
-        "tourism": 0.14,
-        "community_impact": 0.06,
-    },
     "ngo": {
-        "trust": 0.14,
-        "risk": 0.12,
-        "opportunity": 0.07,
-        "market": 0.05,
-        "funding": 0.12,
-        "climate": 0.06,
-        "environmental": 0.05,
-        "tourism": 0.03,
-        "community_impact": 0.36,
+        "community_impact": 0.28,
+        "trust": 0.13,
+        "funding": 0.13,
+        "program_delivery": 0.18,
+        "risk": 0.10,
+        "opportunity": 0.05,
+        "climate": 0.05,
+        "environmental": 0.04,
+        "market": 0.02,
+        "tourism": 0.02,
     },
     "development_program": {
-        "trust": 0.13,
-        "risk": 0.12,
-        "opportunity": 0.06,
-        "market": 0.05,
-        "funding": 0.12,
-        "climate": 0.07,
-        "environmental": 0.06,
-        "tourism": 0.03,
-        "community_impact": 0.36,
+        "community_impact": 0.24,
+        "trust": 0.12,
+        "funding": 0.13,
+        "program_delivery": 0.22,
+        "risk": 0.10,
+        "opportunity": 0.05,
+        "climate": 0.05,
+        "environmental": 0.04,
+        "market": 0.03,
+        "tourism": 0.02,
     },
     "government_program": {
-        "trust": 0.16,
-        "risk": 0.14,
-        "opportunity": 0.06,
-        "market": 0.05,
-        "funding": 0.10,
+        "community_impact": 0.22,
+        "trust": 0.14,
+        "funding": 0.12,
+        "program_delivery": 0.20,
+        "risk": 0.13,
+        "opportunity": 0.05,
+        "climate": 0.05,
+        "environmental": 0.04,
+        "market": 0.03,
+        "tourism": 0.02,
+    },
+    "startup": {
+        "trust": 0.14,
+        "risk": 0.16,
+        "opportunity": 0.13,
+        "market": 0.15,
+        "funding": 0.12,
+        "program_delivery": 0.05,
+        "community_impact": 0.08,
         "climate": 0.07,
         "environmental": 0.06,
-        "tourism": 0.02,
-        "community_impact": 0.34,
+        "tourism": 0.04,
+    },
+    "tourism_sme": {
+        "trust": 0.12,
+        "risk": 0.13,
+        "opportunity": 0.08,
+        "market": 0.09,
+        "funding": 0.07,
+        "program_delivery": 0.05,
+        "community_impact": 0.06,
+        "climate": 0.15,
+        "environmental": 0.09,
+        "tourism": 0.16,
     },
 }
 _ENTITY_WEIGHT_INHERIT = {
@@ -179,7 +200,7 @@ def _blend_components(
 
 def _confidence(coverage: float, populated: int, evidence_score: Optional[float]) -> float:
     base = 0.40 + 0.35 * coverage
-    if populated >= 9:
+    if populated >= max(1, len(DISPLAY_DOMAINS) - 1):
         base += 0.10
     if evidence_score is not None:
         base = 0.6 * base + 0.4 * (max(0.0, min(100.0, evidence_score)) / 100.0)

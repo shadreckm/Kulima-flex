@@ -143,7 +143,7 @@ export default function EvidencePage() {
       recommendation={(ctx?.decision?.recommendation as string) || undefined}
       trustScore={ctx?.trustScore ?? undefined}
       assessmentCtx={ctx ? {
-        entityType: (ctx.assessmentType as any) || 'startup',
+        entityType: (ctx.assessmentType as any) || 'ngo',
         entityLabel: ctx.assessmentTypeLabel || 'Assessment',
         entityName: ctx.displayEntity || ctx.organizationName || ctx.startupName || '',
         founderOrLead: ctx.founderName || '',

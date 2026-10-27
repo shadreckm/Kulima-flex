@@ -20,15 +20,43 @@ type ReportDef = {
   audience: string           // who reads this report
   format: 'pdf' | 'txt'
   primary: boolean           // show as primary CTA
+  // NGO/development-first: when the assessment is not a venture, these
+  // override label/audience so no Investment-Committee wording leaks through.
+  institutionLabel?: string
+  institutionAudience?: string
 }
+
+// Venture-shaped entity types keep the Investment Committee framing; every
+// other type (NGO, Development/Government Programme, Tourism, Research) is
+// reviewed with institutional wording. Nothing is removed — only reframed.
+const VENTURE_TYPES = ['startup', 'social_enterprise', 'cooperative', 'accelerator']
+export function isVentureType(entityType?: string): boolean {
+  return VENTURE_TYPES.includes((entityType || '').toLowerCase())
+}
+
+// Mirrors the backend entity→report-title map (kulima/export.py) so the
+// download card is titled exactly like the PDF it produces.
+const ENTITY_REVIEW_TITLE: Record<string, string> = {
+  ngo: 'Institutional Capacity Review',
+  development_program: 'Programme Performance Review',
+  farmer_organization: 'Programme Performance Review',
+  research_institution: 'Institutional Capacity Review',
+  foundation: 'Institutional Capacity Review',
+  government_program: 'Governance Review',
+  tourism_sme: 'Tourism Resilience Report',
+}
+
+// ── Report definitions with entity-type framing ───────────────────────────
 
 const REPORTS: ReportDef[] = [
   {
     kind: 'memo',
     label: 'Investment / Decision Memo',
+    institutionLabel: 'Decision & Capacity Memo',
     description: 'Executive recommendation, rationale, trust score, key risks and opportunities in a single signed document.',
-    useCases: ['Startup', 'Tourism SME', 'NGO', 'Development Program', 'Government Program'],
+    useCases: ['NGO', 'Development Program', 'Government Program', 'Tourism SME', 'Startup'],
     audience: 'Investment Committee · Donor Board · Senior Management',
+    institutionAudience: 'Donor Board · Trustees · Senior Management',
     format: 'pdf',
     primary: true,
   },
@@ -36,16 +64,17 @@ const REPORTS: ReportDef[] = [
     kind: 'report',
     label: 'Full IC Report',
     description: 'Complete analysis package: evidence integrity, domain scores, signal breakdown, contradictions, and MEAL indicators.',
-    useCases: ['Startup', 'NGO', 'Development Program', 'Government Program'],
+    useCases: ['NGO', 'Development Program', 'Government Program', 'Startup'],
     audience: 'Investment Committee · Program Review Panel · Auditors',
+    institutionAudience: 'Programme Review Panel · Donors · Auditors',
     format: 'pdf',
     primary: true,
   },
   {
     kind: 'signals',
     label: 'Signals Report',
-    description: 'Detected risk and opportunity signals across 9 domains: Trust, Risk, Market, Funding, Climate, Tourism, Community, Environment, Opportunity.',
-    useCases: ['Startup', 'Tourism SME', 'NGO', 'Government Program'],
+    description: 'Detected risk and opportunity signals across the signal domains: Community, Trust, Funding, Programme Delivery, Risk, Opportunity, Climate, Environment, Market, Tourism.',
+    useCases: ['NGO', 'Development Program', 'Tourism SME', 'Government Program', 'Startup'],
     audience: 'Risk Officers · Program Analysts · Sector Specialists',
     format: 'pdf',
     primary: false,
@@ -54,7 +83,7 @@ const REPORTS: ReportDef[] = [
     kind: 'due-diligence',
     label: 'Due Diligence Summary',
     description: 'Evidence integrity audit, source attribution, corroboration status, verification checklist, and unsupported claims.',
-    useCases: ['Startup', 'NGO', 'Development Program'],
+    useCases: ['NGO', 'Development Program', 'Startup'],
     audience: 'Legal Team · External Auditors · Compliance Officers',
     format: 'pdf',
     primary: false,
@@ -63,12 +92,27 @@ const REPORTS: ReportDef[] = [
     kind: 'one-pager',
     label: 'Executive One Pager',
     description: 'Single-page summary for board, donor, or parliamentary review. Verdict, trust score, and top 3 findings.',
-    useCases: ['Startup', 'Tourism SME', 'NGO', 'Government Program'],
+    useCases: ['NGO', 'Development Program', 'Government Program', 'Tourism SME', 'Startup'],
     audience: 'Board · Parliament · Donors · Partners',
     format: 'pdf',
     primary: false,
   },
 ]
+
+// Returns the report list with NGO/development wording applied for non-venture
+// assessments, so Investment-Committee reports/labels only surface for Startups.
+function reportsForEntity(entityType?: string): ReportDef[] {
+  const venture = isVentureType(entityType)
+  const reviewTitle = ENTITY_REVIEW_TITLE[(entityType || '').toLowerCase()]
+  return REPORTS.map(r => {
+    if (venture) return r
+    const label = r.kind === 'report' && reviewTitle
+      ? reviewTitle
+      : (r.institutionLabel ?? r.label)
+    return { ...r, label, audience: r.institutionAudience ?? r.audience }
+  })
+}
+
 
 // ── Future integrations (Phase 7 architecture) ────────────────────────────
 
@@ -87,6 +131,7 @@ function ReportsPageInner() {
 
   const entityTypeLabel = ctx?.assessmentTypeLabel || 'Assessment'
   const entityName = ctx?.displayEntity || ctx?.organizationName || ctx?.startupName || 'Current Assessment'
+  const reports = reportsForEntity(ctx?.assessmentType)
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
@@ -117,13 +162,13 @@ function ReportsPageInner() {
     <PilotWorkspaceShell
       workspace="Reports"
       title="Reports"
-      description="Download evidence-backed reports for your investment committee, donors, or program review."
+      description="Download evidence-backed reports for your donors, programme review board, trustees, or investment committee."
       runId={runId}
       status={effectiveStatus}
       startupName={entityName}
       trustScore={ctx?.trustScore}
       assessmentCtx={ctx ? {
-        entityType: (ctx.assessmentType as any) || 'startup',
+        entityType: (ctx.assessmentType as any) || 'ngo',
         entityLabel: ctx.assessmentTypeLabel || 'Assessment',
         entityName: ctx.displayEntity || ctx.organizationName || ctx.startupName || '',
         founderOrLead: ctx.founderName || '',
@@ -195,7 +240,7 @@ function ReportsPageInner() {
           <section>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Primary Reports</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {REPORTS.filter(r => r.primary).map(report => (
+              {reports.filter(r => r.primary).map(report => (
                 <div key={report.kind} className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
@@ -232,7 +277,7 @@ function ReportsPageInner() {
           <section>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Supporting Reports</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {REPORTS.filter(r => !r.primary).map(report => (
+              {reports.filter(r => !r.primary).map(report => (
                 <div key={report.kind} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
                   <div className="text-sm font-extrabold text-slate-900 mb-1">{report.label}</div>
                   <div className="text-xs text-slate-500 leading-5 mb-2">{report.description}</div>

@@ -28,19 +28,22 @@ import re
 from typing import Any
 
 # ── Issue 6: canonical report titles per entity ──────────────────────────────
-
+#
+# V1 default reports are the primary customer's reviews: NGO → Institutional
+# Capacity Review, Development Programme → Programme Performance Review.
+# "Investment Committee Report" is reserved for Startup assessments (and the
+# venture-shaped sub-families that use the Invest/Observe/Pass ladder).
 ENTITY_REPORT_TITLES_FINAL: dict[str, str] = {
-    "startup": "Investment Committee Report",
     "ngo": "Institutional Capacity Review",
-    "development_program": "Program Performance Review",
-    "government_program": "Governance Review",
-    "tourism_sme": "Tourism Resilience Report",
-    # Sub-entities inherit
+    "development_program": "Programme Performance Review",
     "research_institution": "Institutional Capacity Review",
     "foundation": "Institutional Capacity Review",
+    "farmer_organization": "Programme Performance Review",
+    "government_program": "Governance Review",
+    "tourism_sme": "Tourism Resilience Report",
+    "startup": "Investment Committee Report",
     "social_enterprise": "Investment Committee Report",
     "cooperative": "Investment Committee Report",
-    "farmer_organization": "Program Performance Review",
 }
 
 _ENTITY_INHERIT = {
@@ -69,27 +72,33 @@ _ENTITY_REC_WORDS: dict[str, tuple[str, str, str]] = {
 
 
 def entity_report_title(entity_type: str | None) -> str:
-    """Canonical report title for the entity type (Issue 6)."""
-    etype = str(entity_type or "startup").lower()
+    """Canonical report title for the entity type (Issue 6).
+
+    An unspecified entity is reviewed with the primary customer's lens (NGO /
+    development programme), not the startup Investment Committee template.
+    """
+    etype = str(entity_type or "ngo").lower()
     if etype not in ENTITY_REPORT_TITLES_FINAL:
-        etype = _ENTITY_INHERIT.get(etype, "startup")
-    return ENTITY_REPORT_TITLES_FINAL.get(etype, ENTITY_REPORT_TITLES_FINAL["startup"])
+        etype = _ENTITY_INHERIT.get(etype, "ngo")
+    return ENTITY_REPORT_TITLES_FINAL.get(etype, ENTITY_REPORT_TITLES_FINAL["ngo"])
 
 
 def entity_recommendation_words(entity_type: str | None) -> tuple[str, str, str]:
     """(positive, neutral, negative) recommendation wording for the entity."""
-    etype = str(entity_type or "startup").lower()
+    etype = str(entity_type or "ngo").lower()
     if etype not in _ENTITY_REC_WORDS:
-        etype = _ENTITY_INHERIT.get(etype, "startup")
-    return _ENTITY_REC_WORDS.get(etype, _ENTITY_REC_WORDS["startup"])
+        etype = _ENTITY_INHERIT.get(etype, "ngo")
+    return _ENTITY_REC_WORDS.get(etype, _ENTITY_REC_WORDS["ngo"])
 
 
 def detect_entity_type(brief: Any) -> str:
     """Best-effort entity-type detection from a stored brief (no LLM).
 
     Priority: explicit metadata fields → assessment narrative keywords →
-    startup default. Used by report exports when no entity profile payload
-    was persisted on the run.
+    the primary customer's default (NGO / development programme). A venture
+    narrative is still detected as a startup, so Startup assessments keep
+    their Investment Committee wording. Used by report exports when no entity
+    profile payload was persisted on the run.
     """
     for attr in ("entity_type", "entityType"):
         val = getattr(brief, attr, None)
@@ -100,6 +109,7 @@ def detect_entity_type(brief: Any) -> str:
         for attr in (
             "startup_assessment", "executive_summary",
             "market_assessment", "risk_assessment",
+            "sector", "stage", "investment_recommendation",
         )
     ).lower()
     hints: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -107,6 +117,7 @@ def detect_entity_type(brief: Any) -> str:
         ("ngo", ("non-governmental", "ngo", "nonprofit", "non-profit", "charity", "civil society", "community-based")),
         ("government_program", ("ministry", "government of", "public sector", "state department", "county government")),
         ("development_program", ("development program", "development programme", "donor-funded", "bilateral", "theory of change", "beneficiar")),
+        ("startup", ("startup", "start-up", "venture", "pitch deck", "term sheet", "seed round", "series a", "series b", "saas", "traction", "fintech", "revenue", "market size", "tam/sam/som", "prior exit", "business model", "monetization", "monetisation", "use of funds", "lead investment")),
     )
     best_type, best_hits = None, 0
     for etype, needles in hints:
@@ -115,7 +126,8 @@ def detect_entity_type(brief: Any) -> str:
             best_type, best_hits = etype, hits
     if best_type and best_hits >= 2:
         return best_type
-    return "startup"
+    # No decisive evidence: default to the primary customer's frame.
+    return "ngo"
 
 
 # ── Issue 1: SINGLE recommendation per report ────────────────────────────────

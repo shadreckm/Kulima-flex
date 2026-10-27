@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react'
 import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
 import UserMenu from '../components/UserMenu/UserMenu'
 import { saveUseCase } from '../lib/use-case-store'
-import { INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
+import { PRIMARY_INTAKE_ENTITY_TYPES, ADVANCED_INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
 import * as api from '../lib/api'
 import type { AssessmentContextPayload } from '../lib/api'
@@ -82,9 +82,9 @@ const POST_UPLOAD_FLOW = [
   { label: 'Documents', desc: 'You upload PDF, DOCX, PPTX, XLSX, CSV or TXT files — one or many.' },
   { label: 'Evidence', desc: 'Every claim is extracted, structured and linked to its source page.' },
   { label: 'Trust', desc: 'Each source is reliability-scored 0–100 across four factors.' },
-  { label: 'Signals', desc: 'Nine domains surface risks, opportunities, climate and community impact.' },
-  { label: 'Decision', desc: 'Invest / Observe / Reassess with a defensible, evidence-backed rationale.' },
-  { label: 'Report', desc: 'Export the IC memo, full report, signal register or one-pager.' },
+  { label: 'Signals', desc: 'Signal domains — led by Community, Trust, Funding and Programme Delivery — surface risks, opportunities, climate and impact.' },
+  { label: 'Decision', desc: 'A defensible, evidence-backed verdict in the language of your institution (capacity, performance, or investment).' },
+  { label: 'Report', desc: 'Export the capacity / performance review, full report, signal register or one-pager.' },
 ]
 
 // PRIMARY EXPERIENCE: NGO and Development Program reports prioritized for V1
@@ -105,9 +105,9 @@ const REPORT_KINDS = [
 ]
 
 const PRICING = [
-  { name: 'Starter', price: 'Free', detail: 'Run your first assessment. Limited documents per month.', cta: 'Start free' },
-  { name: 'Professional', price: '$49/mo', detail: 'Unlimited assessments, all signal domains, reports, Ask AI Analyst.', cta: 'Go Professional', featured: true },
-  { name: 'Enterprise', price: 'Custom', detail: 'Organizations, RBAC, audit logs, private workspace, donor templates.', cta: 'Talk to us' },
+  { name: 'Starter', price: '$0', detail: '3 assessments · basic reports · basic signals · Document Intelligence Mode. For students, researchers and small NGOs.', cta: 'Start free', href: '#upload' },
+  { name: 'Professional', price: '$49/mo', detail: 'Unlimited assessments, AI Analyst, Signals, Reports, assessment history, collaboration and priority support.', cta: 'Go Professional', href: '/pricing', featured: true },
+  { name: 'Enterprise', price: 'Custom', detail: 'Dedicated workspace, RBAC, audit logs, multiple organizations, API access and custom reports.', cta: 'See Enterprise', href: '/pricing' },
 ]
 
 // REDIRECT LOOP FIX (landing side): a per-mount ref resets every time the
@@ -134,7 +134,10 @@ function HomeInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { status: authStatus } = useSession()
-  const [assessmentType, setAssessmentType] = useState<EntityType>('startup')
+  const [assessmentType, setAssessmentType] = useState<EntityType>('ngo')
+  const [showAdvancedTypes, setShowAdvancedTypes] = useState<boolean>(
+    ADVANCED_INTAKE_ENTITY_TYPES.includes(assessmentType),
+  )
   const [files, setFiles] = useState<File[]>([])
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -390,7 +393,13 @@ function HomeInner() {
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Assessment Type</div>
                   {showEdit ? (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {INTAKE_ENTITY_TYPES.map(type => (
+                      {PRIMARY_INTAKE_ENTITY_TYPES.map(type => (
+                        <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
+                      ))}
+                      <button type="button" onClick={() => setShowAdvancedTypes(v => !v)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${ADVANCED_INTAKE_ENTITY_TYPES.includes(assessmentType) ? 'border-[#159A62] text-[#117A4B]' : 'border-dashed border-[#D0D5DD] text-[#667085]'} hover:border-[#159A62]`}>
+                        {showAdvancedTypes ? '−' : '+'} Advanced Assessment Types
+                      </button>
+                      {showAdvancedTypes && ADVANCED_INTAKE_ENTITY_TYPES.map(type => (
                         <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
                       ))}
                     </div>
@@ -573,10 +582,14 @@ function HomeInner() {
                 <h3 className="text-lg font-bold">{plan.name}</h3>
                 <div className="mt-2 text-2xl font-semibold">{plan.price}</div>
                 <p className="mt-3 text-sm leading-6 text-[#D0D5DD]">{plan.detail}</p>
-                <a href="#upload" className="mt-8 inline-block rounded-lg bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20">{plan.cta} →</a>
+                <a href={plan.href} className="mt-8 inline-block rounded-lg bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20">{plan.cta} →</a>
               </div>
             ))}
           </div>
+          <p className="mt-6 text-sm text-[#D0D5DD]">
+            Payments processed securely by PayChangu. Full plan details:{' '}
+            <Link href="/pricing" className="font-bold text-[#7BE0A9] hover:underline">Plans &amp; Pricing</Link>
+          </p>
         </div>
       </section>
 
@@ -592,7 +605,7 @@ function HomeInner() {
       <footer className="border-t border-[#EAECF0]">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between lg:px-10">
           <div className="flex items-center gap-3"><KulimaLogo variant="header" /><span>© 2026 Kulima FLEX</span></div>
-          <div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex">Workspace</Link></div>
+          <div className="flex gap-5"><Link href="/trust">Security</Link><Link href="/pricing">Pricing</Link><Link href="/dashboard">Dashboard</Link><Link href="/flex">Workspace</Link></div>
         </div>
       </footer>
     </main>

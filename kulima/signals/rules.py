@@ -436,6 +436,81 @@ def _community_impact_signals(case: Case) -> List[Signal]:
     return signals
 
 
+def _program_delivery_signals(case: Case) -> List[Signal]:
+    """Extract Programme Delivery Signals (PRIMARY customer domain for V1).
+
+    NGOs and development programmes are decided on whether they actually
+    deliver: workplans, milestones, logframe / results-framework targets,
+    theory of change and progress reporting. Uploaded documents are the
+    authoritative source (Source A); Tavily OSINT only corroborates.
+    """
+    doc_sources, web_sources, corpus = _gather_evidence_corpus(case)
+    signals: List[Signal] = []
+
+    delivery_terms = (
+        "workplan", "work plan", "milestone", "logframe", "logical framework",
+        "results framework", "theory of change", "indicator", "target",
+        "baseline", "endline", "deliverable", "implementation schedule",
+        "progress report", "activity", "output", "outcome", "disbursement",
+    )
+    found_doc = next((d for d in doc_sources if any(t in d["snippet"].lower() or t in d["title"].lower() for t in delivery_terms)), None)
+    found_web = next((w for w in web_sources if any(t in w["snippet"].lower() or t in w["title"].lower() for t in delivery_terms)), None)
+
+    if found_doc or found_web:
+        primary_ref = found_doc["ref"] if found_doc else found_web["ref"]
+        source_label = "uploaded primary document" if found_doc else "Tavily OSINT intelligence"
+        matched = [t for t in delivery_terms if t in (found_doc or found_web)["snippet"].lower()]
+        signals.append(
+            Signal(
+                id=f"{case.id}-delivery-progress",
+                case_id=case.id,
+                level=SignalLevel.HIGH if found_doc else SignalLevel.MEDIUM,
+                category=SignalCategory.PROGRAM_DELIVERY,
+                title="Programme Delivery Signal: documented workplan, milestones and results",
+                description=(
+                    f"Delivery architecture (milestones, targets, results indicators) is documented in {source_label}."
+                ),
+                direction="opportunity",
+                evidence_refs=[primary_ref],
+                evidence_summary=(
+                    f"Delivery markers detected: {', '.join(matched[:5]) or 'milestones / targets'} in {source_label}."
+                ),
+                recommended_action=(
+                    "Verify reported milestone achievement against the logframe targets and the underlying field data."
+                ),
+                time_horizon="short-term",
+                confidence=0.88 if found_doc else 0.74,
+                metadata={"domain": "Programme Delivery", "source_type": "document" if found_doc else "tavily"},
+            )
+        )
+    else:
+        signals.append(
+            Signal(
+                id=f"{case.id}-delivery-evidence-gap",
+                case_id=case.id,
+                level=SignalLevel.MEDIUM,
+                category=SignalCategory.PROGRAM_DELIVERY,
+                title="Programme Delivery Signal: no workplan or milestone evidence yet",
+                description=(
+                    "No workplan, milestone, logframe or results-framework evidence was detected in the "
+                    "corpus. Delivery capacity cannot be confirmed from the documents supplied."
+                ),
+                direction="risk",
+                evidence_refs=["EVIDENCE_CORPUS"],
+                evidence_summary=(
+                    f"No delivery markers found across {len(doc_sources)} document(s) and {len(web_sources)} external source(s)."
+                ),
+                recommended_action=(
+                    "Request the current workplan, logframe / results framework and the latest progress report before deciding."
+                ),
+                time_horizon="immediate",
+                confidence=0.68,
+                metadata={"domain": "Programme Delivery", "source_type": "gap"},
+            )
+        )
+    return signals
+
+
 def _market_signals(case: Case) -> List[Signal]:
     """Extract Market Signals from evidence corpus."""
     doc_sources, web_sources, corpus = _gather_evidence_corpus(case)
@@ -677,9 +752,9 @@ def generate_signals_from_case(
 ) -> List[Signal]:
     """Generate deterministic Signals from a Case + core OS outputs.
 
-    This function derives signals across the core domains: Trust, Risk,
-    Opportunity, Market, Funding, Competitive, Climate, Environmental,
-    Tourism, and Community Impact.
+    This function derives signals across the core domains: Community, Trust,
+    Funding, Programme Delivery, Risk, Opportunity, Market, Competitive,
+    Climate, Environmental and Tourism.
 
     Phase 3 (entity-aware intelligence): when the case payload carries an
     entity profile, entity-specific signal domains (e.g. Institutional
@@ -695,21 +770,74 @@ def generate_signals_from_case(
     signals.extend(_trust_signals(case, graph))
 
     # 2. Core domains: extracted from uploaded documents and Tavily OSINT research
+    # NGO/development-first: community, funding and programme delivery are the
+    # primary customer's decision drivers and are generated before the
+    # investment-shaped lenses (market, competitive).
     signals.extend(_domain_trust_signals(case, graph))
+    signals.extend(_community_impact_signals(case))
+    signals.extend(_funding_signals(case, ei))
+    signals.extend(_program_delivery_signals(case))
     signals.extend(_domain_risk_signals(case, ei))
     signals.extend(_opportunity_signals(case))
     signals.extend(_market_signals(case))
-    signals.extend(_funding_signals(case, ei))
     signals.extend(_competitive_signals(case))
     signals.extend(_climate_signals(case))
     signals.extend(_environmental_signals(case))
     signals.extend(_tourism_signals(case))
-    signals.extend(_community_impact_signals(case))
 
     # 3. Entity-aware domains (never replaces the universal set; extends it)
     signals.extend(_entity_profile_signals(case))
 
     return signals
+
+
+def _entity_domain_category(domain: str) -> SignalCategory:
+    """Fold an entity-specific signal domain into a dashboard domain.
+
+    Kept as an explicit table (instead of nested ternaries) so new entity
+    types can be expanded without touching the signal generator. Delivery-
+    shaped domains lead because NGOs and development programmes are the
+    primary customers; investment-shaped domains are retained for Startups.
+    """
+    name = (domain or "").strip().lower()
+
+    # Programme delivery: workplans, milestones, results, M&E quality.
+    if any(k in name for k in (
+        "program delivery", "program performance", "programme delivery",
+        "programme performance", "implementation readiness", "delivery capacity",
+        "monitoring capacity", "monitoring quality", "impact evidence",
+        "knowledge transfer",
+    )):
+        return SignalCategory.PROGRAM_DELIVERY
+
+    # Community reach and public value.
+    if any(k in name for k in ("community", "beneficiar", "public value")):
+        return SignalCategory.COMMUNITY_IMPACT
+
+    # Funding sustainability and donor base.
+    if any(k in name for k in ("funding", "grantmaking")):
+        return SignalCategory.FUNDING
+
+    # Institutional trust: governance, capacity, partnerships, research quality.
+    if any(k in name for k in (
+        "institutional capacity", "governance", "partnership", "research quality",
+    )):
+        return SignalCategory.TRUST
+
+    # Risk and compliance lenses.
+    if any(k in name for k in ("risk", "policy alignment", "safeguard")):
+        return SignalCategory.RISK
+
+    if "climate" in name:
+        return SignalCategory.CLIMATE
+
+    if any(k in name for k in ("tourism", "visitor", "destination")):
+        return SignalCategory.TOURISM
+
+    if any(k in name for k in ("market", "revenue", "investment readiness")):
+        return SignalCategory.MARKET
+
+    return SignalCategory.OPPORTUNITY
 
 
 def _entity_profile_signals(case: Case) -> List[Signal]:
@@ -762,20 +890,12 @@ def _entity_profile_signals(case: Case) -> List[Signal]:
                 id=f"{case.id}-entity-{domain.lower().replace(' ', '-')}",
                 case_id=case.id,
                 level=level,
-                category=SignalCategory.COMMUNITY_IMPACT if "Community" in domain else (
-                    SignalCategory.CLIMATE if "Climate" in domain else (
-                        SignalCategory.TOURISM if "Tourism" in domain or "Visitor" in domain or "Destination" in domain else (
-                            SignalCategory.FUNDING if "Funding" in domain else (
-                                SignalCategory.GOVERNANCE if domain in ("Governance", "Member Governance", "Institutional Capacity") else (
-                                    SignalCategory.MARKET if domain in ("Market Readiness", "Visitor Economy Signals") else (
-                                        SignalCategory.IMPACT if domain in ("Impact Evidence", "Program Performance", "Public Value", "Monitoring Capacity") else
-                                        SignalCategory.OPPORTUNITY
-                                    )
-                                )
-                            )
-                        )
-                    )
-                ),
+                # Entity domains fold into the dashboard domains so every one
+                # of them stays visible. Delivery-shaped domains (workplans,
+                # milestones, beneficiary reach, M&E quality) belong to
+                # Programme Delivery — the core domain for NGOs and
+                # development programmes.
+                category=_entity_domain_category(domain),
                 title=f"{domain}: " + (
                     f"documented in {source_label}" if hits else f"not yet evidenced — gap flagged"
                 ),

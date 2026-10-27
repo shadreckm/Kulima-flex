@@ -28,10 +28,13 @@ class SignalCategory(str, Enum):
     Categories encompass both the core assessment domains and foundational
     monitoring categories.
 
-    Display order (9 dashboard domains): Trust, Risk, Opportunity, Market,
-    Funding, Climate, Environment, Tourism, Community. COMPETITIVE is retained
-    as a signal category for backward compatibility and folds into the
-    Opportunity domain at display time.
+    Display order (dashboard domains, NGO/development-first): Community,
+    Trust, Funding, Programme Delivery, Risk, Opportunity, Climate,
+    Environment, Market, Tourism. COMPETITIVE is retained as a signal category
+    for backward compatibility and folds into the Opportunity domain at
+    display time. PROGRAM_DELIVERY is the NGO / development-programme core
+    domain (workplan, milestones, logframe, targets vs actuals) and absorbs
+    the OPERATIONAL and LEARNING monitoring categories at display time.
     """
 
     # Core Assessment Domains
@@ -45,6 +48,7 @@ class SignalCategory(str, Enum):
     ENVIRONMENTAL = "environmental"
     TOURISM = "tourism"
     COMMUNITY_IMPACT = "community_impact"
+    PROGRAM_DELIVERY = "program_delivery"
 
     # Legacy & Foundational Monitoring Categories
     GOVERNANCE = "governance"

@@ -78,6 +78,14 @@ def demo_mode_enabled() -> bool:
     return os.getenv("KULIMA_BILLING_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def link_autoconfirm_enabled() -> bool:
+    """Hosted payment links (pay.paychangu.com/SC-…) complete on PayChangu's page
+    and bounce the customer back with our redirect URL. When the API secret is not
+    configured, we trust that redirect and activate the plan immediately. With a
+    webhook secret configured the webhook stays authoritative either way."""
+    return os.getenv("KULIMA_BILLING_LINK_AUTOCONFIRM", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _sync_org_plan(org_id: str, plan_id: str) -> None:
     """Mirror the subscription plan onto organizations.plan (OrgContext source)."""
     try:

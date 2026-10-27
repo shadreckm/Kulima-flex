@@ -70,41 +70,50 @@ def highest_priority_signals(
 
 # ── Domain overview (score / summary / recommendation) ────────────────────
 #
-# The Signals dashboard displays nine core domains in a fixed order:
-# Trust, Risk, Opportunity, Market, Funding, Climate, Environment, Tourism,
-# Community. COMPETITIVE and the legacy monitoring categories are folded into
-# the closest core domain so no signal becomes invisible; categories with no
-# sensible home (e.g. LEARNING, INTERNAL) are excluded from the dashboard.
+# The Signals dashboard displays the core domains in a fixed, NGO-first order:
+# Community, Trust, Funding, Programme Delivery, Risk, Opportunity, Climate,
+# Environment, Market, Tourism. COMPETITIVE and the legacy monitoring
+# categories are folded into the closest core domain so no signal becomes
+# invisible; OPERATIONAL and LEARNING fold into Programme Delivery (delivery
+# of workplans, milestones and logframe results is what NGOs and development
+# programmes are being decided on).
+#
+# PRIMARY EXPERIENCE: the order below is what every Signals surface, the AI
+# Analyst context pack, and every exported report render. Secondary market
+# lenses (Market, Tourism) are kept for future expansion but placed last.
 
 DISPLAY_DOMAINS: tuple[SignalCategory, ...] = (
+    SignalCategory.COMMUNITY_IMPACT,
     SignalCategory.TRUST,
+    SignalCategory.FUNDING,
+    SignalCategory.PROGRAM_DELIVERY,
     SignalCategory.RISK,
     SignalCategory.OPPORTUNITY,
-    SignalCategory.MARKET,
-    SignalCategory.FUNDING,
     SignalCategory.CLIMATE,
     SignalCategory.ENVIRONMENTAL,
+    SignalCategory.MARKET,
     SignalCategory.TOURISM,
-    SignalCategory.COMMUNITY_IMPACT,
 )
 
 DOMAIN_LABELS: dict[SignalCategory, str] = {
+    SignalCategory.COMMUNITY_IMPACT: "Community",
     SignalCategory.TRUST: "Trust",
+    SignalCategory.FUNDING: "Funding",
+    SignalCategory.PROGRAM_DELIVERY: "Programme Delivery",
     SignalCategory.RISK: "Risk",
     SignalCategory.OPPORTUNITY: "Opportunity",
-    SignalCategory.MARKET: "Market",
-    SignalCategory.FUNDING: "Funding",
     SignalCategory.CLIMATE: "Climate",
     SignalCategory.ENVIRONMENTAL: "Environment",
+    SignalCategory.MARKET: "Market",
     SignalCategory.TOURISM: "Tourism",
-    SignalCategory.COMMUNITY_IMPACT: "Community",
 }
 
 DOMAIN_ALIASES: dict[SignalCategory, SignalCategory] = {
     SignalCategory.COMPETITIVE: SignalCategory.OPPORTUNITY,
     SignalCategory.GOVERNANCE: SignalCategory.RISK,
     SignalCategory.POLITICAL: SignalCategory.RISK,
-    SignalCategory.OPERATIONAL: SignalCategory.RISK,
+    SignalCategory.OPERATIONAL: SignalCategory.PROGRAM_DELIVERY,
+    SignalCategory.LEARNING: SignalCategory.PROGRAM_DELIVERY,
     SignalCategory.SAFEGUARDING: SignalCategory.RISK,
     SignalCategory.FINANCIAL: SignalCategory.FUNDING,
     SignalCategory.SOCIAL: SignalCategory.COMMUNITY_IMPACT,
@@ -113,7 +122,7 @@ DOMAIN_ALIASES: dict[SignalCategory, SignalCategory] = {
 
 
 def display_domain(category: SignalCategory) -> SignalCategory | None:
-    """Map a raw signal category to one of the nine dashboard domains."""
+    """Map a raw signal category to one of the dashboard domains."""
     if category in DISPLAY_DOMAINS:
         return category
     return DOMAIN_ALIASES.get(category)
@@ -172,7 +181,7 @@ def domain_recommendation(signals: Iterable[Signal]) -> str:
 
 
 def build_domain_overviews(signals: Iterable[Signal]) -> dict[str, dict]:
-    """Group signals into the nine display domains.
+    """Group signals into the dashboard domains, in NGO-first display order.
 
     Each domain entry carries ``score`` (0–100), ``summary``, and
     ``recommendation`` so the Signals dashboard can render every domain with

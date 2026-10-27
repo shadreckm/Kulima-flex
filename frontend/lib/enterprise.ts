@@ -121,7 +121,12 @@ export type BillingPlan = {
   planId: string
   name: string
   description: string
+  target: string
   monthlyPrice: number
+  priceLabel: string
+  isCustomPrice: boolean
+  isPaid: boolean
+  paymentLink: string
   currency: string
   assessmentQuota: number | null
   assessmentQuotaLabel: string
@@ -199,9 +204,10 @@ export function getBillingHistory(limit = 100): Promise<{ events: PaymentEventRe
 }
 
 export type CheckoutResult = {
-  // Live PayChangu checkout or demo-mode checkout:
+  // Live PayChangu checkout (hosted link or API), or demo-mode checkout:
   txRef?: string
   checkoutUrl?: string | null
+  paymentLink?: boolean
   demoMode?: boolean
   plan?: string
   amount?: number
@@ -214,6 +220,19 @@ export type CheckoutResult = {
 
 export function startCheckout(plan: string, opts: { returnUrl?: string; callbackUrl?: string } = {}): Promise<CheckoutResult> {
   return call('/api/v1/billing/checkout', jsonInit('POST', { plan, ...opts }), 'startCheckout')
+}
+
+export type LinkReturnResult = {
+  outcome: 'active' | 'pending' | 'failed' | 'cancelled'
+  planId?: string
+  message?: string
+  alreadyProcessed?: boolean
+  status: BillingStatusPayload
+}
+
+// Phase 4/5: finalize a PayChangu hosted-link payment once the customer is back.
+export function returnFromCheckout(txRef: string, result: 'completed' | 'pending' | 'failed' | 'cancelled' = 'completed'): Promise<LinkReturnResult> {
+  return call('/api/v1/billing/checkout/return', jsonInit('POST', { txRef, result }), 'returnFromCheckout')
 }
 
 export function confirmDemoCheckout(txRef: string, plan: string): Promise<{ status: string; planId: string; txRef: string }> {

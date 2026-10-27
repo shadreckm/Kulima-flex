@@ -279,9 +279,9 @@ def test_nine_domain_overviews_with_score_summary_recommendation():
 
     overviews = build_domain_overviews(signals)
 
-    # Exactly the nine dashboard domains, in display order.
+    # Exactly the dashboard domains, in NGO-first display order.
     assert list(overviews.keys()) == [d.value for d in DISPLAY_DOMAINS]
-    assert len(overviews) == 9
+    assert len(overviews) == len(DISPLAY_DOMAINS)
 
     for entry in overviews.values():
         assert isinstance(entry["score"], int) and 0 <= entry["score"] <= 100
@@ -323,6 +323,7 @@ def test_decision_view_consumes_all_domains_and_evidence():
         _signal(SignalCategory.ENVIRONMENTAL, SignalLevel.MEDIUM, "risk"),
         _signal(SignalCategory.TOURISM, SignalLevel.MEDIUM, "opportunity"),
         _signal(SignalCategory.COMMUNITY_IMPACT, SignalLevel.HIGH, "opportunity"),
+        _signal(SignalCategory.PROGRAM_DELIVERY, SignalLevel.HIGH, "opportunity"),
     ]
 
     view = build_decision_view(signals, evidence_score=80.0, trust_score=75.0)

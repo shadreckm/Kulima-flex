@@ -337,7 +337,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <p className="text-xs text-slate-400">
-            Kulima FLEX is a white-label evidence intelligence platform for investment committees, development finance institutions, NGOs, accelerators, and government program evaluators.
+            Kulima FLEX is a white-label evidence intelligence platform for NGOs, development programmes and donors, government programme evaluators, development finance institutions, and investment committees.
           </p>
         </div>
       </section>

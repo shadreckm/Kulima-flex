@@ -54,6 +54,8 @@ services:
         value: "false" # flip to true when ready to enforce plan quotas
       - key: KULIMA_BILLING_DEMO_MODE
         value: "false"
+      - key: KULIMA_BILLING_LINK_AUTOCONFIRM
+        value: "true" # activate plan when customer returns from a PayChangu hosted link
       - key: KULIMA_GRACE_PERIOD_DAYS
         value: "7"
       - key: KULIMA_PLAN_CURRENCY
@@ -72,6 +74,10 @@ services:
         value: USD
       - key: PAYCHANGU_API_BASE
         sync: false
+      - key: PAYCHANGU_LINK_PRO
+        value: https://pay.paychangu.com/SC-GDDYA0
+      - key: PAYCHANGU_LINK_ENTERPRISE
+        value: https://pay.paychangu.com/SC-MBXJF6
       # Supabase readiness (disabled by default; enable only after migration validation)
       - key: SUPABASE_URL
         sync: false

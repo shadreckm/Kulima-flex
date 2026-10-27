@@ -113,7 +113,7 @@ function ResearchPageInner() {
       startupName={data?.displayEntity || data?.organizationName || data?.startupName}
       trustScore={data?.trustScore}
       assessmentCtx={data ? {
-        entityType: 'startup',
+        entityType: (data.assessmentType as any) || 'ngo',
         entityLabel: data.assessmentTypeLabel || 'Assessment',
         entityName: data.displayEntity || data.organizationName || data.startupName || '',
         founderOrLead: data.founderName || '',
