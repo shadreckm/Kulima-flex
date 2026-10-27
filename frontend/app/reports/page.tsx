@@ -29,8 +29,9 @@ type ReportDef = {
 // Venture-shaped entity types keep the Investment Committee framing; every
 // other type (NGO, Development/Government Programme, Tourism, Research) is
 // reviewed with institutional wording. Nothing is removed — only reframed.
+// NOTE: must stay non-exported — Next.js rejects unknown named exports on page files.
 const VENTURE_TYPES = ['startup', 'social_enterprise', 'cooperative', 'accelerator']
-export function isVentureType(entityType?: string): boolean {
+function isVentureType(entityType?: string): boolean {
   return VENTURE_TYPES.includes((entityType || '').toLowerCase())
 }
 
