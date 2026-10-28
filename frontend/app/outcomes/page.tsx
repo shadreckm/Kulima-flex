@@ -11,6 +11,7 @@ import {
   getOutcome,
   getOutcomeIntelligence,
   isDemoRunRecord,
+  outcomeReviewDownloadHref,
   saveFollowupAnswer,
   saveOutcome,
   type DecisionRecord,
@@ -52,6 +53,30 @@ function _daysSince(iso: string | null): number | null {
   const t = new Date(iso).getTime()
   if (Number.isNaN(t)) return null
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
+}
+
+/**
+ * Verdict colouring for the registry. Each assessment profile words its verdict
+ * differently (NGO → Strong Capacity, Programme → Ready, Government → Effective,
+ * Tourism → Ready for Growth, Startup → Invest), so the colour follows the
+ * meaning of the verdict — matching on the startup spelling alone would render a
+ * positive NGO outcome red.
+ */
+function verdictBadge(recommendation: string | null | undefined): string {
+  const v = String(recommendation || '').toLowerCase()
+  if (!v) return 'bg-slate-100 text-slate-600 border border-slate-300'
+  if (v.includes('co-invest') || v.includes('follow-on') || v.includes('observe') ||
+      v.includes('review required') || v.includes('moderate') || v.includes('partial')) {
+    return 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]'
+  }
+  if (v.includes('pass') || v.includes('weak') || v.includes('not ready') || v.includes('high risk')) {
+    return 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
+  }
+  if (v.includes('invest') || v.includes('ready') || v.includes('capacity') ||
+      v.includes('effective') || v.includes('strong') || v.includes('exemplary')) {
+    return 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]'
+  }
+  return 'bg-slate-100 text-slate-600 border border-slate-300'
 }
 
 function FollowUpCard({ record, onAnswered }: {
@@ -357,20 +382,28 @@ export default function OutcomesPage() {
 
   const calibrationBins: any[] = intelligence?.calibration?.calibration_bins || []
   const mealsData: any[] = useMemo(() => {
-    // Derive MEAL-like indicators from decisions corpus
+    // Derive MEAL-like indicators from the decisions corpus. Counts come from
+    // recorded outcomes only; an indicator with no data reads null and renders
+    // as NO DATA. Targets belong to the institution's own logframe, so the
+    // platform never invents one here.
     const total = decisions.length
+    const rated = decisions.filter(d => d.outcome_status && d.outcome_status !== 'Pending').length
     const successful = decisions.filter(d => d.outcome_status === 'Successful').length
     const partSuccessful = decisions.filter(d => d.outcome_status === 'Partially Successful').length
     const unsuccessful = decisions.filter(d => d.outcome_status === 'Unsuccessful').length
-    const pending = decisions.filter(d => !d.outcome_status || d.outcome_status === 'Pending').length
-    const avgTrust = total > 0 ? Math.round(decisions.reduce((s, d) => s + (d.trust_score || 0), 0) / total) : 0
+    const unrated = total - rated
+    // Average only over decisions that actually carry a trust score — treating a
+    // missing score as zero would depress the average with an invented figure.
+    const scored = decisions.map(d => Number(d.trust_score)).filter(n => Number.isFinite(n) && n > 0)
+    const avgTrust = scored.length > 0 ? Math.round(scored.reduce((s, n) => s + n, 0) / scored.length) : null
+    const noOutcomes = rated === 0 ? 'INSUFFICIENT_EVIDENCE' : ''
     return [
-      { id: 'dec_total', name: 'Total Decisions Made', target: 10, actual: total, unit: 'decisions', status: total >= 10 ? 'ON_TRACK' : 'AT_RISK' },
-      { id: 'dec_success', name: 'Successful Outcomes', target: total, actual: successful, unit: 'deals', status: successful > 0 ? 'ON_TRACK' : 'INSUFFICIENT_EVIDENCE' },
-      { id: 'dec_partial', name: 'Partially Successful', target: 0, actual: partSuccessful, unit: 'deals', status: 'AT_RISK' },
-      { id: 'dec_fail', name: 'Unsuccessful Outcomes', target: 0, actual: unsuccessful, unit: 'deals', status: unsuccessful === 0 ? 'ON_TRACK' : 'OFF_TRACK' },
-      { id: 'dec_pending', name: 'Pending / In-Progress Decisions', target: 0, actual: pending, unit: 'decisions', status: pending > 5 ? 'AT_RISK' : 'ON_TRACK' },
-      { id: 'avg_trust', name: 'Average Trust Score at Decision', target: 80, actual: avgTrust, unit: '/100', status: avgTrust >= 80 ? 'ON_TRACK' : avgTrust >= 60 ? 'AT_RISK' : 'OFF_TRACK' },
+      { id: 'dec_total', name: 'Decisions recorded', target: null, actual: total, unit: '', status: total > 0 ? 'ON_TRACK' : 'INSUFFICIENT_EVIDENCE' },
+      { id: 'dec_success', name: 'Outcomes rated successful', target: null, actual: successful, unit: '', status: noOutcomes || (successful > 0 ? 'ON_TRACK' : 'OFF_TRACK') },
+      { id: 'dec_partial', name: 'Outcomes rated partially successful', target: null, actual: partSuccessful, unit: '', status: noOutcomes || (partSuccessful > 0 ? 'AT_RISK' : 'ON_TRACK') },
+      { id: 'dec_fail', name: 'Outcomes rated unsuccessful', target: null, actual: unsuccessful, unit: '', status: noOutcomes || (unsuccessful === 0 ? 'ON_TRACK' : 'OFF_TRACK') },
+      { id: 'dec_pending', name: 'Decisions with no outcome recorded yet', target: null, actual: unrated, unit: '', status: total === 0 ? 'INSUFFICIENT_EVIDENCE' : unrated > 0 ? 'AT_RISK' : 'ON_TRACK' },
+      { id: 'avg_trust', name: 'Average trust score at decision', target: null, actual: avgTrust, unit: '/100', status: avgTrust == null ? 'INSUFFICIENT_EVIDENCE' : avgTrust >= 80 ? 'ON_TRACK' : avgTrust >= 60 ? 'AT_RISK' : 'OFF_TRACK' },
     ]
   }, [decisions])
 
@@ -378,7 +411,7 @@ export default function OutcomesPage() {
     {
       stage: 'Information',
       svgPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
-      description: 'Raw data, pitch documents, OSINT sources collected per entity.',
+      description: 'Reports, programme documents, surveys and public sources collected for each entity.',
     },
     {
       stage: 'Evidence',
@@ -545,7 +578,7 @@ export default function OutcomesPage() {
 
           {decisions.length === 0 && !loading ? (
             <div className="p-8 text-center bg-white rounded-[12px] border border-dashed border-[#DDE6F0] text-slate-500 text-sm font-medium">
-              No decisions recorded yet. Run a venture evaluation to populate the Decision Registry.
+              No decisions recorded yet. Complete an assessment and its decision will appear here.
             </div>
           ) : null}
 
@@ -564,19 +597,23 @@ export default function OutcomesPage() {
                     <span className="text-xs font-mono text-slate-400 shrink-0">#{runId}</span>
                     <div className="min-w-0">
                       <div className="text-sm font-extrabold text-slate-900 truncate">{d.startup_name}</div>
-                      <div className="text-xs text-slate-500 truncate">{d.founder_name} · {new Date(d.created_at).toLocaleDateString()}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {[d.founder_name ? `Lead: ${d.founder_name}` : null,
+                          d.created_at && !Number.isNaN(new Date(d.created_at).getTime())
+                            ? new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : 'Date not recorded'].filter(Boolean).join(' · ')}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
-                      d.recommendation === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-                      d.recommendation === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
-                      'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
-                    }`}>
-                      {d.recommendation || 'OBSERVE'}
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${verdictBadge(d.recommendation)}`}>
+                      {d.recommendation || 'Decision pending'}
                     </span>
-                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${OUTCOME_COLORS[d.outcome_status || 'Pending'] || OUTCOME_COLORS['Pending']}`}>
-                      {d.outcome_status || 'Pending'}
+                    <span
+                      className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${OUTCOME_COLORS[d.outcome_status || 'Pending'] || OUTCOME_COLORS['Pending']}`}
+                      title="Outcome status: recorded only once someone closes the loop on this decision. Nothing here is estimated."
+                    >
+                      {d.outcome_status || 'No Outcome Recorded'}
                     </span>
                     {d.followup_status === 'answered' ? (
                       <span
@@ -586,7 +623,7 @@ export default function OutcomesPage() {
                         Follow-up ✓
                       </span>
                     ) : null}
-                    <TrustGauge score={d.trust_score ?? 0} size="sm" showLabel={false} />
+                    <TrustGauge score={d.trust_score ?? null} size="sm" showLabel={false} />
                     <svg className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
@@ -683,17 +720,30 @@ export default function OutcomesPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleSave(runId)}
-                      disabled={savingId === runId}
-                      className={`px-5 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider transition shadow-sm ${
-                        savingId === runId
-                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                          : 'bg-[#0B5D3B] hover:bg-[#08482E] text-white'
-                      }`}
-                    >
-                      {savingId === runId ? 'Saving…' : 'Save Outcome & Lessons'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={() => handleSave(runId)}
+                        disabled={savingId === runId}
+                        className={`px-5 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider transition shadow-sm ${
+                          savingId === runId
+                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                            : 'bg-[#0B5D3B] hover:bg-[#08482E] text-white'
+                        }`}
+                      >
+                        {savingId === runId ? 'Saving…' : 'Save Outcome & Lessons'}
+                      </button>
+                      {/* The Outcome Review Report exists only once an outcome has
+                          been rated — before that there would be nothing to review. */}
+                      {d.outcome_status && d.outcome_status !== 'Pending' ? (
+                        <a
+                          href={outcomeReviewDownloadHref(runId, 'pdf')}
+                          className="px-4 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider border border-[#DDE6F0] bg-white text-slate-700 hover:border-[#0B5D3B] hover:text-[#0B5D3B] transition"
+                          title="Outcome Review Report: the recommendation, the decision taken, what happened, and the lessons recorded here."
+                        >
+                          ↓ Outcome Review Report
+                        </a>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -705,17 +755,28 @@ export default function OutcomesPage() {
       {/* Tab: Outcome Intelligence */}
       {activeTab === 'intelligence' && intelligence ? (
         <section className="space-y-6">
-          {/* Top Accuracy Cards */}
+          {/* Top accuracy cards — every figure carries its own definition. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Total Decisions', value: intelligence.total_decisions, suffix: '', color: 'text-slate-900' },
-              { label: 'Completed Outcomes', value: intelligence.completed_outcomes, suffix: '', color: 'text-[#004085]' },
-              { label: 'Recommendation Accuracy', value: intelligence.completed_outcomes > 0 ? `${intelligence.recommendation_accuracy}%` : 'INSUFFICIENT EVIDENCE', suffix: '', color: 'text-[#027A48]' },
-              { label: 'Trust Accuracy', value: intelligence.completed_outcomes > 0 ? `${intelligence.trust_accuracy}%` : 'INSUFFICIENT EVIDENCE', suffix: '', color: 'text-[#0B5D3B]' },
+              { label: 'Decisions Recorded', value: String(intelligence.total_decisions), hint: 'Every decision written in this workspace, whether or not an outcome has been recorded against it yet.', color: 'text-slate-900' },
+              { label: 'Outcomes Recorded', value: String(intelligence.completed_outcomes), hint: 'Decisions where someone has closed the loop and recorded what actually happened.', color: 'text-[#004085]' },
+              {
+                label: 'Recorded Outcomes That Worked',
+                value: intelligence.recommendation_accuracy != null ? `${intelligence.recommendation_accuracy}%` : 'NOT MEASURED',
+                hint: 'Of the decisions with a recorded outcome, how many were logged Successful or Partially Successful. Nothing is estimated: with no recorded outcomes this reads NOT MEASURED.',
+                color: 'text-[#027A48]',
+              },
+              {
+                label: 'High-Trust Outcomes That Worked',
+                value: intelligence.trust_accuracy != null ? `${intelligence.trust_accuracy}%` : 'NOT MEASURED',
+                hint: 'Success rate of the High Trust band (trust score 80–100) among recorded outcomes. This is the number that tests the Trust Layer itself — it stays unmeasured until real outcomes accumulate.',
+                color: 'text-[#0B5D3B]',
+              },
             ].map(card => (
-              <div key={card.label} className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{card.label}</div>
+              <div key={card.label} className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas" title={card.hint}>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">{card.label}</div>
                 <div className={`text-xl font-black mt-1 ${card.color}`}>{card.value}</div>
+                <div className="text-[10px] text-slate-400 mt-1.5 leading-snug">{card.hint}</div>
               </div>
             ))}
           </div>
@@ -724,18 +785,23 @@ export default function OutcomesPage() {
           <div className="bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas overflow-hidden">
             <div className="px-5 py-4 border-b border-[#DDE6F0]">
               <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">Completed Outcome Records</h2>
+              <p className="text-[11px] text-slate-500 mt-1">What was recommended, the trust score behind it, and what was recorded as having happened.</p>
             </div>
             <div className="divide-y divide-[#DDE6F0]">
               {intelligence.decisions?.filter((d: any) => d.outcome_status && d.outcome_status !== 'Pending').length === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-sm italic">
-                  INSUFFICIENT EVIDENCE: No completed outcomes yet. Update decision statuses in the Decision History tab.
+                  INSUFFICIENT EVIDENCE: No outcomes have been recorded yet. Record one against a decision in the Decision Registry and it appears here.
                 </div>
               ) : intelligence.decisions?.filter((d: any) => d.outcome_status && d.outcome_status !== 'Pending').map((d: any) => (
                 <div key={d.id} className="px-5 py-4 flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-slate-900">{d.startup_name}</div>
-                    <div className="text-xs text-slate-500">Prediction: <strong>{d.recommendation}</strong> · Score: <strong>{d.trust_score}/100</strong></div>
-                    {d.what_happened ? <div className="text-xs text-slate-600 mt-1 italic">"{d.what_happened}"</div> : null}
+                    <div className="text-xs text-slate-500">
+                      Recommendation: <strong>{d.recommendation || 'not recorded'}</strong>
+                      {' '}· Trust at decision time:{' '}
+                      <strong>{d.trust_score != null ? `${d.trust_score}/100` : 'not scored'}</strong>
+                    </div>
+                    {d.what_happened ? <div className="text-xs text-slate-600 mt-1 italic">&ldquo;{d.what_happened}&rdquo;</div> : null}
                   </div>
                   <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider shrink-0 ${OUTCOME_COLORS[d.outcome_status] || OUTCOME_COLORS['Pending']}`}>
                     {d.outcome_status}
@@ -753,8 +819,14 @@ export default function OutcomesPage() {
       {activeTab === 'calibration' ? (
         <section className="space-y-6">
           <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 mb-1">Trust Score Predictive Analysis</h2>
-            <p className="text-xs text-slate-600 mb-4">Measures whether trust scores issued at decision time accurately predicted real-world outcomes.</p>
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 mb-1">Did Our Trust Scores Predict What Happened?</h2>
+            <p className="text-xs text-slate-600 mb-1">
+              Decisions are grouped by the trust score they were given, then compared with the outcome actually recorded for each one.
+              &quot;Successful&quot; means an outcome was recorded as Successful or Partially Successful — nothing is inferred or projected.
+            </p>
+            <p className="text-[11px] text-slate-400 mb-4">
+              A band needs roughly ten completed outcomes before its rate describes a pattern; below that it is a small-sample observation only.
+            </p>
 
             {intelligence?.calibration?.calibration_summary ? (
               <div className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0] text-sm font-medium text-slate-700 mb-4">
@@ -768,8 +840,9 @@ export default function OutcomesPage() {
                 const isPredictive = bin.is_predictive as boolean
                 // Calibration is only meaningful once outcomes are COMPLETED —
                 // decisions without outcomes must read NO DATA, never a rate.
-                const hasOutcomes = (bin.completed_count ?? bin.decision_count ?? 0) > 0
-                const barWidth = hasOutcomes && rate > 0 ? `${rate}%` : '5%'
+                const completed = bin.completed_count ?? 0
+                const hasOutcomes = completed > 0
+                const barWidth = rate > 0 ? `${rate}%` : '5%'
                 const barColor = isPredictive ? 'bg-[#12B76A]' : 'bg-[#F04438]'
                 return (
                   <div key={bin.tier} className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0]">
@@ -777,21 +850,27 @@ export default function OutcomesPage() {
                       <div>
                         <span className="text-xs font-extrabold text-slate-900">{bin.tier}</span>
                         <span className="text-[11px] text-slate-500 ml-2">
-                          {bin.decision_count} decisions · {bin.successful_count} successful
+                          {bin.decision_count} decisions · {completed} with a recorded outcome · {bin.successful_count} successful
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs font-black ${isPredictive ? 'text-[#027A48]' : 'text-[#B42318]'}`}>
-                          {!hasOutcomes ? 'INSUFFICIENT EVIDENCE' : `${rate}% success rate`}
+                        <span className={`text-xs font-black ${!hasOutcomes ? 'text-slate-500' : isPredictive ? 'text-[#027A48]' : 'text-[#B42318]'}`}>
+                          {!hasOutcomes ? 'NO COMPLETED OUTCOMES' : `${rate}% success rate`}
                         </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${isPredictive ? 'bg-[#ECFDF3] text-[#027A48]' : 'bg-[#FEF3F2] text-[#B42318]'}`}>
-                          {!hasOutcomes ? 'NO DATA' : isPredictive ? 'PREDICTIVE' : 'NOT PREDICTIVE'}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${!hasOutcomes ? 'bg-slate-100 text-slate-600 border border-slate-200' : isPredictive ? 'bg-[#ECFDF3] text-[#027A48]' : 'bg-[#FEF3F2] text-[#B42318]'}`}>
+                          {!hasOutcomes ? 'NOT MEASURED' : isPredictive ? 'PREDICTIVE' : 'NOT PREDICTIVE'}
                         </span>
                       </div>
                     </div>
-                    <div className="w-full bg-[#DDE6F0] rounded-full h-2">
-                      <div className={`${barColor} h-2 rounded-full transition-all duration-500`} style={{ width: barWidth }} />
-                    </div>
+                    {hasOutcomes ? (
+                      <div className="w-full bg-[#DDE6F0] rounded-full h-2">
+                        <div className={`${barColor} h-2 rounded-full transition-all duration-500`} style={{ width: barWidth }} />
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 italic">
+                        No bar is drawn: this band has no recorded outcomes yet, so there is nothing to plot.
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -799,7 +878,7 @@ export default function OutcomesPage() {
 
             {calibrationBins.every((b: any) => (b.completed_count ?? b.decision_count ?? 0) === 0) ? (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-[10px] text-xs font-medium text-amber-800">
-                INSUFFICIENT EVIDENCE: Update outcome statuses for completed decisions to generate trust calibration data.
+                INSUFFICIENT EVIDENCE: No outcomes have been recorded yet, so trust calibration cannot be measured. Record outcomes against completed decisions and this analysis fills itself in.
               </div>
             ) : null}
           </div>
@@ -811,7 +890,7 @@ export default function OutcomesPage() {
         <section className="space-y-6">
           <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
             <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 mb-1">MEAL Framework Dashboard</h2>
-            <p className="text-xs text-slate-600 mb-4">Monitoring, Evaluation, Accountability & Learning — computed from real decision and outcome data only.</p>
+            <p className="text-xs text-slate-600 mb-4">Monitoring, Evaluation, Accountability &amp; Learning — computed from real decision and outcome data only.</p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -826,7 +905,9 @@ export default function OutcomesPage() {
                 </thead>
                 <tbody className="divide-y divide-[#DDE6F0]">
                   {mealsData.map(m => {
-                    const variance = m.actual != null ? m.actual - m.target : null
+                    // Variance only exists against a target the institution set;
+                    // without one it reads '—' rather than an implied judgement.
+                    const variance = m.actual != null && m.target != null ? m.actual - m.target : null
                     const statusColors: Record<string, string> = {
                       'ON_TRACK': 'text-[#027A48] bg-[#ECFDF3]',
                       'AT_RISK': 'text-[#B54708] bg-[#FFFAEB]',
@@ -836,11 +917,13 @@ export default function OutcomesPage() {
                     return (
                       <tr key={m.id} className="hover:bg-[#F5F8FC]">
                         <td className="py-3 px-3 font-medium text-slate-900">{m.name}</td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">{m.target}{m.unit}</td>
-                        <td className="py-3 px-3 text-right font-bold font-mono text-slate-900">
-                          {m.actual != null ? `${m.actual}${m.unit}` : '—'}
+                        <td className="py-3 px-3 text-right font-mono text-slate-500">
+                          {m.target != null ? `${m.target}${m.unit}` : 'not set'}
                         </td>
-                        <td className={`py-3 px-3 text-right font-mono ${variance != null && variance >= 0 ? 'text-[#027A48]' : 'text-[#B42318]'}`}>
+                        <td className="py-3 px-3 text-right font-bold font-mono text-slate-900">
+                          {m.actual != null ? `${m.actual}${m.unit}` : 'NO DATA'}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-mono ${variance != null && variance >= 0 ? 'text-[#027A48]' : 'text-slate-400'}`}>
                           {variance != null ? (variance >= 0 ? `+${variance}` : `${variance}`) : '—'}
                         </td>
                         <td className="py-3 px-3 text-right">
@@ -854,6 +937,12 @@ export default function OutcomesPage() {
                 </tbody>
               </table>
             </div>
+            <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
+              Every figure above is counted from recorded decisions and recorded outcomes — nothing is projected.
+              <strong className="font-bold text-slate-700"> Target</strong> reads <em>not set</em> because delivery targets
+              belong to your logframe, not to the platform; statuses compare what happened against what was rated,
+              and show <em>insufficient evidence</em> until outcomes are recorded.
+            </p>
           </div>
         </section>
       ) : null}

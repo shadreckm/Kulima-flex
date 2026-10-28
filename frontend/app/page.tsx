@@ -7,14 +7,15 @@ import { useSession } from 'next-auth/react'
 import KulimaLogo from '../components/KulimaLogo/KulimaLogo'
 import UserMenu from '../components/UserMenu/UserMenu'
 import { saveUseCase } from '../lib/use-case-store'
-import { PRIMARY_INTAKE_ENTITY_TYPES, ADVANCED_INTAKE_ENTITY_TYPES, entityToAssessmentType, type EntityType } from '../lib/entity-types'
+import { PRIMARY_INTAKE_ENTITY_TYPES, ADVANCED_INTAKE_ENTITY_TYPES, ENTITY_CONFIGS, entityToAssessmentType, getEntityConfig, type EntityType } from '../lib/entity-types'
 import { clearIntakeDraft, loadIntakeDraft, saveIntakeContext, saveIntakeDraft, type AssessmentContext } from '../lib/assessment-store'
 import * as api from '../lib/api'
 import type { AssessmentContextPayload } from '../lib/api'
 
-const TYPE_LABELS: Record<EntityType, string> = {
-  ngo: 'NGO', development_program: 'Development Programme', government_program: 'Government Programme', tourism_sme: 'Tourism SME', startup: 'Startup', accelerator: 'Accelerator',
-}
+/** One vocabulary for assessment types everywhere: lib/entity-types is the source. */
+const TYPE_LABELS = Object.fromEntries(
+  ENTITY_CONFIGS.map(c => [c.type, c.label]),
+) as Record<EntityType, string>
 
 /** Entity-aware form copy: placeholders change with the selected assessment type. */
 // PRIMARY EXPERIENCE: NGO and Development Program placeholders prioritized for V1
@@ -29,23 +30,27 @@ const TYPE_PLACEHOLDERS: Record<EntityType, { organization: string; lead: string
 
 const FILE_TYPES = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'CSV', 'TXT']
 
-// PRIMARY EXPERIENCE: NGO and Development Program pipeline language for V1
+// The official positioning chain, in order. Every step below is something the
+// product actually does today — this is a description of the existing pipeline,
+// not a promise of future capability.
 const PIPELINE = [
-  { key: 'info', label: 'Information', detail: 'Reports, budgets, evaluations, policies' },
-  { key: 'evidence', label: 'Evidence', detail: 'Claims extracted and structured' },
-  { key: 'trust', label: 'Trust', detail: 'Source reliability scored 0–100' },
-  { key: 'signals', label: 'Signals', detail: 'Risk, opportunity, community, climate' },
-  { key: 'decision', label: 'Decision', detail: 'Approve / Reassess / Reject + rationale' },
+  { key: 'info', label: 'Information', detail: 'Reports, budgets, evaluations, policies, M&E studies' },
+  { key: 'evidence', label: 'Evidence', detail: 'Every claim extracted and tied to its source page' },
+  { key: 'trust', label: 'Trust', detail: 'Source reliability, verification and contradictions' },
+  { key: 'signals', label: 'Signals', detail: 'Performance, risk, capacity and community impact' },
+  { key: 'decision', label: 'Decisions', detail: 'Recommendation, rationale, confidence, next action' },
+  { key: 'reports', label: 'Reports', detail: 'The review your board, donor or committee receives' },
+  { key: 'action', label: 'Action', detail: 'Follow-up captured — what actually changed' },
 ]
 
 const PIPELINE_CARDS = [
-  { label: 'Documents Uploaded', icon: '📄' },
-  { label: 'Entities Extracted', icon: '🏛️' },
-  { label: 'Evidence Built', icon: '🧱' },
-  { label: 'Research Complete', icon: '🌐' },
-  { label: 'Signals Generated', icon: '⚡' },
-  { label: 'Decision Ready', icon: '🎯' },
-  { label: 'Report Ready', icon: '📑' },
+  { label: 'Documents uploaded', icon: '📄' },
+  { label: 'Claims extracted', icon: '🏛️' },
+  { label: 'Evidence structured', icon: '🧱' },
+  { label: 'Research complete', icon: '🌐' },
+  { label: 'Signals generated', icon: '⚡' },
+  { label: 'Decision ready', icon: '🎯' },
+  { label: 'Report ready', icon: '📑' },
 ]
 
 // PRIMARY EXPERIENCE: NGO and Development Program signal domains prioritized for V1
@@ -59,49 +64,58 @@ const SIGNAL_DOMAINS = [
   { label: 'Environment', icon: '🌿', desc: 'Environmental compliance and sustainability' },
   // Secondary market signals (kept but deprioritized in order)
   { label: 'Market', icon: '📈', desc: 'Size, competition, positioning' },
-  { label: 'Tourism', icon: '�', desc: 'Destination impact and visitor economy' },
+  { label: 'Tourism', icon: '🧭', desc: 'Destination impact and visitor economy' },
 ]
 
-// PRIMARY EXPERIENCE: NGO and Development Program use cases prioritized for V1
+// Every use case names the decision it serves, not the technology behind it.
+// PRIMARY EXPERIENCE: NGO and Development Programme work first; secondary
+// markets stay supported but are listed last.
 const USE_CASES = [
-  { title: 'NGO Programme Review', desc: 'Verify impact claims across donor reports and field data before the board sees them.' },
-  { title: 'Development Programme Performance', desc: 'Turn monitoring data and theory-of-change documents into decision-ready evidence.' },
-  { title: 'Monitoring & Evaluation Review', desc: 'Corroborate beneficiary outcomes against independent research intelligence.' },
-  { title: 'Institutional Capacity Assessment', desc: 'Assess organizational readiness, financial health, and program delivery capacity.' },
-  { title: 'Evidence & Trust Report', desc: 'Extract and verify claims from proposals, reports, and evaluations with source attribution.' },
-  { title: 'Government Initiative Assessment', desc: 'Assess budget allocation, implementation progress and policy alignment in one workspace.' },
+  { title: 'NGO Programme Review', desc: 'Verify impact claims across donor reports and field data before the board sees them.', decision: 'Continue, reshape or close a programme' },
+  { title: 'Development Programme Performance', desc: 'Turn monitoring data and theory-of-change documents into decision-ready evidence.', decision: 'Whether the results chain is holding' },
+  { title: 'Monitoring & Evaluation Review', desc: 'Corroborate beneficiary outcomes against independent research intelligence.', decision: 'Which results can be reported to the donor' },
+  { title: 'Institutional Capacity Assessment', desc: 'Assess organizational readiness, financial health and programme delivery capacity.', decision: 'Where to invest in institutional capacity' },
+  { title: 'Government Programme Governance', desc: 'Assess budget allocation, implementation progress and policy alignment in one workspace.', decision: 'Whether public funds are reaching beneficiaries' },
+  { title: 'Evidence & Donor Assurance', desc: 'Extract and verify claims from proposals, reports and evaluations with source attribution.', decision: 'Whether a claim can be defended in an audit' },
   // Secondary markets (kept but deprioritized in order)
-  { title: 'Tourism Investment Readiness', desc: 'Score destination businesses on trust, sustainability and visitor-economy signals.' },
-  { title: 'Startup Readiness', desc: 'Evidence-based investment screening — trust score, risk register and IC memo.' },
+  { title: 'Tourism Enterprise Resilience', desc: 'Review destination businesses on trust, sustainability and visitor-economy signals.', decision: 'Whether the enterprise can absorb climate and season shocks' },
+  { title: 'Startup Investment Screening', desc: 'Evidence-based screening — trust score, risk register and committee memo.', decision: 'Fund, follow on, or pass' },
 ]
 
-const AFTER = ['Evidence', 'Trust', 'Signals', 'Decisions', 'Reports']
+/**
+ * Phase 2 — intake clarity lives in lib/entity-types (decisionQuestion +
+ * reportTitle) so the landing page, the workspace and the reports agree.
+ */
+
+const AFTER = ['Evidence', 'Trust', 'Signals', 'Decisions', 'Reports', 'Action']
 
 /** P8: post-upload journey — replaces the old competitor-comparison table. */
 const POST_UPLOAD_FLOW = [
   { label: 'Documents', desc: 'You upload PDF, DOCX, PPTX, XLSX, CSV or TXT files — one or many.' },
-  { label: 'Evidence', desc: 'Every claim is extracted, structured and linked to its source page.' },
-  { label: 'Trust', desc: 'Each source is reliability-scored 0–100 across four factors.' },
+  { label: 'Evidence', desc: 'Every claim is extracted, structured and linked to its source document.' },
+  { label: 'Trust', desc: 'Each source is reliability-scored 0–100 across four factors, with contradictions surfaced.' },
   { label: 'Signals', desc: 'Signal domains — led by Community, Trust, Funding and Programme Delivery — surface risks, opportunities, climate and impact.' },
-  { label: 'Decision', desc: 'A defensible, evidence-backed verdict in the language of your institution (capacity, performance, or investment).' },
-  { label: 'Report', desc: 'Export the capacity / performance review, full report, signal register or one-pager.' },
+  { label: 'Decision', desc: 'A recommendation with rationale, confidence and a next action, in the language of your institution.' },
+  { label: 'Report', desc: 'Export the capacity or performance review, full report, signal register or one-pager.' },
 ]
 
-// PRIMARY EXPERIENCE: NGO and Development Program reports prioritized for V1
+// Report identity is decided by who is being assessed — an NGO never has to
+// guess whether they are holding an investment document. These are the exact
+// titles the Reports workspace produces (frontend/app/reports, kulima/export.py).
 const REPORT_KINDS = [
-  { label: 'Institutional Capacity Review', live: true },
-  { label: 'Program Performance Review', live: true },
-  { label: 'Monitoring & Evaluation Review', live: true },
-  { label: 'Evidence & Trust Report', live: true },
-  { label: 'Development Decision Report', live: true },
-  // Secondary markets (kept but deprioritized in order)
-  { label: 'Tourism Resilience Report', live: true },
-  { label: 'Investment Committee Report', live: true },
-  { label: 'Governance Review', live: true },
+  { label: 'Institutional Capacity Review', for: 'NGO', live: true },
+  { label: 'Programme Performance Review', for: 'Development Programme', live: true },
+  { label: 'Governance Review', for: 'Government Programme', live: true },
+  { label: 'Tourism Resilience Report', for: 'Tourism SME', live: true },
+  { label: 'Investment Committee Report', for: 'Startup', live: true },
+  { label: 'Decision Memo', for: 'Every assessment', live: true },
+  { label: 'Signals Report', for: 'Every assessment', live: true },
+  { label: 'Evidence Verification Summary', for: 'Every assessment', live: true },
+  { label: 'Executive One-Pager', for: 'Board · donor · committee', live: true },
   // Future templates
-  { label: 'UNDP Templates', live: false },
-  { label: 'EU Templates', live: false },
-  { label: 'USAID Templates', live: false },
+  { label: 'UNDP Templates', for: 'Development Programmes', live: false },
+  { label: 'EU Templates', for: 'Government Programmes', live: false },
+  { label: 'USAID Templates', for: 'MEAL teams', live: false },
 ]
 
 const PRICING = [
@@ -164,12 +178,12 @@ function HomeInner() {
     uploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   const ctaLabel = busy
-    ? 'Analyzing…'
+    ? 'Preparing assessment…'
     : files.length > 0
-      ? 'Assessment Ready — Confirm & Analyze'
+      ? 'Assessment ready — confirm & start'
       : uploadMode
-        ? 'Upload Documents Below'
-        : 'Get Started'
+        ? 'Upload documents below'
+        : 'Start an assessment'
 
   const runIntake = useCallback(async (
     type: EntityType,
@@ -336,6 +350,8 @@ function HomeInner() {
   }
 
   const hasFiles = files.length > 0
+  /** Phase 2: everything the workflow-confirmation strip needs. */
+  const workflow = getEntityConfig(assessmentType)
 
   return (
     <main className="min-h-screen bg-white text-[#101828]">
@@ -353,9 +369,9 @@ function HomeInner() {
       {/* ── SECTION 1: HERO — upload is the page's first act ───────────────── */}
       <section id="upload" ref={uploadSectionRef} className={`border-b scroll-mt-24 ${uploadMode ? 'border-[#B7E6CC] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#F7FBF8]' : 'border-[#EAECF0] bg-[radial-gradient(circle_at_80%_20%,#EAF8F0_0,transparent_32%),#fff]'}`}>
         <div className="mx-auto max-w-7xl px-6 pb-16 pt-14 lg:px-10 lg:pb-24 lg:pt-20">
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Africa&apos;s Decision Intelligence Platform</div>
-          <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn information into <span className="text-[#159A62]">trusted decisions.</span></h1>
-          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#667085]">Upload proposals, annual reports, budgets, M&E reports, policy documents, or programme assessments. Kulima FLEX analyzes evidence, verifies trust, discovers signals, and generates decision-ready intelligence for NGOs and development programmes.</p>
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#B7E6CC] bg-[#F0FBF4] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]"><span className="size-1.5 rounded-full bg-[#159A62]" /> Evidence-to-Decision Infrastructure</div>
+          <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-[#101828] sm:text-6xl lg:text-7xl">Turn information into <span className="text-[#159A62]">decisions you can defend.</span></h1>
+          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#667085]">Upload proposals, annual reports, budgets, M&amp;E reports and policy documents. Kulima FLEX turns them into verified evidence, programme-performance signals and a decision your board, donor or committee can defend — with the source behind every claim.</p>
 
           {/* Gigantic dropzone — one action, no forms initially */}
           <label
@@ -365,15 +381,18 @@ function HomeInner() {
             className={`mt-10 flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 text-center transition ${dragging ? 'border-[#159A62] bg-[#EAF8F0]' : 'border-[#98A2B3] bg-white hover:border-[#159A62] hover:bg-[#FAFDFB]'}`}
           >
             <span className="flex size-14 items-center justify-center rounded-full bg-[#EAF8F0] text-2xl text-[#159A62]" aria-hidden="true">↑</span>
-            <span className="mt-4 text-xl font-bold text-[#101828]">Drop documents here</span>
-            <span className="mt-1.5 text-sm font-semibold text-[#475467]">or click to browse — upload first, ask questions later.</span>
+            <span className="mt-4 text-xl font-bold text-[#101828]">Drop your programme documents here</span>
+            <span className="mt-1.5 text-sm font-semibold text-[#475467]">or click to browse — start with whatever you already have.</span>
             <span className="mt-4 flex flex-wrap justify-center gap-2">
               {FILE_TYPES.map(t => <span key={t} className="rounded-md border border-[#EAECF0] bg-[#F9FAFB] px-2 py-1 text-[11px] font-bold text-[#667085]">{t}</span>)}
             </span>
             <input type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt" className="hidden" onChange={event => { addFiles(event.target.files); event.target.value = '' }} />
           </label>
 
-          <div className="mt-3 text-sm font-semibold text-[#475467]">Upload first. Ask questions later. <span className="font-normal text-[#667085]">Extraction and assessment-type detection happen automatically — you confirm, not re-type.</span></div>
+          <div className="mt-3 grid gap-1.5 text-sm">
+            <p className="font-semibold text-[#475467]">Nothing to fill in first. <span className="font-normal text-[#667085]">Kulima FLEX reads your documents, identifies the entity and classifies the assessment type — you confirm the details, you never re-type them.</span></p>
+            <p className="text-xs leading-5 text-[#667085]">Traceable by design: every claim stays tied to the document it came from, and every score shows the evidence behind it.</p>
+          </div>
 
           {message ? <div className="mt-4 rounded-lg border border-[#B7E6CC] bg-[#F0FBF4] px-4 py-3 text-sm font-semibold text-[#117A4B]">{message}</div> : null}
 
@@ -382,8 +401,9 @@ function HomeInner() {
             <div className="mt-8 rounded-2xl border border-[#D0D5DD] bg-white p-6 shadow-[0_12px_40px_-16px_rgba(16,24,40,0.18)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Detected</p>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight">Confirm your assessment context</h2>
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#159A62]">Almost ready</p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-tight">Confirm the assessment you are starting</h2>
+                  <p className="mt-1 text-sm text-[#667085]">Read from your documents. Correct anything that looks wrong — this is the only context you will be asked for.</p>
                 </div>
                 <button type="button" onClick={() => setShowEdit(v => !v)} className="rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB]">{showEdit ? 'Done editing' : 'Edit'}</button>
               </div>
@@ -392,23 +412,26 @@ function HomeInner() {
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Assessment Type</div>
                   {showEdit ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {PRIMARY_INTAKE_ENTITY_TYPES.map(type => (
-                        <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
-                      ))}
-                      <button type="button" onClick={() => setShowAdvancedTypes(v => !v)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${ADVANCED_INTAKE_ENTITY_TYPES.includes(assessmentType) ? 'border-[#159A62] text-[#117A4B]' : 'border-dashed border-[#D0D5DD] text-[#667085]'} hover:border-[#159A62]`}>
-                        {showAdvancedTypes ? '−' : '+'} Advanced Assessment Types
-                      </button>
-                      {showAdvancedTypes && ADVANCED_INTAKE_ENTITY_TYPES.map(type => (
-                        <button key={type} type="button" onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
-                      ))}
+                    <div className="mt-2">
+                      <div className="flex flex-wrap gap-2">
+                        {PRIMARY_INTAKE_ENTITY_TYPES.map(type => (
+                          <button key={type} type="button" title={getEntityConfig(type).description} onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
+                        ))}
+                        <button type="button" onClick={() => setShowAdvancedTypes(v => !v)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${ADVANCED_INTAKE_ENTITY_TYPES.includes(assessmentType) ? 'border-[#159A62] text-[#117A4B]' : 'border-dashed border-[#D0D5DD] text-[#667085]'} hover:border-[#159A62]`}>
+                          {showAdvancedTypes ? '− Other assessment types' : '+ Other types — Government Programme · Tourism SME · Startup'}
+                        </button>
+                        {showAdvancedTypes && ADVANCED_INTAKE_ENTITY_TYPES.map(type => (
+                          <button key={type} type="button" title={getEntityConfig(type).description} onClick={() => { setAssessmentType(type); saveUseCase(type) }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${assessmentType === type ? 'border-[#159A62] bg-[#EAF8F0] text-[#117A4B]' : 'border-[#D0D5DD] text-[#344054] hover:border-[#159A62]'}`}>{TYPE_LABELS[type]}</button>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-[11px] leading-5 text-[#667085]">{workflow.description}</p>
                     </div>
                   ) : (
                     <div className="mt-1.5 text-sm font-bold text-[#101828]">✓ {TYPE_LABELS[assessmentType]}</div>
                   )}
                 </div>
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organization</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Organisation / programme</div>
                   {showEdit ? (
                     <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].organization} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
@@ -416,7 +439,7 @@ function HomeInner() {
                   )}
                 </div>
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Lead / accountable role</div>
                   {showEdit ? (
                     <input value={founderOrLead} onChange={e => setFounderOrLead(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].lead} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
@@ -424,7 +447,7 @@ function HomeInner() {
                   )}
                 </div>
                 <div className="rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Keywords</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">Sector &amp; focus keywords</div>
                   {showEdit ? (
                     <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder={TYPE_PLACEHOLDERS[assessmentType].keywords} className="mt-2 w-full rounded-lg border border-[#D0D5DD] px-3 py-2 text-sm" />
                   ) : (
@@ -433,10 +456,34 @@ function HomeInner() {
                 </div>
               </div>
 
+              {/* Phase 2 — instant confirmation that the user is in the right
+                  workflow: which question this assessment answers, what it
+                  produces, and which documents matter most. */}
+              <div className="mt-5 rounded-xl border border-[#B7E6CC] bg-[#F0FBF4] p-4">
+                <p className="text-sm font-bold text-[#0C5132]">
+                  ✓ You are in the {TYPE_LABELS[assessmentType]} workflow
+                </p>
+                <dl className="mt-2 grid gap-1.5 text-xs leading-5 text-[#344054] sm:grid-cols-2">
+                  <div>
+                    <dt className="font-bold text-[#117A4B]">Decision this assessment supports</dt>
+                    <dd>{workflow.decisionQuestion}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-bold text-[#117A4B]">What you receive</dt>
+                    <dd>{workflow.reportTitle} — with the evidence, signals and decision record behind it.</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="font-bold text-[#117A4B]">Documents that matter most</dt>
+                    <dd>{workflow.uploadGuidance.replace(/^Upload\s/, '')}.</dd>
+                  </div>
+                </dl>
+                <p className="mt-2 text-[11px] text-[#475467]">Wrong workflow? Choose “Edit” above and pick the assessment type — nothing is re-uploaded.</p>
+              </div>
+
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#EAECF0] pt-4">
                 <div className="text-sm text-[#667085]">{files.length} document{files.length !== 1 ? 's' : ''} staged · {files.map(f => f.name).join(', ')}</div>
                 <button type="button" onClick={handleUpload} disabled={busy} className="rounded-lg bg-[#159A62] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#117A4B] disabled:opacity-50">
-                  {busy ? 'Analyzing…' : 'Confirm & Analyze →'}
+                  {busy ? 'Preparing assessment…' : 'Start assessment →'}
                 </button>
               </div>
             </div>
@@ -449,20 +496,19 @@ function HomeInner() {
         <div className="max-w-2xl">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">The decision pipeline</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Every document travels the same path to a defensible decision.</h2>
+          <p className="mt-4 text-base leading-7 text-[#667085]">Information → Evidence → Trust → Signals → Decisions → Reports → Action. You can stop at any stage with something usable.</p>
         </div>
-        <div className="mt-12 flex flex-col items-center gap-1 lg:flex-row lg:items-stretch lg:gap-2">
+        <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {PIPELINE.map((step, i) => (
-            <div key={step.key} className="flex w-full flex-col items-center gap-1 lg:flex-1 lg:flex-row">
-              <div className="w-full rounded-xl border border-[#EAECF0] bg-[#F9FAFB] p-5">
-                <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">0{i + 1}</div>
-                <div className="mt-2 text-lg font-bold">{step.label}</div>
-                <div className="mt-1 text-sm text-[#667085]">{step.detail}</div>
-              </div>
-              {i < PIPELINE.length - 1 ? <span className="rotate-90 text-[#98A2B3] lg:rotate-0" aria-hidden="true">→</span> : null}
+            <div key={step.key} className={`rounded-xl border p-5 ${i === PIPELINE.length - 1 ? 'border-[#A6F4C5] bg-[#ECFDF3]' : 'border-[#EAECF0] bg-[#F9FAFB]'}`}>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">Step 0{i + 1}</div>
+              <div className="mt-2 text-lg font-bold">{step.label}</div>
+              <div className="mt-1 text-sm text-[#667085]">{step.detail}</div>
             </div>
           ))}
         </div>
-        <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        <p className="mt-8 text-xs font-bold uppercase tracking-[0.14em] text-[#667085]">What the workspace shows you, stage by stage</p>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           {PIPELINE_CARDS.map((c, i) => (
             <div key={c.label} className={`rounded-xl border p-4 ${i === 6 ? 'border-[#A6F4C5] bg-[#ECFDF3]' : 'border-[#EAECF0] bg-white'}`}>
               <div className="text-xl">{c.icon}</div>
@@ -481,15 +527,12 @@ function HomeInner() {
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From documents to a defensible decision — automatically.</h2>
             <p className="mt-4 text-base leading-7 text-[#667085]">You upload once. The Assessment Context carries your documents through the whole pipeline — no re-entry, no dead ends, every stage building on the last.</p>
           </div>
-          <div className="mt-12 flex flex-col items-center gap-1 lg:flex-row lg:items-stretch lg:gap-2">
+          <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {POST_UPLOAD_FLOW.map((step, i) => (
-              <div key={step.label} className="flex w-full flex-col items-center gap-1 lg:flex-1 lg:flex-row">
-                <div className="w-full rounded-xl border border-[#EAECF0] bg-white p-5 transition hover:border-[#B7E6CC] hover:shadow-sm">
-                  <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">{String(i + 1).padStart(2, '0')}</div>
-                  <div className="mt-2 text-lg font-bold">{step.label}</div>
-                  <div className="mt-1 text-sm text-[#667085]">{step.desc}</div>
-                </div>
-                {i < POST_UPLOAD_FLOW.length - 1 ? <span className="rotate-90 text-[#98A2B3] lg:rotate-0" aria-hidden="true">→</span> : null}
+              <div key={step.label} className="rounded-xl border border-[#EAECF0] bg-white p-5 transition hover:border-[#B7E6CC] hover:shadow-sm">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#159A62]">Stage {String(i + 1).padStart(2, '0')}</div>
+                <div className="mt-2 text-lg font-bold">{step.label}</div>
+                <div className="mt-1 text-sm text-[#667085]">{step.desc}</div>
               </div>
             ))}
           </div>
@@ -519,13 +562,17 @@ function HomeInner() {
           <div className="max-w-2xl">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#159A62]">Who it&apos;s for</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Built for the people who must decide.</h2>
-            <p className="mt-4 text-base leading-7 text-[#667085]">Program Managers, MEAL Coordinators, Executive Directors, NGOs, Tourism SMEs, Development and Government Programmes, Donors, and Startups.</p>
+            <p className="mt-4 text-base leading-7 text-[#667085]">NGOs, development programmes and government programmes are the primary users — Programme Managers, Executive Directors and MEAL teams are the people who live with the decision afterwards. Tourism SMEs, research institutions and startups are supported on the same engine.</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {USE_CASES.map(u => (
               <div key={u.title} className="rounded-xl border border-[#EAECF0] bg-white p-6">
                 <h3 className="text-base font-bold">{u.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-[#667085]">{u.desc}</p>
+                <p className="mt-3 border-t border-[#EAECF0] pt-2.5 text-xs leading-5">
+                  <span className="font-bold uppercase tracking-wider text-[#117A4B]">Decision it supports · </span>
+                  <span className="text-[#344054]">{u.decision}</span>
+                </p>
               </div>
             ))}
           </div>
@@ -534,19 +581,22 @@ function HomeInner() {
 
       {/* ── SECTION 7: FROM SCATTERED TO DECISIONS ────────────────────── */}
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
-        <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From scattered information to decisions.</h2>
+        <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">From scattered information to defensible decisions.</h2>
+        <p className="mt-3 max-w-2xl text-base leading-7 text-[#667085]">The documents were never the problem. The problem is turning them into evidence an institution can act on.</p>
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-[#EAECF0] bg-[#F9FAFB] p-7">
             <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#667085]">Before FLEX</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {['WhatsApp', 'Email', 'Excel', 'PDFs', 'Field Reports', 'Meetings'].map(item => <span key={item} className="rounded-lg border border-[#EAECF0] bg-white px-3 py-2 text-sm font-semibold text-[#475467]">{item}</span>)}
             </div>
+            <p className="mt-4 text-sm leading-6 text-[#667085]">Everything exists somewhere. Nothing adds up to a decision anyone can sign.</p>
           </div>
           <div className="rounded-2xl border border-[#A6F4C5] bg-[#ECFDF3] p-7">
             <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#117A4B]">After FLEX</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {AFTER.map(item => <span key={item} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-[#0C5132] shadow-sm">{item}</span>)}
             </div>
+            <p className="mt-4 text-sm leading-6 text-[#0C5132]">One evidence base, one recommendation, one report — each claim traceable to the document it came from.</p>
           </div>
         </div>
       </section>
@@ -562,7 +612,8 @@ function HomeInner() {
             {REPORT_KINDS.map(r => (
               <div key={r.label} className={`rounded-xl border p-5 ${r.live ? 'border-[#EAECF0] bg-white' : 'border-dashed border-[#D0D5DD] bg-white/60'}`}>
                 <div className="text-sm font-bold">{r.label}</div>
-                <div className={`mt-2 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${r.live ? 'bg-[#EAF8F0] text-[#117A4B]' : 'bg-[#F2F4F7] text-[#667085]'}`}>{r.live ? 'Available now' : 'Coming soon'}</div>
+                <div className="mt-1 text-xs text-[#667085]">For {r.for}</div>
+                <div className={`mt-2 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${r.live ? 'bg-[#EAF8F0] text-[#117A4B]' : 'bg-[#F2F4F7] text-[#667085]'}`}>{r.live ? 'Generated with your assessment' : 'Coming soon'}</div>
               </div>
             ))}
           </div>
@@ -596,8 +647,8 @@ function HomeInner() {
       {/* ── SECTION 10: FINAL CTA ──────────────────────────────────────────── */}
       <section className="border-t border-[#EAECF0] bg-[radial-gradient(circle_at_20%_80%,#EAF8F0_0,transparent_35%),#fff]">
         <div className="mx-auto max-w-4xl px-6 py-24 text-center lg:px-10">
-          <h2 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Ready to turn information into trusted decisions?</h2>
-          <p className="mx-auto mt-4 max-w-xl text-base text-[#667085]">Upload your first document. No forms. No friction.</p>
+          <h2 className="text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Ready to turn information into decisions you can defend?</h2>
+          <p className="mx-auto mt-4 max-w-xl text-base text-[#667085]">Upload one document to start. No forms, no setup — the assessment type is detected for you and you confirm it.</p>
           <a href="#upload" className="mt-8 inline-block rounded-xl bg-[#159A62] px-8 py-4 text-base font-bold text-white shadow-sm transition hover:bg-[#117A4B]">Upload your first document ↑</a>
         </div>
       </section>

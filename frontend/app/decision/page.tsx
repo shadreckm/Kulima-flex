@@ -25,6 +25,20 @@ function domainScoreBar(score: number): string {
   return 'bg-[#F04438]'
 }
 
+// Each assessment profile words its verdict differently (NGO → Strong
+// Capacity, Programme → Ready, Government → Effective, Tourism → Ready for
+// Growth, Startup → Invest). Colour must follow the meaning of the verdict,
+// never the startup spelling only — otherwise a positive NGO outcome renders red.
+const POSITIVE_VERDICTS = ['invest', 'strong capacity', 'ready', 'ready for growth', 'effective']
+const NEGATIVE_VERDICTS = ['pass', 'at risk', 'needs strengthening', 'high risk', 'intervene']
+
+function verdictTone(recommendation: string): 'positive' | 'neutral' | 'negative' {
+  const v = (recommendation || '').toLowerCase().trim()
+  if (POSITIVE_VERDICTS.includes(v)) return 'positive'
+  if (NEGATIVE_VERDICTS.includes(v)) return 'negative'
+  return 'neutral'
+}
+
 export default function DecisionWorkspacePage() {
   const { status: authStatus } = useSession()
   const { data: ctx, runId, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
@@ -71,10 +85,21 @@ export default function DecisionWorkspacePage() {
 
   // Extraction of Decision Dossier components — all derived from the
   // Assessment Context (single source of truth), never from stored runs.
-  const recommendation = (ctx?.decision?.recommendation as string) || brief?.recommendation || 'OBSERVE'
-  const confidence = brief?.confidence ?? (brief?.trust_score ? Math.min(95, brief.trust_score + 5) : 50)
+  // A recommendation, a confidence figure or a trust score only appears here if
+  // the run actually produced it. Placeholder verdicts and inferred scores are
+  // the fastest way to lose a decision-maker's trust, so absence is shown as
+  // absence: "Decision pending", "not scored", INSUFFICIENT EVIDENCE.
+  const recommendation = ((ctx?.decision?.recommendation as string) || brief?.recommendation || '') as string
+  // Confidence is stored as a 0–1 fraction and published as a percentage on the
+  // decision snapshot; normalise once here so the screen never shows "1%".
+  const rawConfidence = snapshot?.confidencePercent ?? (typeof brief?.confidence === 'number' ? brief.confidence : null)
+  const confidenceKnown = rawConfidence != null
+  const confidence = rawConfidence != null
+    ? (rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence)
+    : 0
+  const trustScoreKnown = brief?.trust_score != null || ctx?.trustScore != null
   const trustScore = brief?.trust_score ?? ctx?.trustScore ?? 0
-  const isEvidenceWeak = trustScore < 55
+  const isEvidenceWeak = !trustScoreKnown || trustScore < 55
 
   const sources: Array<any> = Array.isArray(brief?.sources) ? brief.sources : []
   const uploadedEvidence: Array<any> = Array.isArray(brief?.uploaded_evidence) ? brief.uploaded_evidence : []
@@ -84,6 +109,21 @@ export default function DecisionWorkspacePage() {
   const redFlags: Array<any> = Array.isArray(brief?.red_flags) ? brief.red_flags : []
   const nextSteps: Array<string> = Array.isArray(brief?.next_steps) ? brief.next_steps : []
 
+  // Phase 5: the decision page must answer "what am I supposed to do now?"
+  // in the first screen — reason, evidence, confidence and next action, in words.
+  const sourceCount = sources.length + uploadedEvidence.length
+  const evidenceGrade: string | null = ei?.integrity_grade || snapshot?.reliabilityGrade || null
+  const tone = isEvidenceWeak ? 'negative' : verdictTone(recommendation)
+  const primaryNextAction =
+    snapshot?.nextAction ||
+    nextSteps[0] ||
+    'Add the evidence still missing from this assessment, then re-run it to raise confidence in the decision.'
+  const decisionReason =
+    snapshot?.topReasons?.[0] ||
+    (typeof brief?.investment_recommendation === 'string' && brief.investment_recommendation
+      ? brief.investment_recommendation
+      : 'No written rationale was recorded for this run.')
+
   // Extract signals from uploaded evidence + brief
   const signalsGenerated: Array<string> = []
   uploadedEvidence.forEach(doc => {
@@ -92,10 +132,10 @@ export default function DecisionWorkspacePage() {
     }
   })
   if (redFlags.length > 0) {
-    signalsGenerated.push(`Identified ${redFlags.length} structural risk flag(s) in evaluation brief`)
+    signalsGenerated.push(`${redFlags.length} structural risk flag${redFlags.length !== 1 ? 's' : ''} raised against this evidence`)
   }
   if (sources.length >= 3) {
-    signalsGenerated.push(`High Confidence Evidence: ${sources.length} independent attribution sources verified`)
+    signalsGenerated.push(`${sources.length} independent sources were cross-checked against the uploaded documents`)
   }
 
   // Opportunity synthesis — grounded in the brief only (no hardcoded domain copy)
@@ -132,7 +172,7 @@ export default function DecisionWorkspacePage() {
     <PilotWorkspaceShell
       workspace="Decision"
       title="Decision Workspace"
-      description="Review, analyze, and approve evaluations. The definitive evidence-backed decision layer: Information → Evidence → Trust → Signals → Decision."
+      description="The decision, the evidence it rests on, how much that evidence supports it, and what to do next."
       runId={runId}
       status={effectiveStatus === 'complete' ? 'active' : effectiveStatus}
       startupName={displayEntity || undefined}
@@ -208,8 +248,8 @@ export default function DecisionWorkspacePage() {
           {/* Top Level Verdict & Confidence Hero */}
           <section className="p-6 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas-elevated relative overflow-hidden">
             <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-              recommendation === 'Invest' ? 'bg-[#12B76A]' :
-              recommendation === 'Observe' ? 'bg-[#F79009]' : 'bg-[#F04438]'
+              tone === 'positive' ? 'bg-[#12B76A]' :
+              tone === 'neutral' ? 'bg-[#F79009]' : 'bg-[#F04438]'
             }`} />
 
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -218,33 +258,66 @@ export default function DecisionWorkspacePage() {
                   <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">
                     Decision Dossier
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">Context {ctx?.assessmentId ? ctx.assessmentId.slice(0, 8) : '—'}</span>
+                  <span className="text-xs text-slate-500 font-mono">Assessment {ctx?.assessmentId ? ctx.assessmentId.slice(0, 8) : '—'}</span>
                 </div>
 
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                  <span>{brief.startup_name || 'Venture Evaluation'}</span>
+                  <span>{displayEntity || brief.startup_name || 'Assessment'}</span>
                   <span className={`text-xs px-3 py-1 rounded-full font-black uppercase tracking-wider ${
-                    recommendation === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-                    recommendation === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+                    tone === 'positive' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
+                    tone === 'neutral' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
                     'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
                   }`}>
-                    {isEvidenceWeak ? 'INSUFFICIENT EVIDENCE' : recommendation}
+                    {isEvidenceWeak ? 'INSUFFICIENT EVIDENCE' : recommendation || 'Decision pending'}
                   </span>
                 </h1>
 
                 <div className="text-xs text-slate-600 mt-1">
-                  Lead: <strong className="text-slate-900">{brief.founder_name || founderName || '—'}</strong> · Sector: <strong className="text-slate-900">{brief.sector || ctx?.sector || 'AgTech'}</strong> · Region: <strong className="text-slate-900">{brief.geography || ctx?.country || 'Pan-Africa'}</strong>
+                  Lead: <strong className="text-slate-900">{brief.founder_name || founderName || '—'}</strong> · Sector: <strong className="text-slate-900">{brief.sector || ctx?.sector || '—'}</strong> · Region: <strong className="text-slate-900">{brief.geography || ctx?.country || '—'}</strong>
                 </div>
               </div>
 
               <div className="bg-[#F5F8FC] border border-[#DDE6F0] p-4 rounded-[12px] flex items-center justify-between gap-6">
                 <TrustGauge
-                  score={trustScore}
+                  score={trustScoreKnown ? trustScore : null}
                   size="md"
                   showLabel={true}
-                  grade={ei?.integrity_grade || (trustScore >= 80 ? 'A' : trustScore >= 60 ? 'B' : 'C')}
-                  confidencePercent={Math.round(confidence)}
+                  grade={evidenceGrade}
+                  confidencePercent={confidenceKnown ? Math.round(confidence) : null}
                 />
+              </div>
+            </div>
+
+            {/* Reason · Evidence · Confidence · Next action, above everything else. */}
+            <div className="mt-5 pt-4 border-t border-[#DDE6F0] grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 lg:gap-6">
+              <div className="min-w-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-[#027A48]">Why this decision</div>
+                    <p className="mt-1 text-slate-700 leading-relaxed">{decisionReason}</p>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-[#004085]">Your next action</div>
+                    <p className="mt-1 text-sm font-bold text-slate-900 leading-snug">{primaryNextAction}</p>
+                  </div>
+                </div>
+                <div className="mt-3 text-[11px] text-slate-500">
+                  Evidence: {sourceCount > 0 ? `${sourceCount} source${sourceCount !== 1 ? 's' : ''}` : 'no sources attached'} ·
+                  {' '}<span title="A–F: integrity of the evidence base, scored on reliability, corroboration, recency and completeness">grade {evidenceGrade || 'not scored'}</span> ·
+                  {' '}<span title="How firmly this evidence supports the verdict">confidence {confidenceKnown ? `${Math.round(confidence)}%` : 'not scored'}</span> ·
+                  {' '}<span title="0–100: how much of this assessment rests on verifiable sources">trust score {trustScoreKnown ? `${trustScore}/100` : 'not scored'}</span>
+                </div>
+              </div>
+              <div className="flex lg:flex-col items-center lg:items-end gap-2 text-[11px] font-bold shrink-0">
+                <Link href="/evidence" className="px-3 py-1.5 rounded-lg border border-[#DDE6F0] bg-white text-slate-700 hover:border-[#0B5D3B] hover:text-[#0B5D3B] transition">
+                  Read the evidence
+                </Link>
+                <Link href="/reports" className="px-3 py-1.5 rounded-lg border border-[#DDE6F0] bg-white text-slate-700 hover:border-[#0B5D3B] hover:text-[#0B5D3B] transition">
+                  Generate the report
+                </Link>
+                <Link href="/outcomes" className="px-3 py-1.5 rounded-lg bg-[#0B5D3B] text-white hover:bg-[#08482E] transition">
+                  Record what happened
+                </Link>
               </div>
             </div>
           </section>
@@ -298,8 +371,11 @@ export default function DecisionWorkspacePage() {
                         />
                       </div>
                       <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                        <span>Weight {weightPct}%</span>
-                        <span className={impact >= 0 ? 'text-[#027A48]' : 'text-[#B42318]'}>
+                        <span title="How much this domain contributes to the overall decision score.">Weight {weightPct}%</span>
+                        <span
+                          className={impact >= 0 ? 'text-[#027A48]' : 'text-[#B42318]'}
+                          title="Points this domain added to or subtracted from the decision score."
+                        >
                           Impact {impact >= 0 ? '+' : ''}{impact.toFixed(1)}
                         </span>
                       </div>
@@ -330,8 +406,8 @@ export default function DecisionWorkspacePage() {
               <div className="text-xs text-slate-700 space-y-3">
                 <p className="leading-relaxed font-medium">
                   {brief.investment_recommendation || (isEvidenceWeak
-                    ? 'INSUFFICIENT EVIDENCE: Evidence corpus does not meet the minimum confidence threshold for deployment.'
-                    : `Based on verified evidence and a Trust Score of ${trustScore}/100, the venture is rated ${recommendation}.`
+                    ? 'INSUFFICIENT EVIDENCE: The evidence does not meet the minimum confidence threshold for a decision of this kind.'
+                    : `Based on the evidence assessed here (${trustScoreKnown ? `Trust Score ${trustScore}/100` : 'no trust score recorded yet'}), this assessment is ${recommendation ? `rated ${recommendation}` : 'still awaiting a decision'}.`
                   )}
                 </p>
                 {nextSteps.length > 0 ? (
@@ -356,22 +432,27 @@ export default function DecisionWorkspacePage() {
                   <span className="w-2 h-2 rounded-full bg-[#004085]" />
                   <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">2. Key Evidence Used</h2>
                 </div>
-                <span className="text-[10px] font-bold text-slate-500">{sources.length + uploadedEvidence.length} Attributions</span>
+                <span className="text-[10px] font-bold text-slate-500">{sourceCount} traced sources</span>
               </div>
               <div className="space-y-2.5 text-xs max-h-72 overflow-y-auto pr-1">
                 {sources.length === 0 && uploadedEvidence.length === 0 ? (
                   <div className="p-4 bg-[#F5F8FC] rounded text-slate-400 italic text-center">INSUFFICIENT EVIDENCE</div>
                 ) : (
                   <>
-                    {uploadedEvidence.map((doc, idx) => (
+                    {uploadedEvidence.map((doc, idx) => {
+                      const docTrust = doc.trust_breakdown?.final_trust_score ?? doc.trust_score
+                      return (
                       <div key={doc.id || idx} className="p-2.5 bg-[#EAF3FF] border border-[#D6E8FF] rounded-lg text-slate-800">
                         <div className="font-bold text-[#004085] flex items-center justify-between">
-                          <span>Primary Dossier: {doc.filename || doc.name}</span>
-                          <span className="font-mono text-[10px]">{doc.trust_breakdown?.final_trust_score ?? doc.trust_score ?? 80}/100</span>
+                          <span>Uploaded document: {doc.filename || doc.name}</span>
+                          <span className="font-mono text-[10px]">
+                            {typeof docTrust === 'number' ? `${Math.round(docTrust)}/100` : 'not scored'}
+                          </span>
                         </div>
-                        <div className="text-[11px] text-slate-600 mt-1">{doc.raw_summary || 'Primary documentation ingested.'}</div>
+                        <div className="text-[11px] text-slate-600 mt-1">{doc.raw_summary || 'Summary not recorded for this document.'}</div>
                       </div>
-                    ))}
+                      )
+                    })}
                     {sources.map((s, idx) => (
                       <div key={idx} className="p-2.5 bg-[#F5F8FC] border border-[#DDE6F0] rounded-lg text-slate-800">
                         <div className="font-bold text-slate-900 truncate">{s.title}</div>
@@ -389,13 +470,15 @@ export default function DecisionWorkspacePage() {
                 <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">3. Trust Assessment Breakdown</h2>
               </div>
               {(() => {
-                // Derive live trust breakdown from the first uploaded document with one,
-                // falling back to the brief-level trust score for each factor.
+                // Trust factors are shown only when the assessment actually
+                // produced them. No factor is ever displayed with a made-up
+                // number — an unavailable factor says so.
                 const tb = uploadedEvidence.find(d => d.trust_breakdown)?.trust_breakdown ?? null
-                const sourceRel  = tb?.source_reliability  ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.35 / 0.35) : 85)
-                const corroboration = tb?.corroboration    ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.9) : 75)
-                const recency    = tb?.recency             ?? 95
-                const completeness = tb?.completeness      ?? (brief?.trust_score ? Math.round(brief.trust_score * 0.85) : 70)
+                const asNum = (v: any) => (typeof v === 'number' ? v : null)
+                const sourceRel = asNum(tb?.source_reliability)
+                const corroboration = asNum(tb?.corroboration)
+                const recency = asNum(tb?.recency)
+                const completeness = asNum(tb?.completeness)
                 const rationale  = tb?.rationale           ?? null
                 return (
                   <>
@@ -409,11 +492,15 @@ export default function DecisionWorkspacePage() {
                         <div key={label} className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
                           <span className="text-[10px] font-bold text-slate-500 block">{label}</span>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-base font-black text-slate-900">{typeof value === 'number' ? `${Math.round(value)}%` : '—'}</span>
-                            <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                              <div className={`h-full rounded-full ${Number(value) >= 80 ? 'bg-[#12B76A]' : Number(value) >= 60 ? 'bg-[#F79009]' : 'bg-[#F04438]'}`}
-                                style={{ width: `${Math.min(100, Math.max(0, Number(value)))}%` }} />
-                            </div>
+                            <span className="text-base font-black text-slate-900">
+                              {value != null ? `${Math.round(value)}%` : <span className="text-[11px] font-bold text-slate-400 uppercase">Not recorded</span>}
+                            </span>
+                            {value != null ? (
+                              <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className={`h-full rounded-full ${value >= 80 ? 'bg-[#12B76A]' : value >= 60 ? 'bg-[#F79009]' : 'bg-[#F04438]'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -424,7 +511,8 @@ export default function DecisionWorkspacePage() {
                       </div>
                     ) : (
                       <div className="text-[11px] text-slate-600 italic bg-[#F5F8FC] p-2.5 rounded border border-[#DDE6F0]">
-                        Deterministic multi-factor calculation enforces minimum evidence density before recommending capital allocation.
+                        No factor rationale was recorded for these documents. The overall trust score above is
+                        calculated from the evidence that is present.
                       </div>
                     )}
                   </>
@@ -449,13 +537,13 @@ export default function DecisionWorkspacePage() {
                 ) : (
                   <ul className="space-y-1 text-slate-700 leading-5">
                     {uploadedEvidence.length > 0 && (
-                      <li>✅ {uploadedEvidence.length} primary document{uploadedEvidence.length > 1 ? 's' : ''} uploaded (Source B)</li>
+                      <li>✅ {uploadedEvidence.length} document{uploadedEvidence.length > 1 ? 's' : ''} uploaded by your team</li>
                     )}
                     {sources.length > 0 && (
-                      <li>✅ {sources.length} external research source{sources.length > 1 ? 's' : ''} (Source A)</li>
+                      <li>✅ {sources.length} external research source{sources.length > 1 ? 's' : ''} cross-checked</li>
                     )}
                     {ei?.integrity_grade && (
-                      <li>📋 Evidence Integrity Grade: <strong>{ei.integrity_grade}</strong> ({ei?.integrity_score ?? '—'}/100)</li>
+                      <li>📋 Evidence grade: <strong>{ei.integrity_grade}</strong>{typeof ei?.integrity_score === 'number' ? ` (${Math.round(ei.integrity_score)}/100)` : ' (score not recorded)'}</li>
                     )}
                     {ei?.claim_count != null && (
                       <li>🔖 {ei.claim_count} verified claim{ei.claim_count !== 1 ? 's' : ''} extracted</li>
@@ -468,7 +556,11 @@ export default function DecisionWorkspacePage() {
               <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
                 <div className="text-[10px] font-black uppercase tracking-wider text-amber-700 mb-2">What evidence is missing?</div>
                 {unsupportedClaims.length === 0 && (ei?.verification_checklist?.length ?? 0) === 0 ? (
-                  <p className="text-slate-500 italic">No evidence gaps identified.</p>
+                  <p className="text-slate-500 italic">
+                    {ei
+                      ? 'The integrity check ran and found no missing-evidence gaps.'
+                      : 'Not measured yet — evidence integrity has not been audited on this brief.'}
+                  </p>
                 ) : (
                   <ul className="space-y-1 text-slate-700 leading-5">
                     {unsupportedClaims.slice(0, 3).map((u, i) => (
@@ -504,8 +596,8 @@ export default function DecisionWorkspacePage() {
                 <p className="text-slate-700 leading-5">
                   {brief?.investment_recommendation ||
                     (isEvidenceWeak
-                      ? `Evidence corpus (Trust ${trustScore}/100) falls below the minimum threshold for a deployment decision. Additional primary sources are required.`
-                      : `Trust Score ${trustScore}/100 with ${sources.length + uploadedEvidence.length} attribution${sources.length + uploadedEvidence.length !== 1 ? 's' : ''} crosses the minimum evidence threshold. Recommendation: ${recommendation}.`
+                      ? `The evidence here is not strong enough for a firm recommendation (${trustScoreKnown ? `trust score ${trustScore}/100` : 'no trust score recorded yet'}). Uploading the documents listed under missing evidence would raise it.`
+                      : `${trustScoreKnown ? `Trust score ${trustScore}/100` : 'No trust score yet'} across ${sourceCount} source${sourceCount !== 1 ? 's' : ''} is what this assessment was built on. ${recommendation ? `Recommendation: ${recommendation}.` : 'No recommendation has been recorded yet.'}`
                     )
                   }
                 </p>
@@ -520,24 +612,24 @@ export default function DecisionWorkspacePage() {
                   </ol>
                 ) : (
                   <ul className="space-y-1 text-slate-700 leading-5">
-                    {recommendation === 'Invest' && <>
-                      <li>✅ Proceed to term sheet preparation</li>
-                      <li>📋 Commission independent legal and financial due diligence</li>
-                      <li>📊 Export full IC report for investment committee review</li>
+                    {tone === 'positive' && <>
+                      <li>✅ Confirm the decision and record who is accountable for it</li>
+                      <li>📋 Verify the remaining evidence gaps before committing resources</li>
+                      <li>📊 Export the report for your board, donor or committee</li>
                     </>}
-                    {recommendation === 'Observe' && <>
-                      <li>📅 Schedule 90-day follow-up review</li>
-                      <li>📋 Request additional corroborating documentation</li>
-                      <li>📊 Monitor identified risk signals for material changes</li>
+                    {tone === 'neutral' && <>
+                      <li>📅 Set a follow-up review date in Outcomes</li>
+                      <li>📋 Request the corroborating documents listed under missing evidence</li>
+                      <li>📊 Monitor the flagged risk signals for material change</li>
                     </>}
-                    {recommendation === 'Pass' && <>
-                      <li>📝 Document rationale in investment log</li>
-                      <li>📤 Share feedback memo with founder/organisation</li>
+                    {tone === 'negative' && !isEvidenceWeak && <>
+                      <li>📝 Record the rationale and what would change it</li>
+                      <li>📤 Share the feedback memo with the team or partner</li>
                     </>}
-                    {!['Invest', 'Observe', 'Pass'].includes(recommendation) && <>
-                      <li>📋 Upload additional supporting evidence</li>
-                      <li>🔍 Re-run research pipeline with expanded keywords</li>
-                      <li>📊 Review evidence checklist items</li>
+                    {tone === 'negative' && isEvidenceWeak && <>
+                      <li>📋 Upload the evidence still missing from this assessment</li>
+                      <li>🔍 Re-run the research with broader keywords</li>
+                      <li>📊 Work through the evidence checklist before deciding</li>
                     </>}
                   </ul>
                 )}
@@ -554,7 +646,7 @@ export default function DecisionWorkspacePage() {
               </div>
               <div className="space-y-2 text-xs">
                 {signalsGenerated.length === 0 ? (
-                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-400 italic">No automated signals detected</div>
+                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-400 italic">No signals were recorded for this run.</div>
                 ) : signalsGenerated.slice(0, 5).map((sig, idx) => (
                   <div key={idx} className="p-2.5 bg-[#FFFAEB] border border-[#FEDF89] rounded-lg text-slate-800 font-medium">
                     ⚡ {sig}
@@ -571,12 +663,18 @@ export default function DecisionWorkspacePage() {
               <div className="space-y-2 text-xs">
                 {contradictions.length === 0 ? (
                   <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">
-                    ✓ No conflicting data points detected across sources.
+                    {ei
+                      ? '✓ The integrity check ran and found no conflicting claims between sources.'
+                      : 'Evidence integrity has not been audited on this brief yet, so there is no contradiction check to report.'}
                   </div>
                 ) : contradictions.map((c, idx) => (
                   <div key={idx} className="p-2.5 bg-[#FEF3F2] border border-[#FECDCA] rounded-lg text-slate-800">
-                    <strong className="text-[#B42318] block">{c.severity || 'WARN'}: {c.description}</strong>
-                    <span className="text-[11px] text-slate-600 mt-0.5 block">{c.recommended_action}</span>
+                    <strong className="text-[#B42318] block">
+                      {[c.severity, c.description || 'Contradiction between sources'].filter(Boolean).join(': ')}
+                    </strong>
+                    <span className="text-[11px] text-slate-600 mt-0.5 block">
+                      {c.recommended_action || 'No specific action was recorded for this conflict — verify which source is correct, then re-run the assessment.'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -590,12 +688,16 @@ export default function DecisionWorkspacePage() {
               <div className="space-y-2 text-xs">
                 {unsupportedClaims.length === 0 ? (
                   <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">
-                    All core claims have supporting verification in file.
+                    {ei
+                      ? 'Every claim that was checked has supporting evidence attached.'
+                      : 'Evidence integrity has not been audited on this brief yet, so no claim-by-claim gap list exists.'}
                   </div>
                 ) : unsupportedClaims.map((u, idx) => (
                   <div key={idx} className="p-2.5 bg-[#F5F8FC] border border-[#DDE6F0] rounded-lg text-slate-800">
-                    <strong className="text-slate-900 block">{u.description}</strong>
-                    <span className="text-[11px] text-slate-500 mt-0.5 block">{u.recommended_action}</span>
+                    <strong className="text-slate-900 block">{u.description || String(u)}</strong>
+                    <span className="text-[11px] text-slate-500 mt-0.5 block">
+                      {u.recommended_action || 'No specific action was recorded for this gap — obtain a source that supports this claim, then re-run the assessment.'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -614,7 +716,7 @@ export default function DecisionWorkspacePage() {
               </div>
               <div className="space-y-2 text-xs">
                 {redFlags.length === 0 ? (
-                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">No critical red flags recorded in baseline appraisal.</div>
+                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">No red flags were recorded against the evidence reviewed.</div>
                 ) : redFlags.map((flag, idx) => (
                   <div key={idx} className="p-3 bg-[#FEF3F2] border border-[#FECDCA] rounded-lg">
                     <div className="font-bold text-[#B42318]">{flag.severity?.toUpperCase()} · {flag.title}</div>
@@ -633,16 +735,16 @@ export default function DecisionWorkspacePage() {
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#DDE6F0]">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#12B76A]" />
-                  <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">8. Investment Opportunities</h2>
+                  <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">8. Opportunities To Act On</h2>
                 </div>
-                <span className="text-[10px] font-bold text-[#027A48]">Key Thesis Drivers</span>
+                <span className="text-[10px] font-bold text-[#027A48]">What the evidence supports</span>
               </div>
               <div className="space-y-2 text-xs">
                 {opportunities.length === 0 ? (
-                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">No opportunity synthesis available yet.</div>
+                  <div className="p-3 bg-[#F5F8FC] rounded text-slate-500 font-medium">No opportunities were synthesised from this evidence.</div>
                 ) : opportunities.map((opp, idx) => (
                   <div key={idx} className="p-3 bg-[#ECFDF3] border border-[#A6F4C5] rounded-lg">
-                    <div className="font-bold text-[#027A48]">Growth Driver #{idx + 1}</div>
+                    <div className="font-bold text-[#027A48]">Opportunity #{idx + 1}</div>
                     <p className="text-slate-700 mt-1 text-[11px] leading-relaxed">{opp}</p>
                   </div>
                 ))}

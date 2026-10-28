@@ -446,7 +446,7 @@ export default function OutcomeFollowup({ runId, showOutcomeSelect = true, compa
               onClick={openForm}
               className="px-4 py-2 rounded-lg bg-[#0B5D3B] hover:bg-[#08482E] text-white text-[10px] font-extrabold uppercase tracking-wider transition shadow-sm shrink-0"
             >
-              One-click update →
+              Record follow-up →
             </button>
           ) : null}
         </div>

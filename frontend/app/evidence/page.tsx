@@ -12,6 +12,23 @@ import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 
 type FullBrief = Record<string, any>
 
+/**
+ * Trust Layer honesty rule: a number the pipeline has not produced is shown as
+ * NO DATA, never as a plausible placeholder. A made-up grade looks exactly like
+ * evidence, and the whole value of this screen is that none of it is invented.
+ */
+function metric(value: unknown, fallback = 'NO DATA'): string {
+  if (value === null || value === undefined || value === '') return fallback
+  return String(value)
+}
+
+/** Stored enum values arrive in snake_case (``minor_differences``) — show readable text. */
+function metricEnum(value: unknown, fallback = 'NO DATA'): string {
+  const raw = metric(value, fallback)
+  if (raw === fallback) return raw
+  return raw.replace(/_/g, ' ').replace(/^\w/, ch => ch.toUpperCase())
+}
+
 export default function EvidencePage() {
   const { status: authStatus } = useSession()
   const { data: ctx, assessmentId, runId, reload: reloadContext, loading: ctxLoading, error: ctxError, noAssessment } = useAssessmentWorkspace(authStatus === 'authenticated')
@@ -75,7 +92,7 @@ export default function EvidencePage() {
       const firstTrust = docs.length ? docs[docs.length - 1]?.trust_score : null
       setUploadSuccess(
         `Successfully ingested ${files.length} document(s) into the Assessment Context. ` +
-        `Trust Score: ${firstTrust != null ? `${firstTrust}/100` : '—'} · Status: ${updated.status ?? 'PROCESSING'} · ` +
+        `Trust Score: ${firstTrust != null ? `${firstTrust}/100` : 'not scored'} · Status: ${updated.status || 'not reported'} · ` +
         `Evidence chain re-triggered automatically.`
       )
 
@@ -109,6 +126,12 @@ export default function EvidencePage() {
   const totalSources = researchSources.length + uploadedEvidence.length
   /** Corroboration: true when both evidence sources are present */
   const isCorroborated = researchSources.length > 0 && uploadedEvidence.length > 0
+  /**
+   * A recommendation exists only once the run has produced one. This chip is
+   * the first thing a decision-maker reads, so it never shows a placeholder
+   * verdict — it says the decision is still pending instead.
+   */
+  const summaryRecommendation: string = String(brief?.recommendation || (ctx?.decision?.recommendation as string) || '')
 
   if (authStatus === 'loading') {
     return <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Checking session…</div>
@@ -166,7 +189,7 @@ export default function EvidencePage() {
       {ctx && (ctx.documentCount ?? ctx.uploadedDocuments?.length ?? 0) === 0 ? (
         <div className="rounded-[12px] border border-[#DDE6F0] bg-white p-5 text-sm text-slate-600 shadow-saas">
           <div className="font-bold text-slate-800">No documents uploaded yet</div>
-          <div className="mt-1 text-xs text-slate-500">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
+          <div className="mt-1 text-xs text-slate-500">Upload an NGO report, programme document, survey, business plan, or pitch deck.</div>
         </div>
       ) : null}
       {uploadSuccess ? (
@@ -290,15 +313,16 @@ export default function EvidencePage() {
         <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
           <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#DDE6F0]">
             <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Core Evaluation</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">This Assessment</span>
               <h2 className="text-base font-extrabold text-slate-900">Decision Intelligence Summary</h2>
             </div>
             <span className={`text-xs px-3 py-1 rounded-full font-black uppercase tracking-wider ${
-              (brief?.recommendation || ctx?.decision?.recommendation) === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-              (brief?.recommendation || ctx?.decision?.recommendation) === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+              !summaryRecommendation ? 'bg-[#F5F8FC] text-slate-500 border-[#DDE6F0]' :
+              summaryRecommendation === 'Invest' ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
+              summaryRecommendation === 'Observe' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
               'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]'
             }`}>
-              {brief?.recommendation || (ctx?.decision?.recommendation as string) || 'OBSERVE'}
+              {summaryRecommendation || 'Decision pending'}
             </span>
           </div>
 
@@ -313,19 +337,19 @@ export default function EvidencePage() {
             <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Supporting Evidence Depth</span>
               <div className="space-y-1 text-slate-700">
-                <div>Grade: <strong className="text-slate-900">{ei?.integrity_grade || 'C'}</strong></div>
+                <div>Evidence grade: <strong className="text-slate-900">{metric(ei?.integrity_grade)}</strong></div>
                 <div>Research Sources: <strong className="text-slate-900">{researchSources.length}</strong></div>
                 <div>Uploaded Documents: <strong className="text-slate-900">{uploadedEvidence.length}</strong></div>
-                <div>Verified Claims: <strong className="text-slate-900">{ei?.claim_count ?? (totalSources > 0 ? totalSources * 3 : 0)}</strong></div>
+                <div>Claims Checked: <strong className="text-slate-900">{metric(ei?.claim_count)}</strong></div>
               </div>
             </div>
 
             <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Risk & Contradiction Count</span>
               <div className="space-y-1 text-slate-700">
-                <div>Identified Risks: <strong className="text-rose-600">{redFlags.length}</strong></div>
-                <div>Detected Contradictions: <strong className="text-amber-600">{contradictions.length}</strong></div>
-                <div>Unsupported Claims: <strong className="text-slate-600">{unsupported.length}</strong></div>
+                <div title="Stand-alone warnings raised by the assessment — each one is listed with its evidence in the Decision workspace">Identified Risks: <strong className="text-rose-600">{redFlags.length}</strong></div>
+                <div title="Claims from your documents that conflict with each other or with research">Detected Contradictions: <strong className="text-amber-600">{contradictions.length}</strong></div>
+                <div title="Claims no uploaded or researched source supports yet">Unsupported Claims: <strong className="text-slate-600">{unsupported.length}</strong></div>
               </div>
             </div>
           </div>
@@ -340,7 +364,7 @@ export default function EvidencePage() {
               <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-[#EAF3FF] text-[#004085] border border-[#D6E8FF]">Source A</span>
               <h2 className="text-base font-extrabold text-slate-900">Research Intelligence</h2>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">Web research and OSINT sources gathered during the AI evaluation run. Read-only — generated automatically.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Web research and public sources gathered during this assessment run. Read-only — generated automatically.</p>
           </div>
           <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
             researchSources.length > 0
@@ -370,9 +394,9 @@ export default function EvidencePage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500 font-mono">
-                  <span>Relevance: {source.relevance ?? '1.0'}</span>
+                  <span title="0–1: how closely this source matches what is being assessed">Relevance: {metric(source.relevance, 'not scored')}</span>
                   <span>·</span>
-                  <span>Confidence: {source.confidence_score ?? '0.8'}</span>
+                  <span title="0–1: how strongly the fetched text supports the claim drawn from it">Confidence: {metric(source.confidence_score, 'not scored')}</span>
                 </div>
                 {source.snippet ? (
                   <div className="text-[11px] text-slate-700 mt-2 bg-white p-2 rounded border border-[#E2E8F0] whitespace-pre-wrap leading-relaxed">
@@ -408,7 +432,7 @@ export default function EvidencePage() {
           <div className="p-8 text-center bg-[#F5F8FC] rounded-[10px] border border-dashed border-[#DDE6F0]">
             <div className="text-slate-400 text-sm font-semibold">INSUFFICIENT EVIDENCE: No primary documents uploaded yet for this run.</div>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-              Upload pitch decks, audited statements, financial models, or board minutes above to generate transparent trust scores and evidence verification.
+              Upload NGO reports, programme documents, audited statements, surveys, monitoring data, or business plans above. Each document is scored for trust; a second independent source for the same claim is what earns verification.
             </p>
           </div>
         ) : (
@@ -420,7 +444,7 @@ export default function EvidencePage() {
               const uploadDate  = doc.upload_date || doc.uploadDate || doc.created_at || null
               const trustScore  = doc.trust_breakdown?.final_trust_score ?? doc.trust_score ?? doc.trustScore ?? null
               const trustPct    = trustScore != null ? Math.round(Number(trustScore)) : null
-              const evStatus    = doc.evidence_status || doc.evidenceStatus || 'PROCESSED'
+              const evStatus    = String(doc.evidence_status || doc.evidenceStatus || '')
               const tb          = doc.trust_breakdown ?? null
               const rawSummary  = doc.raw_summary || doc.rawSummary || null
               return (
@@ -438,21 +462,35 @@ export default function EvidencePage() {
                         {uploadDate ? (
                           <span>Uploaded: {new Date(uploadDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                         ) : (
-                          <span>Uploaded: Recent</span>
+                          <span>Upload date not recorded</span>
                         )}
                         {doc.uploader ? <span>By: {doc.uploader}</span> : null}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                      {/* Evidence Status */}
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        evStatus === 'VERIFIED'    ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
-                        evStatus === 'CORROBORATED'? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
-                        evStatus === 'INSUFFICIENT_EVIDENCE' ? 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]' :
-                                                    'bg-slate-100 text-slate-600 border border-slate-200'
-                      }`}>
-                        {evStatus.replace(/_/g, ' ')}
+                      {/* Evidence Status — only the trust engine can award a status. */}
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          evStatus === 'VERIFIED'    ? 'bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]' :
+                          evStatus === 'CORROBORATED'? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+                          evStatus === 'UNCORROBORATED' ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89]' :
+                          evStatus === 'INSUFFICIENT_EVIDENCE' ? 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]' :
+                                                     'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}
+                        title={
+                          evStatus === 'VERIFIED'
+                            ? 'Trust score 80+ and at least one signal was extracted from the text itself.'
+                            : evStatus === 'CORROBORATED'
+                            ? 'Trust score 60–79: usable evidence, but not strong enough on its own to carry a decision.'
+                            : evStatus === 'UNCORROBORATED'
+                            ? 'Standing alone — no second source confirms it yet.'
+                            : evStatus === 'INSUFFICIENT_EVIDENCE'
+                            ? 'Trust score below 60: too little verifiable content to support a decision. Add the full document.'
+                            : 'The trust engine has not produced a verification status for this document yet.'
+                        }
+                      >
+                        {evStatus.replace(/_/g, ' ') || 'NOT AUDITED'}
                       </span>
                       {/* Trust Contribution */}
                       {trustPct != null ? (
@@ -478,6 +516,10 @@ export default function EvidencePage() {
                       <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">
                         Trust Engine Breakdown
                       </div>
+                      <p className="-mt-1 mb-2 text-[10px] text-slate-500 leading-relaxed">
+                        Four measured factors, weighted as shown. This is why the document scores what it
+                        scores — nothing here is a model&apos;s opinion.
+                      </p>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                         {[
                           { label: 'Source Reliability', pct: '35%', value: tb.source_reliability },
@@ -562,21 +604,21 @@ export default function EvidencePage() {
               Integrity Summary & Metrics
             </h2>
             <div className="grid grid-cols-2 gap-3 text-xs text-slate-700">
-              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]" title="A–F, from the four Trust Engine factors across all sources">
                 <span className="text-slate-500 block text-[10px]">Integrity Grade</span>
-                <span className="font-black text-sm text-slate-900">{ei?.integrity_grade || 'C'}</span>
+                <span className="font-black text-sm text-slate-900">{metric(ei?.integrity_grade)}</span>
               </div>
-              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]" title="0–100: how much of the assessment rests on verifiable, corroborated evidence">
                 <span className="text-slate-500 block text-[10px]">Integrity Score</span>
-                <span className="font-black text-sm text-slate-900">{ei?.integrity_score ?? '75'}</span>
+                <span className="font-black text-sm text-slate-900">{metric(ei?.integrity_score)}</span>
               </div>
-              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]" title="How many independent sources stand behind the claims">
                 <span className="text-slate-500 block text-[10px]">Evidence Depth</span>
-                <span className="font-bold text-xs text-slate-900">{ei?.evidence_depth || 'MEDIUM'}</span>
+                <span className="font-bold text-xs text-slate-900">{metricEnum(ei?.evidence_depth)}</span>
               </div>
-              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
+              <div className="p-2.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]" title="Whether the sources agree with each other">
                 <span className="text-slate-500 block text-[10px]">Consistency Status</span>
-                <span className="font-bold text-xs text-slate-900">{ei?.consistency_status || 'CONSISTENT'}</span>
+                <span className="font-bold text-xs text-slate-900">{metricEnum(ei?.consistency_status)}</span>
               </div>
             </div>
             <p className="mt-4 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
@@ -631,7 +673,7 @@ export default function EvidencePage() {
                       <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-600 font-mono">
                         <span>Type: {source.source_type || 'web'}</span>
                         <span>·</span>
-                        <span>Relevance: {source.relevance ?? '1.0'}</span>
+                        <span title="0–1: how closely this source matches what is being assessed">Relevance: {metric(source.relevance, 'not scored')}</span>
                       </div>
                       {source.snippet ? (
                         <div className="text-[11px] text-slate-700 mt-2 bg-white p-2 rounded border border-[#E2E8F0] whitespace-pre-wrap font-sans">
@@ -649,7 +691,7 @@ export default function EvidencePage() {
                     <div key={`u${idx}`} className="border border-amber-200 bg-amber-50/40 rounded-lg p-3 text-xs">
                       <div className="font-bold text-slate-900">{doc.filename || 'Document'}</div>
                       <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
-                        Trust: {doc.trust_breakdown?.final_trust_score ?? '—'} · Status: {doc.evidence_status || 'CORROBORATED'}
+                        Trust: {metric(doc.trust_breakdown?.final_trust_score, 'not scored')} · Status: {String(doc.evidence_status || 'not audited').replace(/_/g, ' ')}
                       </div>
                     </div>
                   ))}
@@ -669,11 +711,19 @@ export default function EvidencePage() {
                 </div>
                 <div className="space-y-2">
                   {contradictions.length === 0 ? (
-                    <div className="text-xs text-slate-500 p-2.5 bg-[#F5F8FC] rounded-lg">No contradictory claims detected across sources.</div>
+                    <div className="text-xs text-slate-500 p-2.5 bg-[#F5F8FC] rounded-lg">
+                      {ei
+                        ? 'The integrity check ran and found no conflicting claims between sources.'
+                        : 'Evidence integrity has not been audited on this brief yet, so there is no contradiction check to report.'}
+                    </div>
                   ) : contradictions.map((item, idx) => (
                     <div key={idx} className="border border-rose-200 bg-rose-50/60 rounded-lg p-3 text-slate-800">
-                      <div className="font-bold text-rose-800">{item.severity || 'WARN'} · {item.description || 'Contradiction'}</div>
-                      <div className="text-xs text-rose-700 mt-1">{item.recommended_action || 'Review conflicting source data.'}</div>
+                      <div className="font-bold text-rose-800">
+                        {[item.severity, item.description || 'Contradiction between sources'].filter(Boolean).join(' · ')}
+                      </div>
+                      <div className="text-xs text-rose-700 mt-1">
+                        {item.recommended_action || 'No specific action was recorded for this conflict — verify which source is correct, then re-run the assessment.'}
+                      </div>
                     </div>
                   ))}
                 </div>

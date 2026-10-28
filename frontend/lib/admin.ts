@@ -1,11 +1,15 @@
-// Kulima FLEX — Platform Operations Console client (Admin Console V1).
+// Kulima FLEX — Platform Administration Console client.
 //
 // Internal tooling, not a customer feature. Every endpoint below except
-// `getAdminSession` reads aggregates across *all* workspaces and is gated by a
-// configured platform-operator allow-list on the backend (see
-// backend/app/core/admin_access.py). A 403 here is the intended behaviour for
-// every ordinary user — organization roles, including Owner, do not grant
-// access. All requests go through the authenticated Next.js proxy at /api/v1.
+// `getAdminSession` reads or changes state *across* all workspaces and is gated
+// on the stored PLATFORM_ADMIN role (see backend/app/core/admin_access.py). A
+// 403 here is the intended behaviour for every ordinary user — organization
+// roles, including Owner, do not grant access. Each admin route additionally
+// declares one platform capability, so this client exposes `hasCapability` and
+// the screens render only the controls the signed-in operator actually holds.
+// All requests go through the authenticated Next.js proxy at /api/v1, which
+// mints both the JWT subject and the provider-verified email claim the role is
+// resolved against — an email typed into a form is never one of them.
 
 const API_BASE = typeof window === 'undefined'
   ? process.env.KULIMA_BACKEND_URL
@@ -22,8 +26,15 @@ async function readText(res: Response): Promise<string> {
   }
 }
 
-async function call<T>(path: string, context: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' })
+async function call<T>(path: string, context: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    cache: 'no-store',
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers || {}),
+    },
+  })
   const raw = await readText(res)
   if (!res.ok) {
     throw new AdminRequestError(context, res.status, raw)
@@ -39,13 +50,27 @@ async function call<T>(path: string, context: string): Promise<T> {
 }
 
 /**
- * Carries the HTTP status so a screen can tell "you are not an operator" (403)
- * apart from a genuine data failure. The backend's error detail is a structured
- * object with `code` and `message`, never a dump of other users' data.
+ * A platform mutation. The body is always sent as JSON, and an undeclared field
+ * is rejected by name by the backend (`extra="forbid"`) rather than dropped — a
+ * write that crosses workspaces must never look successful when it quietly
+ * ignored part of the request.
+ */
+function mutate<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body: unknown, context: string): Promise<T> {
+  return call<T>(path, context, { method, body: JSON.stringify(body ?? {}) })
+}
+
+/**
+ * Carries the HTTP status so a screen can tell "you are not a platform
+ * administrator" (403) apart from a genuine data failure, and the backend's
+ * error `code` so a mutation can be explained precisely
+ * (`ENTERPRISE_ACTIVATION_REQUIRED`, `LAST_ADMIN`, …). The detail is a
+ * structured domain message, never a dump of other users' data.
  */
 export class AdminRequestError extends Error {
   status: number
   code: string
+  /** The backend's own sentence, safe to show an administrator verbatim. */
+  detail: string
   constructor(context: string, status: number, raw: string) {
     let code = ''
     let message = ''
@@ -61,6 +86,7 @@ export class AdminRequestError extends Error {
     this.name = 'AdminRequestError'
     this.status = status
     this.code = code
+    this.detail = message
   }
 }
 
@@ -77,6 +103,12 @@ function qs(entries: Record<string, string | number | undefined | null>): string
 
 export type AdminIdentity = {
   userId: string
+  /**
+   * The provider-verified email claim the proxy minted from the NextAuth JWT —
+   * not `organization_members.email`, which an organization Admin can type.
+   * This is the identifier an email-based platform grant resolves against.
+   */
+  verifiedEmail: string | null
   orgId: string
   orgName: string
   role: string
@@ -86,6 +118,44 @@ export type AdminIdentity = {
   permissions: string[]
 }
 
+/**
+ * The nine platform capabilities a route may declare. This is a *description* of
+ * the server-side enum (`kulima.core.orgs.platform_admins.PlatformCapability`),
+ * never an authorization input: the backend decides what a caller holds, and a
+ * client cannot ask for a capability by name.
+ */
+export type AdminCapability =
+  | 'view_organizations'
+  | 'view_users'
+  | 'manage_subscriptions'
+  | 'manage_enterprise_accounts'
+  | 'view_billing'
+  | 'view_provider_health'
+  | 'view_audit'
+  | 'view_analytics'
+  | 'manage_platform_admins'
+
+export const CAPABILITY_LABELS: Record<AdminCapability, string> = {
+  view_organizations: 'View all organizations',
+  view_users: 'View all users',
+  manage_subscriptions: 'Manage subscriptions',
+  manage_enterprise_accounts: 'Manage enterprise accounts',
+  view_billing: 'View billing',
+  view_provider_health: 'View provider health',
+  view_audit: 'Access audit logs',
+  view_analytics: 'Access platform analytics',
+  manage_platform_admins: 'Grant or revoke platform administrators',
+}
+
+/** Every capability the platform plane defines — the denominator the console shows. */
+export const ALL_CAPABILITIES = Object.keys(CAPABILITY_LABELS) as AdminCapability[]
+
+/** How a grant was obtained. `env_allow_list` is break-glass, not the stored role. */
+export type AdminGrantPath = 'platform_role' | 'env_allow_list'
+
+export const PLATFORM_ADMIN_ROLE = 'platform_admin'
+export const PLATFORM_ADMIN_ROLE_LABEL = 'Platform Administrator'
+
 export type AdminSession = {
   isPlatformAdmin: boolean
   reason: string                 // 'granted' | 'not_configured' | 'not_allowlisted'
@@ -93,12 +163,33 @@ export type AdminSession = {
   identifiersChecked: string[]   // the caller's own identifiers only
   allowListConfigured: boolean
   allowListSize: number
+  grantedBy: AdminGrantPath | null
+  platformRole: string | null
+  roleLabel: string | null
+  capabilities: AdminCapability[]
+  capabilityLabels: string[]
+  roleStoreConfigured: boolean
+  adminCount: number
   identity: AdminIdentity
   generatedAt: string
 }
 
 export function getAdminSession(): Promise<AdminSession> {
   return call<AdminSession>('/api/v1/admin/session', 'getAdminSession')
+}
+
+/**
+ * Does this session hold one capability? Absence is the only answer that hides a
+ * control; the backend enforces the same check independently, so a stale cache
+ * here produces a 403 rather than an unauthorized write.
+ */
+export function hasCapability(session: AdminSession | null | undefined, capability: AdminCapability): boolean {
+  return Boolean(session?.isPlatformAdmin && session.capabilities?.includes(capability))
+}
+
+/** True when access came from the environment rather than the stored role. */
+export function isBreakGlass(session: AdminSession | null | undefined): boolean {
+  return session?.grantedBy === 'env_allow_list'
 }
 
 // ── Shared shapes ────────────────────────────────────────────────────────────
@@ -552,5 +643,407 @@ export function getAdminAudit(filters: AdminAuditFilters = {}): Promise<AdminAud
       limit: filters.limit ?? 200,
     })}`,
     'getAdminAudit',
+  )
+}
+
+// ── Panel — Organizations (the enterprise account surface) ───────────────────
+
+export type AdminOrgDetailRow = {
+  orgId: string
+  name: string
+  slug: string
+  plan: string
+  personal: boolean
+  createdBy: string | null
+  createdAt: string | null
+  subscriptionPlan: string | null
+  billingStatus: string | null
+  amount: number | null
+  currency: string | null
+  billingCycle: string | null
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  pendingPlan: string | null
+  activationState: string | null
+  lastError: string | null
+  subscriptionUpdatedAt: string | null
+  members: number
+  primaryOwnerUserId: string | null
+  assessments: number
+  assessmentsInWindow: number
+  documents: number
+  storageBytes: number
+  lastActivityAt: string | null
+  reportExports: number
+  needsAttention: boolean
+}
+
+export type AdminOrganizations = {
+  generatedAt: string
+  windowDays: number
+  filters: { search: string | null; plan: string | null; status: string | null; limit: number }
+  totals: {
+    organizations: number
+    teamWorkspaces: number
+    personalWorkspaces: number
+    createdInWindow: number
+    listed: number
+    withoutSubscriptionRow: number
+    suspended: number
+    pastDue: number
+    inGrace: number
+    enterprise: number
+    activationRequested: number
+    scheduledChanges: number
+    needsAttention: number
+  }
+  organizations: AdminOrgDetailRow[]
+  attentionDefinition: string
+  dataNotes: DataNotes
+}
+
+export function getAdminOrganizations(
+  opts: { search?: string; plan?: string; status?: string; limit?: number; windowDays?: number } = {},
+): Promise<AdminOrganizations> {
+  return call(
+    `/api/v1/admin/organizations${qs({
+      search: opts.search,
+      plan: opts.plan,
+      status: opts.status,
+      limit: opts.limit ?? 200,
+      window_days: opts.windowDays ?? 30,
+    })}`,
+    'getAdminOrganizations',
+  )
+}
+
+// ── Panel — Assessments ──────────────────────────────────────────────────────
+
+export type AdminAssessmentRow = {
+  assessmentId: string
+  runId: string | null
+  assessmentType: string | null
+  status: string | null
+  userId: string | null
+  orgId: string | null
+  orgName: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type AdminFailedRunRow = {
+  runId: string
+  status: string | null
+  errorMessage: string | null
+  userId: string | null
+  orgId: string | null
+  createdAt: string | null
+  completedAt: string | null
+}
+
+export type AdminAssessments = {
+  generatedAt: string
+  windowDays: number
+  filters: { status: string | null; orgId: string | null; search: string | null; limit: number }
+  totals: {
+    assessments: number
+    createdInWindow: number
+    neverRun: number
+    listed: number
+    pipelineRuns: number
+    failedRuns: number
+    runningNow: number
+    completedRuns: number
+    failureRate: number | null
+    averageRunSeconds: number | null
+  }
+  byStatus: CountMap
+  assessments: AdminAssessmentRow[]
+  recentFailures: AdminFailedRunRow[]
+  dataNotes: DataNotes
+}
+
+export function getAdminAssessments(
+  opts: { status?: string; orgId?: string; search?: string; limit?: number; windowDays?: number } = {},
+): Promise<AdminAssessments> {
+  return call(
+    `/api/v1/admin/assessments${qs({
+      status: opts.status,
+      org_id: opts.orgId,
+      search: opts.search,
+      limit: opts.limit ?? 100,
+      window_days: opts.windowDays ?? 30,
+    })}`,
+    'getAdminAssessments',
+  )
+}
+
+// ── Panel — Reports ──────────────────────────────────────────────────────────
+
+export type AdminReportRow = {
+  eventId: number
+  orgId: string | null
+  orgName: string | null
+  userId: string | null
+  assessmentId: string | null
+  createdAt: string | null
+  reportKind: string
+  format: string
+  fileName: string | null
+}
+
+export type AdminReports = {
+  generatedAt: string
+  windowDays: number
+  filters: { orgId: string | null; limit: number }
+  totals: { exports: number; exportsInWindow: number; listed: number; distinctOrgs: number; distinctUsers: number }
+  byKind: CountMap
+  byFormat: CountMap
+  reports: AdminReportRow[]
+  sourceNote: string
+  dataNotes: DataNotes
+}
+
+export function getAdminReports(
+  opts: { orgId?: string; limit?: number; windowDays?: number } = {},
+): Promise<AdminReports> {
+  return call(
+    `/api/v1/admin/reports${qs({
+      org_id: opts.orgId,
+      limit: opts.limit ?? 150,
+      window_days: opts.windowDays ?? 30,
+    })}`,
+    'getAdminReports',
+  )
+}
+
+// ── Panel — Conversations ────────────────────────────────────────────────────
+
+export type AdminConversationRow = {
+  conversationId: string
+  assessmentId: string | null
+  runId: string | null
+  userId: string | null
+  orgId: string | null
+  orgName: string | null
+  title: string | null
+  isDefault: number | boolean | null
+  createdAt: string | null
+  updatedAt: string | null
+  messages: number
+  questions: number
+  lastMessageAt: string | null
+}
+
+export type AdminConversations = {
+  generatedAt: string
+  windowDays: number
+  filters: { orgId: string | null; limit: number }
+  totals: {
+    conversations: number
+    messages: number
+    createdInWindow: number
+    questionsInWindow: number
+    withoutAssessment: number
+    listed: number
+  }
+  conversations: AdminConversationRow[]
+  busiest: { conversationId: string; title: string | null; orgName: string | null; messages: number }[]
+  dataNotes: DataNotes
+}
+
+export function getAdminConversations(
+  opts: { orgId?: string; limit?: number; windowDays?: number } = {},
+): Promise<AdminConversations> {
+  return call(
+    `/api/v1/admin/conversations${qs({
+      org_id: opts.orgId,
+      limit: opts.limit ?? 100,
+      window_days: opts.windowDays ?? 30,
+    })}`,
+    'getAdminConversations',
+  )
+}
+
+// ── Panel — Access (the role architecture itself, and the roster) ────────────
+
+export type AdminRosterRow = {
+  principal: string
+  role: string
+  roleLabel: string
+  userId: string | null
+  email: string | null
+  displayName: string | null
+  status: string
+  source: string          // 'bootstrap' | 'granted'
+  grantedBy: string | null
+  grantedAt: string | null
+  revokedBy: string | null
+  revokedAt: string | null
+  capabilities: AdminCapability[]
+  isPrimary: boolean
+  lastSeenAt: string | null
+  activeSinceWindow: boolean
+}
+
+export type AdminAccess = {
+  generatedAt: string
+  windowDays: number
+  platformRole: {
+    id: string
+    label: string
+    capabilities: { id: AdminCapability; label: string }[]
+    note: string
+  }
+  orgRoles: { id: string; label: string; platformCapabilities: string[] }[]
+  roleDistribution: CountMap
+  store: {
+    configured: boolean
+    activeCount: number
+    rowCount: number
+    primaryEmail: string | null
+    bootstrappedFrom: string[]
+    error: string | null
+  }
+  breakGlass: { configured: boolean; size: number; envNames: string[]; note: string }
+  admins: AdminRosterRow[]
+  dataNotes: DataNotes
+}
+
+export function getAdminAccess(windowDays = 30): Promise<AdminAccess> {
+  return call(`/api/v1/admin/access${qs({ window_days: windowDays })}`, 'getAdminAccess')
+}
+
+// ── Platform mutations (each one is capability-gated and audited) ────────────
+
+/** The subscription state before or after a change — the audit payload, shown plainly. */
+export type AdminSubscriptionSnapshot = {
+  orgId: string
+  plan: string | null
+  status: string | null
+  currency: string | null
+  amount: number | null
+  billingCycle: string | null
+  currentPeriodEnd: string | null
+  graceUntil: string | null
+  cancelAtPeriodEnd: boolean
+  pendingPlan: string | null
+  activationState: string | null
+  updatedAt: string | null
+}
+
+export type AdminPlanResult = {
+  changed: boolean
+  planId: string
+  previousPlan?: string
+  pendingPlan?: string
+  effective?: string
+  effectiveAt?: string
+  status?: string
+}
+
+export type AdminSubscriptionResult = {
+  changed: boolean
+  before: AdminSubscriptionSnapshot
+  after: AdminSubscriptionSnapshot
+  planResult: AdminPlanResult | null
+  auditedAt: string
+}
+
+export const SUBSCRIPTION_PLANS = ['free', 'pro', 'enterprise'] as const
+export const SUBSCRIPTION_STATUSES = ['active', 'past_due', 'grace', 'suspended', 'canceled'] as const
+
+export function updateAdminSubscription(
+  orgId: string,
+  body: {
+    plan?: string
+    status?: string
+    currency?: string
+    amount?: number
+    billingCycle?: string
+    graceUntil?: string
+    currentPeriodEnd?: string
+    cancelAtPeriodEnd?: boolean
+    reason?: string
+  },
+): Promise<AdminSubscriptionResult> {
+  return mutate('PUT', `/api/v1/admin/organizations/${encodeURIComponent(orgId)}/subscription`, body, 'updateAdminSubscription')
+}
+
+export function setAdminAccountStatus(
+  orgId: string,
+  body: { status: string; reason?: string },
+): Promise<AdminSubscriptionResult> {
+  return mutate('POST', `/api/v1/admin/organizations/${encodeURIComponent(orgId)}/account-status`, body, 'setAdminAccountStatus')
+}
+
+export type AdminActivationResult = {
+  orgId: string
+  before: string | null
+  after: string | null
+  checkoutAllowed: boolean
+  auditedAt: string
+}
+
+export function setAdminEnterpriseActivation(
+  orgId: string,
+  body: { action: 'request' | 'approve' | 'reset'; agreementAccepted?: boolean; contact?: string },
+): Promise<AdminActivationResult> {
+  return mutate(
+    'POST',
+    `/api/v1/admin/organizations/${encodeURIComponent(orgId)}/enterprise-activation`,
+    body,
+    'setAdminEnterpriseActivation',
+  )
+}
+
+export type AdminOrganizationResult = {
+  organization: { orgId: string; name: string; slug: string; plan: string; personal: boolean; createdAt: string | null }
+  subscription: AdminSubscriptionSnapshot
+  ownerUserId: string
+  pendingOwnerEmail: string | null
+  auditedAt: string
+}
+
+export function createAdminOrganization(body: {
+  name: string
+  plan?: string
+  ownerUserId?: string
+  intendedOwnerEmail?: string
+}): Promise<AdminOrganizationResult> {
+  return mutate('POST', '/api/v1/admin/organizations', body, 'createAdminOrganization')
+}
+
+export function renameAdminOrganization(
+  orgId: string,
+  body: { name: string; reason?: string },
+): Promise<{ orgId: string; name: string; slug: string | null; auditedAt: string }> {
+  return mutate('PATCH', `/api/v1/admin/organizations/${encodeURIComponent(orgId)}`, body, 'renameAdminOrganization')
+}
+
+export type AdminRosterResult = {
+  admin: AdminRosterRow
+  outcome: 'granted' | 'revived' | 'already_active'
+  activeCount: number
+  auditedAt: string
+}
+
+export function grantAdminRole(body: {
+  email?: string
+  userId?: string
+  displayName?: string
+}): Promise<AdminRosterResult> {
+  return mutate('POST', '/api/v1/admin/access/admins', body, 'grantAdminRole')
+}
+
+export function revokeAdminRole(
+  identity: string,
+  reason?: string,
+): Promise<{ revoked: boolean; identity: { email: string | null; userId: string | null }; activeCount: number; auditedAt: string }> {
+  return mutate(
+    'DELETE',
+    `/api/v1/admin/access/admins/${encodeURIComponent(identity)}${qs({ reason })}`,
+    null,
+    'revokeAdminRole',
   )
 }

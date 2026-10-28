@@ -24,14 +24,21 @@ import * as api from '../../lib/api'
 import { loadUseCase, useCaseContextHint } from '../../lib/use-case-store'
 
 export default function ChatShell({
-  personaName,
+  personaName = 'AI Analyst',
+  mode = 'decision',
   initialMessages,
   recommendationCard,
   runId,
   assessmentId,
   assessmentName,
 }: {
-  personaName: string
+  /** Display name of the analyst surface. */
+  personaName?: string
+  /**
+   * Which reasoning surface answers. Explicit rather than inferred from the
+   * persona name, so relabelling the product can never re-route a request.
+   */
+  mode?: 'decision' | 'signals'
   initialMessages?: Message[]
   recommendationCard?: any
   runId?: string | null
@@ -270,13 +277,9 @@ export default function ChatShell({
       let assistantId = `a_${Date.now()}`
       let receivedText = ''
       try {
-        if (personaName.toLowerCase().includes('ic')) {
-          stream = api.askICStreamWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
-        } else if (personaName.toLowerCase().includes('signal')) {
-          stream = api.askSignalsStream(runId, text, contextHistory)
-        } else {
-          stream = api.askICStreamWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
-        }
+        stream = mode === 'signals'
+          ? api.askSignalsStream(runId, text, contextHistory)
+          : api.askICStreamWithConversation(runId, text, contextHistory, activeConversationId, assessmentId)
       } catch (e) {
         stream = null
       }
@@ -390,8 +393,8 @@ export default function ChatShell({
             </h2>
             <p className="text-xs text-slate-500">
               {runId
-                ? `Assessment context loaded${activeConversation ? ` · ${activeConversation.title}` : ''}`
-                : 'No evaluation selected'}
+                ? 'Working from the evidence, signals and decision record for this assessment'
+                : 'Start an assessment to brief the analyst'}
             </p>
           </div>
           {recommendationCard ? (
@@ -415,7 +418,7 @@ export default function ChatShell({
                 href={`/outcomes?focus=${encodeURIComponent(String(runId))}`}
                 className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg border border-[#D6E8FF] text-[#004085] hover:bg-white transition shrink-0"
               >
-                Update
+                Record follow-up
               </Link>
             </div>
           ) : new Date(followupRecord.followupDueAt).getTime() <= Date.now() ? (
@@ -431,7 +434,7 @@ export default function ChatShell({
                 href={`/outcomes?focus=${encodeURIComponent(String(runId))}`}
                 className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-[#0B5D3B] text-white hover:bg-[#08482E] transition shrink-0"
               >
-                One-click update →
+                Record follow-up →
               </Link>
             </div>
           ) : (
@@ -444,7 +447,15 @@ export default function ChatShell({
         ) : null}
 
         <div ref={containerRef} className="flex-1 p-4 overflow-auto scroll-area" style={{ minHeight: 0 }}>
-          <MessageList messages={messages} streamingMessageId={streamingMessageId} showCursor={isStreaming} />
+          {messages.length === 0 && !typing ? (
+            <AnalystOpening runId={runId} assessmentName={assessmentName} mode={mode} onAsk={handleSend} />
+          ) : null}
+          <MessageList
+            messages={messages}
+            streamingMessageId={streamingMessageId}
+            showCursor={isStreaming}
+            onAskQuestion={handleSend}
+          />
           {typing && (
             <div className="mt-3">
               <div className="kulima-message-assistant inline-block p-2 opacity-90">
@@ -483,6 +494,107 @@ export default function ChatShell({
           </div>
         </div>
       </Card>
+    </div>
+  )
+}
+
+/**
+ * The analyst opens like a copilot, not an empty chat box: it says which
+ * assessment it is already holding in mind, offers the questions a
+ * decision-maker would ask next, and points at the outcome record. No numbers
+ * are invented here — every line refers to a surface the workspace has.
+ */
+const OPENING_QUESTION_GROUPS: Array<{ title: string; questions: string[] }> = [
+  {
+    title: 'Understand the decision',
+    questions: [
+      'Why was this recommendation made?',
+      'What would change this recommendation?',
+      'What are the biggest risks?',
+    ],
+  },
+  {
+    title: 'Verify the evidence',
+    questions: [
+      'Which documents support this conclusion?',
+      'What in the evidence contradicts it?',
+      'Which parts are low confidence?',
+    ],
+  },
+  {
+    title: 'Plan the next action',
+    questions: [
+      'What should we do in the next 30 days?',
+      'What do we report to our board or donor?',
+      'What should we measure to prove impact?',
+    ],
+  },
+]
+
+function AnalystOpening({
+  runId,
+  assessmentName,
+  mode,
+  onAsk,
+}: {
+  runId?: string | null
+  assessmentName?: string | null
+  mode: 'decision' | 'signals'
+  onAsk: (question: string) => void
+}) {
+  const subject = assessmentName || 'this assessment'
+  return (
+    <div className="py-2">
+      <div className="rounded-xl border border-[#DDE6F0] bg-white p-4 shadow-saas">
+        <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+          Assessment context in memory
+        </div>
+        <p className="mt-1.5 text-sm font-bold text-[#101828]">
+          I have {subject} loaded — {mode === 'signals'
+            ? 'the signals extracted from your documents and research'
+            : 'the evidence, signals and decision record it produced'}.
+        </p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Ask me anything about it. Every answer cites the evidence it came from — select a citation
+          to open the source, and I&apos;ll suggest the next question worth asking as we go.
+        </p>
+
+        <div className="mt-3.5 grid gap-3 sm:grid-cols-3">
+          {OPENING_QUESTION_GROUPS.map(group => (
+            <div key={group.title}>
+              <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                {group.title}
+              </div>
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {group.questions.map(q => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => onAsk(q)}
+                    className="rounded-lg border border-[#DDE6F0] bg-[#F5F8FC] px-2.5 py-1.5 text-left text-[11px] font-semibold text-slate-700 transition hover:border-[#A6F4C5] hover:bg-[#ECFDF3] hover:text-[#027A48]"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {runId ? (
+          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-[#DDE6F0] pt-3">
+            <span className="text-[11px] text-slate-500">
+              Acting on this decision? Recording what happened is what turns one assessment into evidence.
+            </span>
+            <Link
+              href={`/outcomes?focus=${encodeURIComponent(String(runId))}`}
+              className="rounded-lg border border-[#DDE6F0] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#004085] hover:bg-[#EAF3FF] transition"
+            >
+              Record follow-up →
+            </Link>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

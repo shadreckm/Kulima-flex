@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Link from 'next/link'
 import NavigationSidebar from '../NavigationSidebar/NavigationSidebar'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
 import UserMenu from '../UserMenu/UserMenu'
@@ -9,14 +10,17 @@ import { useState } from 'react'
 import type { AssessmentContext } from '../../lib/assessment-store'
 
 // ── Pipeline steps ────────────────────────────────────────────────────────
+// The hierarchy the workspace is organised around. Each step links to the
+// screen that stage lives on, so the product reads as an assessment pipeline
+// rather than a list of unrelated pages.
 
 const PIPELINE_STEPS = [
-  { key: 'created',   label: 'Created',   shortLabel: 'Created'  },
-  { key: 'research',  label: 'Research',  shortLabel: 'Research' },
-  { key: 'evidence',  label: 'Evidence',  shortLabel: 'Evidence' },
-  { key: 'signals',   label: 'Signals',   shortLabel: 'Signals'  },
-  { key: 'decision',  label: 'Decision',  shortLabel: 'Decision' },
-  { key: 'report',    label: 'Report',    shortLabel: 'Report'   },
+  { key: 'created',   label: 'Assessment', shortLabel: 'Assessment', href: '/assessments' },
+  { key: 'research',  label: 'Research',   shortLabel: 'Research',   href: '/research' },
+  { key: 'evidence',  label: 'Evidence',   shortLabel: 'Evidence',   href: '/evidence' },
+  { key: 'signals',   label: 'Signals',    shortLabel: 'Signals',    href: '/signals' },
+  { key: 'decision',  label: 'Decision',   shortLabel: 'Decision',   href: '/decision' },
+  { key: 'report',    label: 'Reports',    shortLabel: 'Reports',    href: '/reports' },
 ] as const
 
 type StepKey = typeof PIPELINE_STEPS[number]['key']
@@ -30,21 +34,24 @@ function deriveStepStates(
   const isDone    = rawStatus === 'complete' || rawStatus === 'completed'
   const isRunning = rawStatus === 'running'
   const hasDocs   = (ctx?.documentCount ?? 0) > 0 || (ctx?.uploadedDocuments?.length ?? 0) > 0
-  const hasRun    = Boolean(ctx?.runId)
   const hasDecision = Boolean(
     ctx?.decision && typeof ctx.decision === 'object' && Object.keys(ctx.decision).length > 0
   )
-  const hasResearch = Boolean(
-    hasDocs || hasRun || isRunning || isDone
-  )
+  // Each stage reads as done only when its own output exists. Marking a later
+  // stage complete because an earlier one ran is how the stepper starts
+  // misrepresenting the assessment — and a manager acts on what it shows.
+  const hasResearchOutput = Object.keys(ctx?.research ?? {}).length > 0
+  const hasSignalsOutput =
+    (ctx?.signals?.length ?? 0) > 0 || Object.keys(ctx?.signalsSummary ?? {}).length > 0
+  const hasReportsOutput = Object.keys(ctx?.reports ?? {}).length > 0
 
   return {
     created:  'done',
-    research: isDone ? 'done' : (hasResearch ? (isRunning ? 'active' : 'done') : 'pending'),
-    evidence: isDone ? 'done' : (hasDocs ? 'done' : (hasRun ? 'active' : 'pending')),
-    signals:  isDone ? 'done' : (hasDocs && hasRun ? (isDone ? 'done' : 'active') : 'pending'),
-    decision: isDone || hasDecision ? 'done' : 'pending',
-    report:   isDone ? 'done' : 'pending',
+    research: isDone || hasResearchOutput ? 'done' : (isRunning || hasDocs ? 'active' : 'pending'),
+    evidence: hasDocs ? 'done' : (isRunning ? 'active' : 'pending'),
+    signals:  hasSignalsOutput || isDone ? 'done' : (isRunning && hasDocs ? 'active' : 'pending'),
+    decision: hasDecision || isDone ? 'done' : (isRunning && hasSignalsOutput ? 'active' : 'pending'),
+    report:   hasReportsOutput || isDone ? 'done' : 'pending',
   }
 }
 
@@ -121,6 +128,12 @@ export default function PilotWorkspaceShell({
   const donePct = Math.round(
     (Object.values(stepStates).filter(s => s === 'done').length / PIPELINE_STEPS.length) * 100
   )
+
+  // Where the user actually is, said in words — never a bare percentage.
+  const firstOpenStep = PIPELINE_STEPS.findIndex(s => stepStates[s.key] !== 'done')
+  const stageGuidance = firstOpenStep === -1
+    ? 'Reports are ready — record what actually happened in Outcomes.'
+    : `Stage ${firstOpenStep + 1} of ${PIPELINE_STEPS.length + 1} · ${PIPELINE_STEPS[firstOpenStep].label}`
 
   return (
     <div className="h-screen overflow-hidden bg-[#F5F8FC] flex text-[#101828]">
@@ -256,14 +269,19 @@ export default function PilotWorkspaceShell({
                 </span>
               </div>
 
-              {/* Progress Tracker (Phase 2) — always visible, compact strip */}
-              <div className="flex items-center gap-0">
+              {/* Progress Tracker (Phase 2) — the hierarchy, and it is navigable */}
+              <div className="flex flex-wrap items-center gap-0">
                 {PIPELINE_STEPS.map((step, idx) => {
                   const state = stepStates[step.key]
                   const isLast = idx === PIPELINE_STEPS.length - 1
                   return (
                     <React.Fragment key={step.key}>
-                      <div className="flex flex-col items-center gap-0.5 min-w-0" style={{ minWidth: 52 }}>
+                      <Link
+                        href={step.href}
+                        title={`${step.label} — open this stage`}
+                        className="flex flex-col items-center gap-0.5 min-w-0 hover:opacity-90 transition"
+                        style={{ minWidth: 58 }}
+                      >
                         <div className={`w-5 h-5 rounded-full flex items-center justify-center border-2 text-[9px] font-black transition-all ${
                           state === 'done'   ? 'bg-[#12B76A] border-[#12B76A] text-white' :
                           state === 'active' ? 'bg-[#EAF3FF] border-[#2E90FA] text-[#004085] animate-pulse' :
@@ -275,7 +293,7 @@ export default function PilotWorkspaceShell({
                           state === 'done'   ? 'text-[#027A48]' :
                           state === 'active' ? 'text-[#004085]' : 'text-slate-300'
                         }`}>{step.shortLabel}</span>
-                      </div>
+                      </Link>
                       {!isLast ? (
                         <div className={`flex-1 h-0.5 min-w-[8px] mx-0.5 rounded-full ${
                           state === 'done' ? 'bg-[#12B76A]' : 'bg-[#DDE6F0]'
@@ -284,8 +302,21 @@ export default function PilotWorkspaceShell({
                     </React.Fragment>
                   )
                 })}
+                {/* Outcomes closes the chain. It runs on its own clock (the 30-day
+                    follow-up), so it is offered as the next stage, never scored here. */}
+                <div className="flex-1 h-0.5 min-w-[8px] mx-0.5 rounded-full bg-[#DDE6F0]" />
+                <Link
+                  href="/outcomes"
+                  title="Outcomes — what was decided, what happened, what changed"
+                  className="flex flex-col items-center gap-0.5 hover:opacity-90 transition"
+                  style={{ minWidth: 58 }}
+                >
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-dashed border-[#DDE6F0] bg-white text-[9px] font-black text-slate-400">7</div>
+                  <span className="text-[8px] font-bold uppercase tracking-wide leading-tight text-center text-slate-400">Outcomes</span>
+                </Link>
                 {/* Overall % */}
                 <span className="ml-3 text-[9px] font-bold text-slate-400 shrink-0">{donePct}%</span>
+                <span className="w-full mt-1 text-[10px] font-bold text-slate-500">{stageGuidance}</span>
               </div>
             </div>
           ) : description ? (

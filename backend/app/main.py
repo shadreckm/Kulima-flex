@@ -60,6 +60,21 @@ async def lifespan(app: FastAPI):
             print(f"Failed to start JobRunner: {exc}")
             _job_runner = None
 
+    # Provision the PLATFORM_ADMIN role from configuration before anyone can ask
+    # for it. The repository also bootstraps lazily (a TestClient never runs
+    # lifespan events), but doing it here means the roster exists before the
+    # first operator arrives, and a broken bootstrap is visible in the log.
+    try:
+        from kulima.core.orgs.platform_admins import get_repo as _platform_admins
+
+        provisioned = _platform_admins().bootstrap()
+        print(
+            f"Platform administrators ready: {provisioned['active']} active, "
+            f"{len(provisioned['created'])} provisioned at startup"
+        )
+    except Exception as exc:  # noqa: BLE001 — startup must not die on the role store
+        print(f"Platform admin bootstrap failed: {exc}")
+
     yield
 
     # Shutdown
@@ -107,7 +122,8 @@ app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(auth_diagnostics.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
-# Internal platform operations console (admin-only, cross-workspace reads).
+# Internal platform administration console (PLATFORM_ADMIN only: cross-workspace
+# reads plus the subscription / enterprise / roster mutations that role holds).
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 # Phase 4 Enterprise: case workspace + task queues (self-prefixed routers)

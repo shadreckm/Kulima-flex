@@ -40,14 +40,39 @@ you**, not turn a two-day decision into a two-week study.
 
 ## The 30-Day Test That Matters (from your phone, in under a minute)
 
-When the ⏳ Follow-Up Due chip appears:
+When the **⏳ Follow-Up Due** chip appears — on the workspace header, your dashboard,
+or the **30-Day Follow-ups Waiting** list in `/outcomes`:
 
-- One tap: **✓ Decision taken / ↻ In progress / ✕ No decision yet.** Done.
-- When the season tells you whether it worked, open Update: was the
-  recommendation followed? what happened? rate the outcome
+- One tap: **✓ Decision taken / ↻ Decision in progress / No decision yet.** Done.
+  Ten seconds. "No decision yet" is a real, useful answer — record it, don't skip it.
+- When the season tells you whether it worked, open **Update**: was the recommendation
+  followed? what happened? rate the outcome
   (Successful / Partially / Unsuccessful) and save.
-- The Outcome Review PDF is what your bank sees when you ask for the next
+- Then in `/outcomes` open the row and fill **What Happened · What Was Predicted ·
+  What Was Missed · What Worked · What Failed** → **Save Outcome & Lessons**.
+- The **Outcome Review PDF** is what your bank sees when you ask for the next
   facility — decisions with receipts beat decisions with memory.
+
+## Your Season Calendar (short cycle — this is your advantage)
+
+| When | Act | Proof |
+|---|---|---|
+| Day 0 | Upload what you already have: occupancy/revenue summaries, the bank paper, one page of plans | Trust score reflects thin evidence — that's correct |
+| Day 1 | Read `/decision`: reason · evidence · confidence · next action. Download the **Tourism Resilience Report** | Report open on your phone |
+| Day 2 | **Make the decision** (price, staffing, solar, renovation) | Note it in the comment field |
+| Day 30 | One-tap follow-up | `✓ Follow-up recorded` |
+| Day 60 | **Update**, comment prefixed `D60:` — bookings tell you by now | Comment trail |
+| End of season | Rate the outcome + lessons; export **Outcome Review** | PDF ready for the bank |
+
+If any step takes longer than a minute on a phone, that is `FR-1` — tell your mentor
+how long it actually took.
+
+## What You Hand Back
+
+1. Every one-tap answer you gave — including "no decision yet".
+2. At least one **rated** outcome with a written lesson in your own words.
+3. The Outcome Review PDF.
+4. Where you waited on the system (with seconds).
 
 ## Your Unique Value to the Pilot
 

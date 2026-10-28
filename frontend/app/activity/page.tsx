@@ -94,6 +94,10 @@ function ActivityInner() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-2xl font-semibold">Activity Timeline</h1>
+      <p className="mt-1 text-sm text-slate-500 max-w-2xl">
+        Every action on this assessment in order — what was uploaded, when research and signals ran, when the decision
+        was made and what was exported. This is the audit record your institution points to afterwards.
+      </p>
       {displayEntity ? (
         <p className="mt-1 text-sm text-slate-500">
           {displayEntity} · {ctx?.assessmentTypeLabel || 'Assessment'}
@@ -123,17 +127,21 @@ function ActivityInner() {
             const label = EVENT_LABELS[e.eventType] ?? e.label ?? e.eventType
             const meta = e.metadata && typeof e.metadata === 'object' ? e.metadata : {}
             const detailParts: string[] = []
-            if (meta.founder) detailParts.push(String(meta.founder))
+            if (meta.founder) detailParts.push(`Lead: ${String(meta.founder)}`)
             if (meta.startup) detailParts.push(String(meta.startup))
-            if (meta.documents) detailParts.push(`${meta.documents} document(s)`)
-            if (meta.count) detailParts.push(`${meta.count} item(s)`)
+            if (meta.documents) detailParts.push(`${meta.documents} document${Number(meta.documents) === 1 ? '' : 's'} attached`)
+            if (meta.count) detailParts.push(`${meta.count} record${Number(meta.count) === 1 ? '' : 's'}`)
             if (meta.runId) detailParts.push(`run ${meta.runId}`)
+            const when = e.createdAt ? new Date(e.createdAt) : null
+            const whenText = when && !Number.isNaN(when.getTime())
+              ? when.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : (e.createdAt ?? '')
             return (
               <li key={e.id ?? i} className="relative">
                 <span className="absolute -left-[31px] top-1 h-3 w-3 rounded-full bg-[#159A62]" />
                 <div className="text-sm font-medium">{label}</div>
                 <div className="text-xs opacity-70">
-                  {e.createdAt ?? ''}
+                  {whenText}
                   {detailParts.length ? ` — ${detailParts.join(' · ')}` : ''}
                 </div>
               </li>

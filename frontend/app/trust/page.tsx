@@ -120,6 +120,35 @@ export default function TrustGovernancePage() {
 
       {summary ? (
         <>
+          {/* Two kinds of trust, one place to find either. The evidence Trust
+              Layer grades what a decision rests on; this screen grades how that
+              evidence is held. Users should never have to guess which one a
+              question belongs to. */}
+          <section className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              Trust in Kulima FLEX works two ways
+            </div>
+            <div className="mt-2.5 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-lg border border-[#DDE6F0] bg-[#F5F8FC]">
+                <div className="font-extrabold text-slate-900">Evidence trust — is this decision well founded?</div>
+                <p className="mt-1 text-slate-600 leading-relaxed">
+                  Evidence grade, confidence, verification status and contradictions, shown on every
+                  assessment rather than hidden behind a summary number.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Link href="/evidence" className="font-bold text-[#0B5D3B] hover:underline">Open the Evidence Trust Layer →</Link>
+                  <Link href="/decision" className="font-bold text-[#0B5D3B] hover:underline">See it on the decision →</Link>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg border border-[#0B5D3B]/20 bg-[#ECFDF3]/50">
+                <div className="font-extrabold text-[#0C5132]">Data governance — how your evidence is held</div>
+                <p className="mt-1 text-slate-600 leading-relaxed">
+                  Encryption, workspace isolation, retention, roles and the append-only audit trail.
+                  This is what this screen reports.
+                </p>
+              </div>
+            </div>
+          </section>
           <section className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard label="Documents Stored" value={String(documents?.total ?? 0)} hint={`${documents?.active ?? 0} active · ${formatBytes(documents?.storageBytes ?? 0)}`} />
             <StatCard label="Active Assessments" value={String(summary.assessments.active)} hint={`${summary.assessments.total} total`} />

@@ -120,7 +120,7 @@ class Reader:
             }
         return column in self._cols[table]
 
-    def rows(self, sql: str, params: tuple = (), *, requires: tuple[str, ...] = ()) -> list[dict]:
+    def rows(self, sql: str, params: tuple | dict = (), *, requires: tuple[str, ...] = ()) -> list[dict]:
         for table in requires:
             if not self.has(table):
                 self.notes.append(f"table '{table}' does not exist yet — section reported empty")
@@ -132,7 +132,7 @@ class Reader:
             self.notes.append(f"query failed: {str(exc)[:160]}")
             return []
 
-    def one(self, sql: str, params: tuple = (), *, requires: tuple[str, ...] = ()) -> dict | None:
+    def one(self, sql: str, params: tuple | dict = (), *, requires: tuple[str, ...] = ()) -> dict | None:
         rows = self.rows(sql, params, requires=requires)
         return rows[0] if rows else None
 
@@ -1048,6 +1048,12 @@ _DELETE_EVENTS = (
 _ROLE_EVENTS = (
     "org.role_changed", "org.member_added", "org.member_removed",
     "assessment.collaborator_invited", "assessment.collaborator_removed",
+    # Platform-plane role changes are role changes too. An operator granting or
+    # revoking PLATFORM_ADMIN must surface in the same bucket the audit panel
+    # already exposes, or the most privileged writes on the platform would be
+    # the hardest ones to find.
+    "admin.platform_admin_granted", "admin.platform_admin_revoked",
+    "admin.platform_role_claimed",
 )
 _CREATION_EVENTS = ("assessment.created", "assessment.started", "document.uploaded")
 
@@ -1206,3 +1212,512 @@ def audit_logs(
             "distinctUsers": len({e["userId"] for e in events if e["userId"]}),
             "dataNotes": r.notes,
         }
+
+
+# ── Platform panel — Organizations (the management view) ─────────────────────
+#
+# ``user_management`` answers "who is on the platform". This answers "what
+# would an operator act on": each workspace carries the subscription state an
+# operator manages, the activation state an enterprise account is stuck in, and
+# the usage that makes a plan change a considered decision instead of a guess.
+
+def organizations(
+    *,
+    search: str = "",
+    plan: str | None = None,
+    status: str | None = None,
+    limit: int = 200,
+    window_days: int = 30,
+) -> dict:
+    since = _since(window_days)
+    with _connect() as conn:
+        r = Reader(conn)
+        enrichments = (
+            ("organization_members",
+             "(SELECT COUNT(*) FROM organization_members m WHERE m.org_id = o.id) AS members, "
+             "(SELECT m.user_id FROM organization_members m WHERE m.org_id = o.id AND m.role = 'owner'"
+             " ORDER BY m.created_at ASC LIMIT 1) AS primaryOwnerUserId"),
+            ("assessment_contexts",
+             "(SELECT COUNT(*) FROM assessment_contexts a WHERE a.org_id = o.id) AS assessments, "
+             "(SELECT COUNT(*) FROM assessment_contexts a WHERE a.org_id = o.id AND a.created_at >= :since)"
+             " AS assessmentsInWindow"),
+            ("documents",
+             "(SELECT COUNT(*) FROM documents d WHERE d.org_id = o.id AND d.deleted_at IS NULL) AS documents, "
+             "(SELECT COALESCE(SUM(d.size_bytes), 0) FROM documents d"
+             " WHERE d.org_id = o.id AND d.deleted_at IS NULL) AS storageBytes"),
+            ("audit_events",
+             "(SELECT MAX(e.created_at) FROM audit_events e WHERE e.org_id = o.id) AS lastActivityAt, "
+             "(SELECT COUNT(*) FROM audit_events e WHERE e.org_id = o.id AND e.event_type = 'report.exported')"
+             " AS reportExports"),
+            ("subscriptions",
+             "s.plan AS subscriptionPlan, s.status AS billingStatus, s.amount AS amount, s.currency AS currency,"
+             " s.billing_cycle AS billingCycle, s.current_period_end AS currentPeriodEnd,"
+             " s.cancel_at_period_end AS cancelAtPeriodEnd, s.pending_plan AS pendingPlan,"
+             " s.activation_state AS activationState, s.last_error AS lastError, s.updated_at AS subscriptionUpdatedAt"),
+        )
+        columns = [
+            "o.id AS orgId", "o.name AS name", "o.slug AS slug", "o.plan AS plan",
+            "o.personal AS personal", "o.created_by AS createdBy", "o.created_at AS createdAt",
+        ]
+        joins = ""
+        by_table = dict(enrichments)
+        if r.has("subscriptions"):
+            # The subscription block already qualifies its own columns (s.*), so
+            # it is appended verbatim once the join exists.
+            joins = "LEFT JOIN subscriptions s ON s.org_id = o.id"
+            columns.append(by_table["subscriptions"])
+        columns += [expr for table, expr in enrichments if r.has(table) and table != "subscriptions"]
+
+        # Named bindings, deliberately: most of the columns above exist only
+        # when their table exists, so a positional parameter list would have to
+        # guess which of them survived — on a database without
+        # ``assessment_contexts`` the count subquery (and with it ``since``) is
+        # gone, and the whole panel would fail to bind. A name binds to the
+        # fragment that declares it, no matter what else is in the SELECT.
+        predicates: list[str] = []
+        params: dict[str, object] = {"since": since, "limit": max(1, min(int(limit), 500))}
+        if search:
+            predicates.append("(o.name LIKE :search OR o.slug LIKE :search OR o.id LIKE :search)")
+            params["search"] = f"%{search}%"
+        if plan:
+            predicates.append("o.plan = :plan")
+            params["plan"] = str(plan).strip().lower()
+        if status and r.has("subscriptions"):
+            predicates.append("s.status = :status")
+            params["status"] = str(status).strip().lower()
+        elif status:
+            r.notes.append("no subscriptions table yet — status filter cannot be applied")
+        sql = f"SELECT {', '.join(columns)} FROM organizations o {joins}"
+        if predicates:
+            sql += " WHERE " + " AND ".join(predicates)
+        sql += " ORDER BY o.created_at DESC LIMIT :limit"
+
+        rows = r.rows(sql, params, requires=("organizations",))
+        for row in rows:
+            for key, default in (
+                ("members", 0), ("primaryOwnerUserId", None), ("assessments", 0),
+                ("assessmentsInWindow", 0), ("documents", 0), ("storageBytes", 0),
+                ("lastActivityAt", None), ("reportExports", 0), ("billingStatus", None),
+                ("subscriptionPlan", None), ("amount", None), ("currency", None),
+                ("billingCycle", None), ("currentPeriodEnd", None), ("pendingPlan", None),
+                ("activationState", None), ("lastError", None), ("subscriptionUpdatedAt", None),
+            ):
+                row.setdefault(key, default)
+            row["personal"] = bool(row.get("personal"))
+            row["cancelAtPeriodEnd"] = bool(row.get("cancelAtPeriodEnd") or 0)
+            row["needsAttention"] = _needs_attention(row, since)
+
+        totals_row = r.one(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN personal = 0 THEN 1 ELSE 0 END) AS teams,
+                   SUM(CASE WHEN personal = 1 THEN 1 ELSE 0 END) AS personalWorkspaces,
+                   SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS createdInWindow
+            FROM organizations
+            """,
+            (since,),
+            requires=("organizations",),
+        ) or {}
+        subs = r.one(
+            """
+            SELECT COUNT(*) AS rows_,
+                   SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended,
+                   SUM(CASE WHEN status = 'past_due' THEN 1 ELSE 0 END) AS pastDue,
+                   SUM(CASE WHEN status = 'grace' THEN 1 ELSE 0 END) AS grace,
+                   SUM(CASE WHEN plan = 'enterprise' THEN 1 ELSE 0 END) AS enterprise,
+                   SUM(CASE WHEN activation_state = 'requested' THEN 1 ELSE 0 END) AS activationRequested,
+                   SUM(CASE WHEN pending_plan IS NOT NULL THEN 1 ELSE 0 END) AS scheduledChanges
+            FROM subscriptions
+            """,
+            requires=("subscriptions",),
+        ) or {}
+        if r.has("subscriptions") and r.has("organizations"):
+            without = r.count(
+                "organizations", "id NOT IN (SELECT org_id FROM subscriptions)"
+            )
+            if without:
+                r.notes.append(
+                    f"{without} workspace(s) have no subscription row — they bill as 'free' by default and "
+                    "appear here as withoutSubscriptionRow rather than as a paid plan"
+                )
+        else:
+            without = 0
+
+        return {
+            "generatedAt": _iso(_now()),
+            "windowDays": window_days,
+            "filters": {"search": search or None, "plan": plan, "status": status, "limit": limit},
+            "totals": {
+                "organizations": int(totals_row.get("total") or 0),
+                "teamWorkspaces": int(totals_row.get("teams") or 0),
+                "personalWorkspaces": int(totals_row.get("personalWorkspaces") or 0),
+                "createdInWindow": int(totals_row.get("createdInWindow") or 0),
+                "listed": len(rows),
+                "withoutSubscriptionRow": int(without),
+                "suspended": int(subs.get("suspended") or 0),
+                "pastDue": int(subs.get("pastDue") or 0),
+                "inGrace": int(subs.get("grace") or 0),
+                "enterprise": int(subs.get("enterprise") or 0),
+                "activationRequested": int(subs.get("activationRequested") or 0),
+                "scheduledChanges": int(subs.get("scheduledChanges") or 0),
+                "needsAttention": sum(1 for row in rows if row["needsAttention"]),
+            },
+            "organizations": rows,
+            "attentionDefinition": (
+                "A workspace needs attention when it is suspended, past due, in grace, has an "
+                "expired billing period, or has an Enterprise activation waiting to be approved."
+            ),
+            "dataNotes": r.notes,
+        }
+
+
+def _needs_attention(row: dict, since: str) -> bool:
+    """One definition of 'an operator should look at this account'."""
+    if str(row.get("billingStatus") or "") in {"suspended", "past_due", "grace"}:
+        return True
+    if str(row.get("activationState") or "") == "requested":
+        return True
+    period_end = row.get("currentPeriodEnd")
+    parsed = _parse_dt(period_end)
+    if parsed is not None and parsed < _now() and not row.get("pendingPlan"):
+        return True
+    return False
+
+
+# ── Platform panel — Assessments ─────────────────────────────────────────────
+
+def assessments_panel(
+    *,
+    status: str | None = None,
+    org_id: str | None = None,
+    search: str = "",
+    limit: int = 100,
+    window_days: int = 30,
+) -> dict:
+    since = _since(window_days)
+    with _connect() as conn:
+        r = Reader(conn)
+        event_name, event_join = r.org_names("a.org_id")
+        predicates = ["1=1"]
+        # The list itself is not window-filtered — an operator searching for an
+        # older assessment expects it to appear, while `windowDays` scopes the
+        # counts above it. Only the declared filters bind here.
+        params: list[object] = []
+        if status:
+            predicates.append("a.status = ?")
+            params.append(str(status).strip().lower())
+        if org_id:
+            predicates.append("a.org_id = ?")
+            params.append(org_id)
+        if search:
+            predicates.append("(a.assessment_id LIKE ? OR a.run_id LIKE ? OR a.user_id LIKE ?)")
+            params += [f"%{search}%"] * 3
+        rows = r.rows(
+            f"""
+            SELECT a.assessment_id AS assessmentId, a.run_id AS runId, a.assessment_type AS assessmentType,
+                   a.status AS status, a.user_id AS userId, a.org_id AS orgId, {event_name},
+                   a.created_at AS createdAt, a.updated_at AS updatedAt
+            FROM assessment_contexts a {event_join}
+            WHERE {' AND '.join(predicates)}
+            ORDER BY a.created_at DESC LIMIT ?
+            """,
+            tuple(params) + (max(1, min(int(limit), 500)),),
+            requires=("assessment_contexts",),
+        )
+        by_status = r.rows(
+            "SELECT status, COUNT(*) AS c FROM assessment_contexts GROUP BY status ORDER BY c DESC",
+            requires=("assessment_contexts",),
+        )
+        totals_row = r.one(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS createdInWindow,
+                   SUM(CASE WHEN run_id IS NULL THEN 1 ELSE 0 END) AS neverRun
+            FROM assessment_contexts
+            """,
+            (since,),
+            requires=("assessment_contexts",),
+        ) or {}
+        run_row = r.one(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                   SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
+                   SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+            FROM api_runs
+            """,
+            requires=("api_runs",),
+        ) or {}
+        failures = r.rows(
+            """
+            SELECT run_id AS runId, status AS status, error_message AS errorMessage,
+                   user_id AS userId, org_id AS orgId, created_at AS createdAt, completed_at AS completedAt
+            FROM api_runs WHERE status = 'failed' ORDER BY created_at DESC LIMIT 25
+            """,
+            requires=("api_runs",),
+        )
+        duration = r.value(
+            "api_runs",
+            "SELECT AVG((julianday(completed_at) - julianday(created_at)) * 86400.0)"
+            " FROM api_runs WHERE completed_at IS NOT NULL AND status = 'completed'",
+        )
+        return {
+            "generatedAt": _iso(_now()),
+            "windowDays": window_days,
+            "filters": {"status": status, "orgId": org_id, "search": search or None, "limit": limit},
+            "totals": {
+                "assessments": int(totals_row.get("total") or 0),
+                "createdInWindow": int(totals_row.get("createdInWindow") or 0),
+                "neverRun": int(totals_row.get("neverRun") or 0),
+                "listed": len(rows),
+                "pipelineRuns": int(run_row.get("total") or 0),
+                "failedRuns": int(run_row.get("failed") or 0),
+                "runningNow": int(run_row.get("running") or 0),
+                "completedRuns": int(run_row.get("completed") or 0),
+                "failureRate": _rate(int(run_row.get("failed") or 0), int(run_row.get("total") or 0)),
+                "averageRunSeconds": _round_or_none(duration, 1),
+            },
+            "byStatus": {(s["status"] or "unknown"): int(s["c"]) for s in by_status},
+            "assessments": rows,
+            "recentFailures": failures,
+            "dataNotes": r.notes,
+        }
+
+
+# ── Platform panel — Reports ─────────────────────────────────────────────────
+
+def reports_panel(*, org_id: str | None = None, limit: int = 150, window_days: int = 30) -> dict:
+    """Report exports, read from the audit stream.
+
+    There is no ``reports`` table: a report exists as the event that records it
+    was produced. Saying so here keeps the panel from implying a store that
+    protects nothing, and keeps the numbers reconcilable with the audit log.
+    """
+    since = _since(window_days)
+    with _connect() as conn:
+        r = Reader(conn)
+        event_name, event_join = r.org_names("e.org_id")
+        predicates = ["e.event_type = 'report.exported'"]
+        params: list[object] = []
+        if org_id:
+            predicates.append("e.org_id = ?")
+            params.append(org_id)
+        rows = r.rows(
+            f"""
+            SELECT e.id AS eventId, e.org_id AS orgId, {event_name}, e.user_id AS userId,
+                   e.assessment_id AS assessmentId, e.created_at AS createdAt, e.metadata_json
+            FROM audit_events e {event_join}
+            WHERE {' AND '.join(predicates)}
+            ORDER BY e.id DESC LIMIT ?
+            """,
+            tuple(params) + (max(1, min(int(limit), 500)),),
+            requires=("audit_events",),
+        )
+        for row in rows:
+            try:
+                meta = json.loads(row.pop("metadata_json") or "{}")
+            except Exception:  # noqa: BLE001
+                meta = {}
+            row.pop("metadata_json", None)
+            row["reportKind"] = meta.get("reportKind") or meta.get("kind") or "unknown"
+            row["format"] = meta.get("format") or "unknown"
+            row["fileName"] = meta.get("fileName") or meta.get("filename")
+        in_window = r.count("audit_events", "event_type = 'report.exported' AND created_at >= ?", (since,))
+        total = r.count("audit_events", "event_type = 'report.exported'")
+        kinds: dict[str, int] = {}
+        formats: dict[str, int] = {}
+        for row in rows:
+            kinds[row["reportKind"]] = kinds.get(row["reportKind"], 0) + 1
+            formats[row["format"]] = formats.get(row["format"], 0) + 1
+        return {
+            "generatedAt": _iso(_now()),
+            "windowDays": window_days,
+            "filters": {"orgId": org_id, "limit": limit},
+            "totals": {
+                "exports": total,
+                "exportsInWindow": in_window,
+                "listed": len(rows),
+                "distinctOrgs": len({row["orgId"] for row in rows if row["orgId"]}),
+                "distinctUsers": len({row["userId"] for row in rows if row["userId"]}),
+            },
+            "byKind": kinds,
+            "byFormat": formats,
+            "reports": rows,
+            "sourceNote": (
+                "Derived from 'report.exported' audit events — the platform has no report table, "
+                "so a report is only as durable as its audit entry."
+            ),
+            "dataNotes": r.notes,
+        }
+
+
+# ── Platform panel — Conversations ───────────────────────────────────────────
+
+def conversations_panel(*, org_id: str | None = None, limit: int = 100, window_days: int = 30) -> dict:
+    since = _since(window_days)
+    with _connect() as conn:
+        r = Reader(conn)
+        event_name, event_join = r.org_names("c.org_id")
+        predicates = ["1=1"]
+        # Same contract as the assessments panel: the list honours the filters,
+        # the window scopes the counts. Binding an unused `since` here would
+        # break every conversation query the moment real data existed.
+        params: list[object] = []
+        if org_id:
+            predicates.append("c.org_id = ?")
+            params.append(org_id)
+        rows = r.rows(
+            f"""
+            SELECT c.conversation_id AS conversationId, c.assessment_id AS assessmentId,
+                   c.run_id AS runId, c.user_id AS userId, c.org_id AS orgId, {event_name},
+                   c.title AS title, c.is_default AS isDefault, c.created_at AS createdAt,
+                   c.updated_at AS updatedAt,
+                   (SELECT COUNT(*) FROM analyst_messages m WHERE m.conversation_id = c.conversation_id) AS messages,
+                   (SELECT COUNT(*) FROM analyst_messages m WHERE m.conversation_id = c.conversation_id
+                    AND m.role = 'user') AS questions,
+                   (SELECT MAX(m.created_at) FROM analyst_messages m WHERE m.conversation_id = c.conversation_id)
+                   AS lastMessageAt
+            FROM analyst_conversations c {event_join}
+            WHERE {' AND '.join(predicates)}
+            ORDER BY c.updated_at DESC LIMIT ?
+            """,
+            tuple(params) + (max(1, min(int(limit), 500)),),
+            requires=("analyst_conversations", "analyst_messages"),
+        )
+        totals_row = r.one(
+            """
+            SELECT (SELECT COUNT(*) FROM analyst_conversations) AS conversations,
+                   (SELECT COUNT(*) FROM analyst_messages) AS messages,
+                   (SELECT COUNT(*) FROM analyst_conversations WHERE created_at >= ?) AS createdInWindow,
+                   (SELECT COUNT(*) FROM analyst_conversations WHERE assessment_id IS NULL) AS unlinked,
+                   (SELECT COUNT(*) FROM analyst_messages WHERE role = 'user' AND created_at >= ?) AS questionsInWindow
+            """,
+            (since, since),
+            requires=("analyst_conversations", "analyst_messages"),
+        ) or {}
+        top = sorted(rows, key=lambda c: int(c.get("messages") or 0), reverse=True)[:5]
+        return {
+            "generatedAt": _iso(_now()),
+            "windowDays": window_days,
+            "filters": {"orgId": org_id, "limit": limit},
+            "totals": {
+                "conversations": int(totals_row.get("conversations") or 0),
+                "messages": int(totals_row.get("messages") or 0),
+                "createdInWindow": int(totals_row.get("createdInWindow") or 0),
+                "questionsInWindow": int(totals_row.get("questionsInWindow") or 0),
+                "withoutAssessment": int(totals_row.get("unlinked") or 0),
+                "listed": len(rows),
+            },
+            "conversations": rows,
+            "busiest": [
+                {"conversationId": c["conversationId"], "title": c.get("title"),
+                 "orgName": c.get("orgName"), "messages": int(c.get("messages") or 0)}
+                for c in top
+            ],
+            "dataNotes": r.notes,
+        }
+
+
+# ── Platform panel — Access (the role architecture itself) ───────────────────
+
+def _last_seen(user_id: str | None) -> str | None:
+    """Read from the audit stream: the console stores no presence column."""
+    if not user_id:
+        return None
+    try:
+        from kulima.core.audit.repository import AuditRepository
+
+        events = AuditRepository().list(
+            org_id=None, user_id=user_id, event_types=["admin.console_viewed"], limit=1,
+        )
+        return str(events[0]["createdAt"]) if events else None
+    except Exception:  # noqa: BLE001 — presence is decorative, never fatal
+        return None
+
+
+def platform_access(panel_window: int = 30) -> dict:
+    """The two planes side by side, plus the roster the operator manages.
+
+    Nothing here is secret except the identities of *other* operators, which the
+    roster legitimately shows to an administrator (they can grant that access
+    anyway). The break-glass environment lists are reported as counts only.
+    """
+    from kulima.core.orgs.platform_admins import (
+        ORG_ROLE_PLATFORM_CAPABILITIES,
+        PLATFORM_ADMIN_ROLE,
+        PLATFORM_ADMIN_ROLE_LABEL,
+        PLATFORM_ROLE_CAPABILITIES,
+        CAPABILITY_LABELS,
+        get_repo,
+    )
+    from kulima.core.orgs.models import ROLE_LABELS, Role
+
+    settings = get_settings()
+    try:
+        repo = get_repo()
+        admins = repo.list_admins(include_revoked=True)
+        active = repo.count_active()
+        store_error = None
+    except Exception as exc:  # noqa: BLE001 — the screen must render even if the store is broken
+        admins, active = [], 0
+        store_error = f"platform_admins store unavailable: {str(exc)[:160]}"
+
+    capabilities = [
+        {"id": c.value, "label": CAPABILITY_LABELS.get(c.value, c.value)}
+        for c in sorted(PLATFORM_ROLE_CAPABILITIES[PLATFORM_ADMIN_ROLE], key=lambda x: x.value)
+    ]
+    with _connect() as conn:
+        r = Reader(conn)
+        role_rows = r.rows(
+            "SELECT role, COUNT(*) AS c FROM organization_members GROUP BY role ORDER BY c DESC",
+            requires=("organization_members",),
+        )
+    since = _since(panel_window)
+    return {
+        "generatedAt": _iso(_now()),
+        "windowDays": panel_window,
+        "platformRole": {
+            "id": PLATFORM_ADMIN_ROLE,
+            "label": PLATFORM_ADMIN_ROLE_LABEL,
+            "capabilities": capabilities,
+            "note": (
+                "A platform principal, stored in its own table. It is not a value in the "
+                "organization role enum, because membership rows are written by customers."
+            ),
+        },
+        "orgRoles": [
+            {
+                "id": role.value,
+                "label": ROLE_LABELS.get(role.value, role.value.title()),
+                "platformCapabilities": ORG_ROLE_PLATFORM_CAPABILITIES.get(role.value, []),
+            }
+            for role in Role
+        ],
+        "roleDistribution": {(row["role"] or "unknown"): int(row["c"]) for row in role_rows},
+        "store": {
+            "configured": active > 0,
+            "activeCount": active,
+            "rowCount": len(admins),
+            "primaryEmail": settings.platform_admin_primary_email or None,
+            "bootstrappedFrom": sorted(set(settings.platform_admin_emails) | set(settings.admin_emails)),
+            "error": store_error,
+        },
+        "breakGlass": {
+            "configured": bool(settings.admin_emails or settings.platform_admin_user_ids),
+            "size": len({str(e).strip().lower() for e in settings.admin_emails if str(e).strip()}
+                        | {str(e).strip().lower() for e in settings.platform_admin_user_ids if str(e).strip()}),
+            "envNames": ("KULIMA_ADMIN_EMAILS", "KULIMA_PLATFORM_ADMIN_USER_IDS"),
+            "note": (
+                "Environment identities grant access when the role store cannot, and are labelled "
+                "'break-glass' in every audit event they produce."
+            ),
+        },
+        "admins": [
+            {**a.to_payload(),
+             "isPrimary": repo.is_primary(a) if store_error is None else False,
+             "lastSeenAt": _last_seen(a.user_id),
+             "activeSinceWindow": bool(a.granted_at and str(a.granted_at) >= since)}
+            for a in admins
+        ],
+        "dataNotes": [n for n in ([store_error] if store_error else [])],
+    }

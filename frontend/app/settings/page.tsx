@@ -333,7 +333,7 @@ export default function SettingsPage() {
             </div>
             <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
               <div className="font-bold text-slate-700 mb-0.5">Entity Types</div>
-              <div>Startup · NGO · Dev. Program · Accelerator · Gov. Program</div>
+              <div>NGO · Development Programme · Government Programme · Tourism SME · Startup</div>
             </div>
           </div>
           <p className="text-xs text-slate-400">

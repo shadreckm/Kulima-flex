@@ -14,7 +14,7 @@ export type AdminFetchState<T> = {
   data: T | null
   busy: boolean
   error: string | null
-  /** True when the backend refused the operator gate (403), not a data failure. */
+  /** True when the backend refused the platform gate (403), not a data failure. */
   denied: boolean
   reload: () => void
 }

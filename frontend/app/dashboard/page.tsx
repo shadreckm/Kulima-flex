@@ -89,7 +89,7 @@ export default function DashboardPage() {
             <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">Kulima FLEX</div>
             <div className="text-xs font-bold text-[#0B5D3B] mt-0.5">Decision Intelligence Platform</div>
             <div className="text-[11px] text-slate-400 mt-1 max-w-sm">
-              Evidence-backed evaluation pipeline for funds, NGOs, accelerators, and development finance programs.
+              Evidence-backed assessment pipeline for NGOs, development programmes, government programmes and tourism enterprises.
             </div>
           </div>
         </div>
@@ -132,6 +132,11 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-[11px] text-slate-500 truncate">
                     Recommendation: <strong>{f.recommendation || '—'}</strong>
+                  </div>
+                  <div className="text-[10px] text-slate-400 truncate">
+                    {Number.isNaN(new Date(f.followupDueAt).getTime())
+                      ? 'Check-in date not set'
+                      : <>Due {new Date(f.followupDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · 30-day check-in</>}
                   </div>
                 </div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-[#B54708] bg-[#FFFAEB] border border-[#FEDF89] px-2 py-1 rounded-full shrink-0">

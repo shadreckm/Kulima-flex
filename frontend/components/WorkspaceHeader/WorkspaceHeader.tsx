@@ -15,9 +15,9 @@ type WorkspaceHeaderProps = {
 const ENTITY_LABELS: Record<EntityType, string> = {
   startup: 'Startup',
   ngo: 'NGO',
-  development_program: 'Dev. Program',
+  development_program: 'Development Programme',
   accelerator: 'Accelerator',
-  government_program: 'Gov. Program',
+  government_program: 'Government Programme',
   tourism_sme: 'Tourism SME',
 }
 

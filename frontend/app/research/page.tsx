@@ -39,7 +39,7 @@ function ResearchPageInner() {
     (findings.length > 0 ? findings.slice(0, 3).join(' ') : '') ||
     (sources.length > 0 ? `Evidence analysis grounded in ${sources.length} primary and research sources.` : '') ||
     (data?.problemStatement ? String(data.problemStatement) : '') ||
-    'Research and evidence synthesis complete.'
+    ''
 
   const effectiveSummary =
     (researchSummary && researchSummary.trim()) ||
@@ -47,18 +47,6 @@ function ResearchPageInner() {
 
   // Phase 2: Research completion is only when actual usable output exists
   const hasUsableResearch = (effectiveSummary && effectiveSummary.length > 30) || (sources.length > 0 && findings.length > 0)
-  const progress = data?.research?.progress ?? (hasUsableResearch ? 100 : (status === 'running' ? 50 : 20))
-
-  // Calculate progress steps (typed for AssessmentProgress)
-  const pipelineDone = hasUsableResearch
-  const progressSteps: Array<{ key: string; label: string; status: 'complete' | 'pending' | 'in_progress' }> = [
-    { key: 'created', label: 'Assessment Created', status: 'complete' },
-    { key: 'research', label: 'Research Complete', status: pipelineDone ? 'complete' : (status === 'running' ? 'in_progress' : 'pending') },
-    { key: 'evidence', label: 'Evidence Complete', status: pipelineDone ? 'complete' : 'pending' },
-    { key: 'signals', label: 'Signals Complete', status: pipelineDone ? 'complete' : 'pending' },
-    { key: 'decision', label: 'Decision Ready', status: pipelineDone ? 'complete' : 'pending' },
-    { key: 'report', label: 'Report Ready', status: pipelineDone ? 'complete' : 'pending' },
-  ]
   const docIntelMode: boolean = data?.research?.mode === 'document_intelligence'
   const docIntelFindings: string[] = data?.research?.document_findings ?? (docIntelMode && data?.extractedTextPreview ? [data.extractedTextPreview] : [])
 
@@ -91,23 +79,35 @@ function ResearchPageInner() {
   const effectiveStatus = hasUsableResearch ? 'complete' : status
   const effectiveStatusLower = String(effectiveStatus).toLowerCase()
   const isRunning = effectiveStatusLower === 'running' && !hasUsableResearch
-  const derivedProgress = hasUsableResearch
+  // A completion percentage appears only when the pipeline reported one or
+  // research output genuinely exists. Guessing 20% / 50% for a stage that never
+  // published progress puts an unverifiable number in front of a decision-maker.
+  const derivedProgress: number | null = hasUsableResearch
     ? 100
-    : (data?.research?.progress ?? (isRunning ? 50 : 20))
+    : (typeof data?.research?.progress === 'number' ? Math.round(data.research.progress) : null)
+  const docCount = data?.documentCount ?? data?.uploadedDocuments?.length ?? 0
+  const hasSignalsOutput =
+    (data?.signals?.length ?? 0) > 0 ||
+    Object.keys((data as Record<string, any> | null)?.signalsSummary ?? {}).length > 0
+  const hasDecisionOutput = Object.keys(data?.decision ?? {}).length > 0
+  const hasReportOutput = Object.keys(data?.reports ?? {}).length > 0
+  const runComplete = ['complete', 'completed'].includes(String(data?.status || '').toLowerCase())
+  // Each stage reads as complete from its own output only: research finishing has
+  // not produced a decision or a report.
   const derivedProgressSteps: Array<{ key: string; label: string; status: 'complete' | 'pending' | 'in_progress' }> = [
-    { key: 'created', label: 'Assessment Created', status: 'complete' },
-    { key: 'research', label: 'Research Complete', status: hasUsableResearch ? 'complete' : (isRunning ? 'in_progress' : 'pending') },
-    { key: 'evidence', label: 'Evidence Complete', status: hasUsableResearch ? 'complete' : 'pending' },
-    { key: 'signals', label: 'Signals Complete', status: hasUsableResearch ? 'complete' : 'pending' },
-    { key: 'decision', label: 'Decision Ready', status: hasUsableResearch ? 'complete' : 'pending' },
-    { key: 'report', label: 'Report Ready', status: hasUsableResearch ? 'complete' : 'pending' },
+    { key: 'created', label: 'Assessment', status: 'complete' },
+    { key: 'research', label: 'Research', status: hasUsableResearch || runComplete ? 'complete' : (isRunning ? 'in_progress' : 'pending') },
+    { key: 'evidence', label: 'Evidence', status: docCount > 0 ? 'complete' : 'pending' },
+    { key: 'signals', label: 'Signals', status: hasSignalsOutput || runComplete ? 'complete' : 'pending' },
+    { key: 'decision', label: 'Decision', status: hasDecisionOutput || runComplete ? 'complete' : 'pending' },
+    { key: 'report', label: 'Reports', status: hasReportOutput || runComplete ? 'complete' : 'pending' },
   ]
 
   return (
     <PilotWorkspaceShell
       workspace="Research"
       title="Research Intelligence"
-      description="External OSINT, market analysis, institutional registry signals, and contextual research."
+      description="Public sources, sector context, registry checks and document evidence gathered for this assessment."
       runId={data?.runId || null}
       status={effectiveStatus}
       startupName={data?.displayEntity || data?.organizationName || data?.startupName}
@@ -139,7 +139,7 @@ function ResearchPageInner() {
             founder={data?.founderName}
             status={effectiveStatus}
             documentCount={data?.uploadedDocuments?.length || 0}
-            progress={derivedProgress}
+            progress={derivedProgress ?? undefined}
           />
           <AssessmentProgress steps={derivedProgressSteps} />
         </div>
@@ -170,7 +170,7 @@ function ResearchPageInner() {
                 <span>Document Intelligence Mode — no live AI provider served this run</span>
               </div>
               <p className="mt-1 text-xs leading-5 text-amber-800">
-                {data.research?.message || 'Research is grounded in uploaded documents, extraction, trust scoring, and available external sources. Live OSINT is inactive.'}
+                {data.research?.message || 'Research is grounded in uploaded documents, extraction, trust scoring, and available external sources. Live web research is inactive.'}
               </p>
             </section>
           ) : null}
@@ -197,14 +197,22 @@ function ResearchPageInner() {
               </div>
             </div>
 
-            {/* Progress bar */}
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 mb-2">
-              <div
-                className="h-full bg-[#0B5D3B] transition-all duration-700 rounded-full"
-                style={{ width: `${Math.min(100, Math.max(0, Number(derivedProgress)))}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mb-3">{Number(derivedProgress)}% complete</p>
+            {/* Progress bar — drawn only when a real percentage exists. */}
+            {derivedProgress != null ? (
+              <>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 mb-2">
+                  <div
+                    className="h-full bg-[#0B5D3B] transition-all duration-700 rounded-full"
+                    style={{ width: `${Math.min(100, Math.max(0, derivedProgress))}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mb-3">{derivedProgress}% complete</p>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500 mb-3">
+                {isRunning ? 'Research is running — this stage has not reported a completion percentage.' : 'No completion percentage reported for this stage.'}
+              </p>
+            )}
 
             {effectiveSummary ? (
               <div className="p-3.5 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0] text-xs text-slate-700 leading-6">
@@ -239,8 +247,10 @@ function ResearchPageInner() {
           {findings.length > 0 ? (
             <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
               <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-3 pb-2 border-b border-[#DDE6F0]">
-                Tavily Research Findings
-                <span className="ml-2 text-[10px] font-bold text-slate-400 normal-case tracking-normal">({findings.length})</span>
+                Live Web Research Findings
+                <span className="ml-2 text-[10px] font-bold text-slate-400 normal-case tracking-normal">
+                  from public sources · {findings.length}
+                </span>
               </h2>
               <div className="space-y-2.5">
                 {findings.map((f, i) => (
@@ -306,7 +316,12 @@ function ResearchPageInner() {
                           </span>
                         ) : null}
                         {s.relevance != null ? (
-                          <span className="text-[9px] font-bold text-slate-400">rel {Number(s.relevance).toFixed(2)}</span>
+                          <span
+                            className="text-[9px] font-bold text-slate-400"
+                            title="Relevance 0–1: how closely this source matches the entity under assessment, as reported by the research provider. It is not a trust score — trust is scored per document on the Evidence screen."
+                          >
+                            relevance {Number(s.relevance).toFixed(2)} / 1
+                          </span>
                         ) : null}
                       </div>
                     </div>

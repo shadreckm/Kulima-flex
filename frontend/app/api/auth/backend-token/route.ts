@@ -28,6 +28,12 @@ export async function GET(request: NextRequest) {
   const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken
     ? String((decodedToken as { sub?: unknown }).sub || '')
     : ''
+  // Kept identical to the /api/v1 proxy: the verified email claim must be
+  // present on both paths, or a platform administrator signing a direct upload
+  // would resolve to a different principal than the same user proxied.
+  const tokenEmail = typeof decodedToken === 'object' && decodedToken && 'email' in decodedToken
+    ? String((decodedToken as { email?: unknown }).email || '').trim().toLowerCase()
+    : ''
 
   if (!decodedToken || !tokenSub) {
     return NextResponse.json(
@@ -36,7 +42,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const backendToken = await new SignJWT({})
+  const backendToken = await new SignJWT(tokenEmail ? { email: tokenEmail } : {})
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(tokenSub)
     .setIssuedAt()

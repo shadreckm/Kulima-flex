@@ -15,15 +15,15 @@ import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
 // Domain config mirrors ContextPanel but for the main-column overview
 // PRIMARY EXPERIENCE: NGO and Development Program signal domains prioritized for V1
 const DOMAIN_DISPLAY: Array<{ key: string; label: string; icon: string; description: string }> = [
-  { key: 'trust',           label: 'Trust',        icon: 'ðŸ›¡ï¸', description: 'Source reliability, corroboration, and evidence integrity.' },
-  { key: 'risk',            label: 'Risk',          icon: 'âš ï¸', description: 'Material risks and red flags requiring attention.' },
-  { key: 'opportunity',     label: 'Opportunity',   icon: 'ðŸŒ±', description: 'Growth drivers and upside signals.' },
-  { key: 'market',          label: 'Market',        icon: 'ðŸ“ˆ', description: 'Market size, competition, and positioning.' },
-  { key: 'funding',         label: 'Funding',       icon: 'ðŸ’°', description: 'Funding readiness, burn rate, and capital efficiency.' },
-  { key: 'climate',         label: 'Climate',       icon: 'ðŸŒ¤ï¸', description: 'Climate risk, sustainability, and net-zero alignment.' },
-  { key: 'tourism',         label: 'Tourism',       icon: 'ðŸ§­', description: 'Tourism and destination impact signals.' },
-  { key: 'community_impact',label: 'Community',     icon: 'ðŸ¤', description: 'Social impact, beneficiary reach, and community outcomes.' },
-  { key: 'environmental',   label: 'Environment',   icon: 'ðŸŒ¿', description: 'Environmental compliance and ecological footprint.' },
+  { key: 'trust',           label: 'Trust',        icon: '🛡️', description: 'How reliable and corroborated the evidence behind this assessment is.' },
+  { key: 'risk',            label: 'Risk',          icon: '⚠️', description: 'Risks that could affect delivery, funds or the people served.' },
+  { key: 'opportunity',     label: 'Opportunity',   icon: '🌱', description: 'Where performance can be strengthened or scaled.' },
+  { key: 'market',          label: 'Market',        icon: '📈', description: 'Demand, partners and positioning in the operating environment.' },
+  { key: 'funding',         label: 'Funding',       icon: '💰', description: 'Funding readiness, dependency and financial sustainability.' },
+  { key: 'climate',         label: 'Climate',       icon: '🌤️', description: 'Climate exposure and weather-related risk to delivery.' },
+  { key: 'tourism',         label: 'Tourism',       icon: '🧭', description: 'Tourism and destination impact signals.' },
+  { key: 'community_impact',label: 'Community',     icon: '🤝', description: 'Social impact, beneficiary reach, and community outcomes.' },
+  { key: 'environmental',   label: 'Environment',   icon: '🌿', description: 'Environmental compliance and ecological footprint.' },
 ]
 
 function domainScoreTone(score: number): string {
@@ -43,7 +43,7 @@ function SignalsPageInner() {
   const [signalsSummary, setSignalsSummary] = useState<SignalsSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Single intake: the shared Assessment Context drives the run identity â€”
+  // Single intake: the shared Assessment Context drives the run identity —
   // no founder / startup / entity-type re-entry, no legacy current-run store.
   const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
     route: 'signals',
@@ -52,7 +52,7 @@ function SignalsPageInner() {
   if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
-        Checking sessionâ€¦
+        Checking session…
       </div>
     )
   }
@@ -144,18 +144,25 @@ function SignalsPageInner() {
         ) : null}
         {assessmentContext && runId ? (
           <>
-            <ChatShell personaName="Signals Analyst" runId={runId} />
-            {/* Phase 5 + MVP reliability: Signal Domains Overview â€” renders
+            <ChatShell personaName="Signals Analyst" mode="signals" runId={runId} />
+            {/* Phase 5 + MVP reliability: Signal Domains Overview — renders
                 whenever signals exist or the assessment is complete. */}
             {showDomains && effectiveSignals ? (
               <section className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#DDE6F0]">
-                  <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Signal Domains</h2>
-                  <div className="flex items-center gap-2 text-[10px] font-bold">
-                    {effectiveSignals.critical > 0 && <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">{effectiveSignals.critical} Critical</span>}
-                    {effectiveSignals.high > 0 && <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">{effectiveSignals.high} High</span>}
-                    {effectiveSignals.medium > 0 && <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200">{effectiveSignals.medium} Medium</span>}
+                <div className="mb-4 pb-3 border-b border-[#DDE6F0]">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Signal Domains</h2>
+                    <div className="flex items-center gap-2 text-[10px] font-bold">
+                      {effectiveSignals.critical > 0 && <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">{effectiveSignals.critical} Critical</span>}
+                      {effectiveSignals.high > 0 && <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">{effectiveSignals.high} High</span>}
+                      {effectiveSignals.medium > 0 && <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 border border-yellow-200">{effectiveSignals.medium} Medium</span>}
+                    </div>
                   </div>
+                  <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                    Each domain summarises what the evidence says about one part of performance. The signals
+                    behind every score, with their sources and the action each one suggests, are listed in the
+                    panel on the right.
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {DOMAIN_DISPLAY.map(({ key, label, icon, description }) => {
@@ -166,6 +173,7 @@ function SignalsPageInner() {
                     ].filter(s => (s.category || '').toLowerCase().includes(key.replace('_', '')))
                     const score = domainData?.score
                     const summary = domainData?.summary
+                    const recommendation = domainData?.recommendation
                     const riskCount = domainData?.riskCount ?? signals.filter(s => s.direction === 'risk').length
                     const oppCount = domainData?.opportunityCount ?? signals.filter(s => s.direction === 'opportunity').length
                     const total = domainData?.count ?? signals.length
@@ -179,27 +187,51 @@ function SignalsPageInner() {
                             <span className="text-xs font-extrabold text-slate-900">{label}</span>
                           </div>
                           {score != null ? (
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${domainScoreTone(score)}`}>
+                            <span
+                              className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${domainScoreTone(score)}`}
+                              title="Domain score: 0–100, higher means the evidence in this domain is healthier. Calculated from the signals listed beside it."
+                            >
                               {Math.round(score)}/100
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-400">—</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No data</span>
                           )}
                         </div>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">{description}</p>
                         {summary ? (
-                          <p className="text-[11px] text-slate-600 leading-relaxed">{summary}</p>
+                          <div className="mt-1.5">
+                            <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                              What this shows
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-slate-600 leading-relaxed">{summary}</p>
+                          </div>
+                        ) : null}
+                        {recommendation ? (
+                          <div className="mt-1.5 text-[10px] font-bold text-[#0B5D3B] bg-white p-1.5 rounded border border-[#DDE6F0]">
+                            What should change → {recommendation}
+                          </div>
                         ) : null}
                         {total > 0 ? (
                           <div className="mt-2 text-[10px] text-slate-500">
                             {riskCount > 0 && <span className="text-red-600">{riskCount} risk</span>}
                             {riskCount > 0 && oppCount > 0 && <span> · </span>}
                             {oppCount > 0 && <span className="text-green-600">{oppCount} opportunity</span>}
-                            {total > 0 && <span> · {total} total</span>}
+                            {total > 0 && <span> · {total} signals recorded</span>}
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="mt-2 text-[10px] italic text-slate-400">
+                            No signals found for this domain in the documents provided.
+                          </div>
+                        )}
                       </div>
                     )
                   })}
+                </div>
+                <div className="mt-4 pt-3 border-t border-[#DDE6F0] flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold">
+                  <Link href="/decision" className="text-[#0B5D3B] hover:underline">
+                    See how these signals formed the decision →
+                  </Link>
+                  <Link href="/evidence" className="text-slate-600 hover:underline">Open the evidence</Link>
                 </div>
               </section>
             ) : null}
@@ -216,7 +248,7 @@ function SignalsPageInner() {
 
 export default function SignalsPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loadingâ€¦</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loading…</div>}>
       <SignalsPageInner />
     </Suspense>
   )

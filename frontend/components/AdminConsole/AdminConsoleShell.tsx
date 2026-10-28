@@ -1,16 +1,18 @@
 'use client'
 
-// Admin Console chrome — the gate and the frame every operations screen shares.
+// Admin Console chrome — the gate and the frame every platform screen shares.
 //
 // Deliberately NOT PilotWorkspaceShell: that shell is the customer workspace
 // (active assessment capsule, pipeline tracker, org-scoped navigation). This
-// console is internal tooling that reads across every workspace, so it gets its
-// own frame and its own access check.
+// console is internal tooling that reads and manages *every* workspace, so it
+// gets its own frame and its own access check.
 //
 // The check is a real one, not decorative: the page renders data only after
-// /api/v1/admin/session says this identity is a configured platform operator.
-// The backend enforces the same rule on every section endpoint, so a bypassed
-// UI would still get 403s.
+// /api/v1/admin/session says this identity holds the stored PLATFORM_ADMIN role.
+// That role lives in its own table on the platform plane — it is not a value in
+// the organization role enum, because organization rows are written by
+// customers. The backend enforces the same rule, plus one declared capability
+// per route, on every section endpoint, so a bypassed UI would still get 403s.
 
 import React, { useEffect } from 'react'
 import Link from 'next/link'
@@ -18,16 +20,50 @@ import { useSession } from 'next-auth/react'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
 import { StateBlock } from './adminUi'
 import { usePlatformAdmin, primePlatformAdminCache } from '../../hooks/usePlatformAdmin'
+import {
+  ALL_CAPABILITIES,
+  CAPABILITY_LABELS,
+  hasCapability,
+  isBreakGlass,
+  type AdminCapability,
+  type AdminSession,
+} from '../../lib/admin'
 
-export type AdminSectionId = 'overview' | 'users' | 'billing' | 'ai-health' | 'outcomes' | 'audit'
+export type AdminSectionId =
+  | 'overview'
+  | 'organizations'
+  | 'users'
+  | 'assessments'
+  | 'reports'
+  | 'conversations'
+  | 'outcomes'
+  | 'billing'
+  | 'ai-health'
+  | 'audit'
+  | 'access'
 
-export const ADMIN_SECTIONS: { id: AdminSectionId; label: string; href: string; phase: string }[] = [
-  { id: 'overview', label: 'Overview', href: '/admin', phase: 'Phase 1' },
-  { id: 'users', label: 'User Management', href: '/admin/users', phase: 'Phase 2' },
-  { id: 'billing', label: 'Billing', href: '/admin/billing', phase: 'Phase 3' },
-  { id: 'ai-health', label: 'AI Health', href: '/admin/ai-health', phase: 'Phase 4' },
-  { id: 'outcomes', label: 'Outcome Intelligence', href: '/admin/outcomes', phase: 'Phase 5' },
-  { id: 'audit', label: 'Audit Logs', href: '/admin/audit', phase: 'Phase 6' },
+export type AdminSection = {
+  id: AdminSectionId
+  label: string
+  href: string
+  /** Shown in the breadcrumb: what kind of platform work this panel is. */
+  kind: string
+  /** The capability the backend requires for this panel's primary route. */
+  capability: AdminCapability
+}
+
+export const ADMIN_SECTIONS: AdminSection[] = [
+  { id: 'overview', label: 'Overview', href: '/admin', kind: 'Analytics', capability: 'view_analytics' },
+  { id: 'organizations', label: 'Organizations', href: '/admin/organizations', kind: 'Accounts', capability: 'view_organizations' },
+  { id: 'users', label: 'Users', href: '/admin/users', kind: 'Accounts', capability: 'view_users' },
+  { id: 'assessments', label: 'Assessments', href: '/admin/assessments', kind: 'Content', capability: 'view_analytics' },
+  { id: 'reports', label: 'Reports', href: '/admin/reports', kind: 'Content', capability: 'view_analytics' },
+  { id: 'conversations', label: 'Conversations', href: '/admin/conversations', kind: 'Content', capability: 'view_analytics' },
+  { id: 'outcomes', label: 'Outcome Reviews', href: '/admin/outcomes', kind: 'Intelligence', capability: 'view_analytics' },
+  { id: 'billing', label: 'Billing', href: '/admin/billing', kind: 'Revenue', capability: 'view_billing' },
+  { id: 'ai-health', label: 'Provider Health', href: '/admin/ai-health', kind: 'Reliability', capability: 'view_provider_health' },
+  { id: 'audit', label: 'Audit Logs', href: '/admin/audit', kind: 'Governance', capability: 'view_audit' },
+  { id: 'access', label: 'Administrators', href: '/admin/access', kind: 'Governance', capability: 'manage_platform_admins' },
 ]
 
 // The two reasons the backend says "no", mirrored from
@@ -38,28 +74,40 @@ const REASON_NOT_ALLOWLISTED = 'not_allowlisted'
 function denialCopy(reason: string, role: string): { title: string; body: string } {
   if (reason === REASON_NOT_CONFIGURED) {
     return {
-      title: 'Console disabled in this environment',
-      body: 'No platform operators are configured, so access is denied to everyone — including you. '
-        + 'Set KULIMA_PLATFORM_ADMIN_USER_IDS or KULIMA_ADMIN_EMAILS on the backend to enable the console. '
-        + 'The console is fail-closed on purpose: an unconfigured environment must never default to "everyone is an operator".',
+      title: 'No platform administrator is provisioned',
+      body: 'The console is fail-closed: the PLATFORM_ADMIN role store has no active row and no break-glass '
+        + 'identity is configured, so access is denied to everyone — including you. Provision the primary '
+        + 'administrator with KULIMA_PLATFORM_ADMIN_EMAILS, or set KULIMA_PLATFORM_ADMIN_USER_IDS / '
+        + 'KULIMA_ADMIN_EMAILS as break-glass. An unconfigured environment must never default to "everyone is '
+        + 'a platform administrator".',
     }
   }
   if (reason === REASON_NOT_ALLOWLISTED) {
     return {
-      title: 'Platform operator access required',
-      body: `Your account is not on the platform-operator allow-list, and your organization role ("${role || 'unknown'}") `
-        + 'does not grant it. That is intentional: this console aggregates every customer workspace, so an Org Owner, '
-        + 'Admin or Reviewer cannot read other organizations\' data. Ask a configured operator to add your user id to '
-        + 'KULIMA_PLATFORM_ADMIN_USER_IDS if you need this access.',
+      title: 'PLATFORM_ADMIN role required',
+      body: `Your account does not hold the PLATFORM_ADMIN role, and your organization role ("${role || 'unknown'}") `
+        + 'does not grant it. That separation is the point: this console reads and manages every customer '
+        + 'workspace, so an Org Owner, Admin, Reviewer, Contributor or Viewer cannot reach it. An existing '
+        + 'platform administrator can grant you the role on the Administrators panel.',
     }
   }
   // An unrecognized reason is never treated as a grant.
   return {
-    title: 'Platform operator access required',
-    body: 'The backend refused operator access for a reason this screen does not recognise '
+    title: 'PLATFORM_ADMIN role required',
+    body: 'The backend refused platform access for a reason this screen does not recognise '
         + `("${reason || 'none reported'}"), so nothing was loaded. Access is denied by default — check the `
-        + 'operator allow-list configuration on the backend.',
+        + 'PLATFORM_ADMIN role store and the break-glass configuration on the backend.',
   }
+}
+
+/**
+ * Does this payload describe capabilities at all? A session from a backend that
+ * predates the capability matrix carries none, and "absent" must not be read as
+ * "denied" — the route still enforces its own check, so the honest behaviour is
+ * to render the panel and let the request decide.
+ */
+function capabilitiesReported(session: AdminSession | null): boolean {
+  return Array.isArray(session?.capabilities) && (session?.capabilities.length ?? 0) > 0
 }
 
 export function AdminConsoleShell({
@@ -97,7 +145,7 @@ export function AdminConsoleShell({
       <StateBlock
         kind="info"
         title="Sign in to open the console"
-        body="The operations console sits behind the same authentication as the customer product, then adds a platform-operator check on top. You return here after signing in."
+        body="The platform console sits behind the same authentication as the customer product, then adds the PLATFORM_ADMIN role check on top. You return here after signing in."
         action={(
           <Link
             href="/auth/signin?callbackUrl=%2Fadmin"
@@ -109,12 +157,12 @@ export function AdminConsoleShell({
       />
     )
   } else if (loading && !session) {
-    body = <StateBlock kind="loading" title="Verifying operator access…" body="Asking the backend whether this identity is a configured platform operator." />
+    body = <StateBlock kind="loading" title="Verifying platform administrator access…" body="Asking the backend whether this identity holds the PLATFORM_ADMIN role." />
   } else if (!session) {
     body = (
       <StateBlock
         kind="error"
-        title="Could not verify operator access"
+        title="Could not verify platform administrator access"
         body="The backend did not answer the access probe (network or server error). No platform data has been loaded. Nothing here is cached, so retry once the service is reachable."
         action={(
           <button
@@ -144,13 +192,34 @@ export function AdminConsoleShell({
         )}
       />
     )
+  } else if (capabilitiesReported(session) && !hasCapability(session, active.capability)) {
+    // Same role, narrower mandate: the backend would answer 403
+    // PLATFORM_CAPABILITY_REQUIRED, so say so before the request rather than
+    // after it — and never imply the panel does not exist.
+    body = (
+      <StateBlock
+        kind="denied"
+        title={`${active.label} requires another platform capability`}
+        body={`Your PLATFORM_ADMIN role does not include "${CAPABILITY_LABELS[active.capability]}", which is the capability this panel's route declares. `
+          + 'The backend enforces the same rule, so this screen would be refused even if it rendered. A platform administrator holding '
+          + 'manage_platform_admins can grant the capability from the Administrators panel.'}
+        action={(
+          <Link
+            href="/admin"
+            className="px-5 py-2.5 rounded-lg border border-[#FEDF89] bg-white text-[#B54708] text-xs font-extrabold uppercase tracking-wider hover:border-[#0B5D3B] transition"
+          >
+            Back to Overview
+          </Link>
+        )}
+      />
+    )
   } else {
     body = children
   }
 
   return (
     <div className="min-h-screen bg-[#F5F8FC] text-[#101828] flex flex-col lg:flex-row">
-      {/* Operator rail */}
+      {/* Administrator rail */}
       <aside className="lg:w-64 lg:flex-shrink-0 lg:h-screen lg:sticky lg:top-0 bg-[#061C14] text-white p-5 flex flex-col gap-4 lg:border-r border-b lg:border-b-0 border-[#0E3627]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -167,17 +236,29 @@ export function AdminConsoleShell({
         <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible lg:gap-0.5">
           {ADMIN_SECTIONS.map(item => {
             const isActive = item.id === section
+            const base = `shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+              isActive
+                ? 'bg-[#174836] text-white border border-[#1E6047]'
+                : 'text-[#C8D8CC] hover:bg-[#0E2E22] hover:text-white'
+            }`
+            if (capabilitiesReported(session) && !hasCapability(session, item.capability)) {
+              // Kept in the list on purpose: an administrator should be able to see
+              // that the panel exists and that their role simply does not carry the
+              // capability, rather than wonder where a screen went.
+              return (
+                <span
+                  key={item.id}
+                  title={`Your PLATFORM_ADMIN role does not include “${CAPABILITY_LABELS[item.capability]}”`}
+                  className={`${base} opacity-45 cursor-not-allowed`}
+                >
+                  {item.label}
+                  <span className="ml-1.5 text-[9px] font-black uppercase tracking-widest text-[#FCD9A0]">restricted</span>
+                </span>
+              )
+            }
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                  isActive
-                    ? 'bg-[#174836] text-white border border-[#1E6047]'
-                    : 'text-[#C8D8CC] hover:bg-[#0E2E22] hover:text-white'
-                }`}
-              >
-                <span className="lg:hidden">{item.phase.replace('Phase ', 'P')} </span>
+              <Link key={item.id} href={item.href} className={base}>
+                <span className="lg:hidden">{item.kind} </span>
                 {item.label}
               </Link>
             )
@@ -185,8 +266,18 @@ export function AdminConsoleShell({
         </nav>
 
         <div className="hidden lg:block mt-auto pt-4 border-t border-[#0E3627] text-[10px] text-emerald-300/70 leading-relaxed">
-          <div className="font-bold text-emerald-400 uppercase tracking-wider mb-1">Read-only console</div>
-          <p>No endpoint here creates, changes or deletes platform data. Every section you open is written to the audit log as <code className="text-emerald-200">admin.console_viewed</code>.</p>
+          <div className="font-bold text-emerald-400 uppercase tracking-wider mb-1">Platform administrator</div>
+          <p>
+            Reads aggregate across every workspace and are recorded as <code className="text-emerald-200">admin.console_viewed</code>.
+            Writes exist only on Organizations and Administrators: each one is refused unless your role carries the declared
+            capability, cannot delete customer data, and stores its before/after state as its own audit event.
+          </p>
+          {isBreakGlass(session) ? (
+            <p className="mt-2 text-[#FCD9A0]">
+              This session came from the break-glass environment list, not the stored role. Every action you take is
+              labelled <code className="text-emerald-200">env_allow_list</code> in the audit log.
+            </p>
+          ) : null}
           <Link href="/dashboard" className="mt-3 inline-block text-emerald-300 hover:text-white font-bold">
             ← Customer workspace
           </Link>
@@ -201,9 +292,9 @@ export function AdminConsoleShell({
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <span className="text-[#0B5D3B]">Kulima FLEX</span>
                 <span>/</span>
-                <span className="text-[#B54708]">Platform Ops</span>
+                <span className="text-[#B54708]">Platform Admin</span>
                 <span>/</span>
-                <span className="text-[#0B5D3B]">{active.phase}</span>
+                <span className="text-[#0B5D3B]">{active.kind}</span>
               </div>
               <h1 className="text-base font-extrabold text-[#101828] tracking-tight truncate">{title}</h1>
             </div>
@@ -232,9 +323,13 @@ export function AdminConsoleShell({
           {body}
           {session?.isPlatformAdmin ? (
             <footer className="pt-2 text-[10px] text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>Operator: <span className="font-mono font-bold text-slate-500">{session.identity?.userId || '—'}</span></span>
-              <span>Granted via: <span className="font-bold text-slate-500">{session.matchedVia || 'session_subject'}</span></span>
-              <span>Allow-list entries configured: {session.allowListSize}</span>
+              <span>Administrator: <span className="font-mono font-bold text-slate-500">{session.identity?.verifiedEmail || session.identity?.userId || '—'}</span></span>
+              <span>Role: <span className="font-bold text-slate-500">{session.roleLabel || 'Platform Administrator'}</span></span>
+              <span>Granted by: <span className="font-bold text-slate-500">{session.grantedBy === 'env_allow_list' ? 'break-glass environment' : 'stored PLATFORM_ADMIN role'}</span></span>
+              <span>Matched on: <span className="font-bold text-slate-500">{session.matchedVia || 'session_subject'}</span></span>
+              <span>Capabilities: {session.capabilities?.length ?? 0}/{ALL_CAPABILITIES.length}</span>
+              <span>Active administrators: {session.adminCount}</span>
+              <span>Break-glass identities configured: {session.allowListSize}</span>
               <span>Generated: {session.generatedAt ? new Date(session.generatedAt).toLocaleString('en-GB') : '—'}</span>
             </footer>
           ) : null}

@@ -91,6 +91,20 @@ EVENT_TYPES: dict[str, str] = {
     "comment.deleted": "Comment Deleted",
     # Platform operations console: who looked at the cross-workspace view.
     "admin.console_viewed": "Admin Console Opened",
+    # Platform administrator role + the mutations it is allowed to make. Every
+    # write the console performs lands here as well as in the domain stream it
+    # belongs to (a subscription change also records billing.plan_changed), so
+    # the platform plane is auditable on its own terms.
+    "admin.platform_admin_granted": "Platform Administrator Granted",
+    "admin.platform_admin_revoked": "Platform Administrator Revoked",
+    "admin.platform_role_claimed": "Platform Identity Linked",
+    "admin.subscription_updated": "Platform Subscription Change",
+    "admin.account_suspended": "Platform Account Suspended",
+    "admin.account_reactivated": "Platform Account Reactivated",
+    "admin.org_created": "Organization Provisioned",
+    "admin.org_updated": "Organization Updated",
+    "admin.enterprise_activation_changed": "Enterprise Activation Changed",
+    "admin.action_failed": "Platform Action Failed",
     "dossier.generated": "Decision Dossier Generated",
     "dossier.approved": "Decision Dossier Approved",
     "session.exit_with_pending": "Session Exit with Pending Tasks",

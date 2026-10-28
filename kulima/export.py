@@ -82,7 +82,7 @@ from kulima.signals.orchestrator import SignalsOrchestrator
 from kulima.signals.signals_summary import count_signals_by_level, highest_priority_signals
 
 
-# â”€â”€ Logo Path Resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Logo Path Resolution ─────────────────────────────────────────────────────
 
 def _get_logo_path() -> str | None:
     candidates = [
@@ -96,7 +96,7 @@ def _get_logo_path() -> str | None:
     return None
 
 
-# â”€â”€ Custom Numbered Canvas for PDF Header/Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Custom Numbered Canvas for PDF Header/Footer ─────────────────────────────
 
 class NumberedCanvas(canvas.Canvas if canvas else object): # type: ignore
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -141,12 +141,12 @@ class NumberedCanvas(canvas.Canvas if canvas else object): # type: ignore
         self.drawString(left_m, 32, "Kulima Africa | Kulima FLEX")
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#6B7280"))
-        self.drawCentredString(297, 32, "Confidential Â· Generated Automatically")
+        self.drawCentredString(297, 32, "Confidential · Generated Automatically")
         self.drawRightString(right_m, 32, f"Page {self._pageNumber} of {page_count}")
         self.restoreState()
 
 
-# â”€â”€ Trust Layer Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Trust Layer Helpers ──────────────────────────────────────────────────────
 
 def _ei_reliability_line(ei: EvidenceIntegrityReport) -> str:
     """Single-line reliability summary for use in text exports and PDF meta."""
@@ -166,8 +166,8 @@ def _ei_verification_items(ei: EvidenceIntegrityReport) -> list[str]:
     """Return actionable verification items from contradictions and unsupported claims."""
     items: list[str] = []
     for c in ei.contradictions:
-        a_val = c.claim_a.value_raw or "â€”"
-        b_val = c.claim_b.value_raw or "â€”"
+        a_val = c.claim_a.value_raw or "—"
+        b_val = c.claim_b.value_raw or "—"
         action = c.recommended_action or "Verify with founder before IC."
         items.append(
             f"Sources disagree on {c.claim_a.claim_type.value.replace('_', ' ')}: "
@@ -201,7 +201,7 @@ def export_filenames(brief: InvestmentBrief) -> dict[str, str]:
     }
 
 
-# â”€â”€ TXT Exports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── TXT Exports ──────────────────────────────────────────────────────────────
 
 # ── Entity-adaptive report type labels (Phase 6 follow-through) ────────────
 # PRIMARY EXPERIENCE: NGO and Development Program reports prioritized for V1
@@ -299,7 +299,7 @@ EXECUTIVE DECISION SNAPSHOT
 --------------------------------------------------------------------------------
 RECOMMENDATION:  {canonical_rec}
 TRUST SCORE:     {trust} | CONFIDENCE: {conf} | INTEGRITY: {grade}
-SECTOR:          {brief.sector or "â€”"} | GEOGRAPHY: {brief.geography or "â€”"} | STAGE: {brief.stage or "â€”"}
+SECTOR:          {brief.sector or "—"} | GEOGRAPHY: {brief.geography or "—"} | STAGE: {brief.stage or "—"}
 ================================================================================
 """
 
@@ -479,7 +479,7 @@ def build_outcome_review_pdf(brief: InvestmentBrief, record: dict | None) -> byt
 
 
 def build_memo_text(brief: InvestmentBrief) -> str:
-    steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(brief.next_steps, 1)) or "  â€”"
+    steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(brief.next_steps, 1)) or "  —"
     memo_label = _entity_report_label(brief, "Investment Memo")
     header = _txt_header(memo_label, brief)
     # Issue 1: single canonical recommendation for the whole memo.
@@ -672,10 +672,10 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
             parts.append("")
             parts.append("Conflicts detected:")
             for i, c in enumerate(ei.contradictions, 1):
-                a_val = c.claim_a.value_raw or "â€”"
-                b_val = c.claim_b.value_raw or "â€”"
+                a_val = c.claim_a.value_raw or "—"
+                b_val = c.claim_b.value_raw or "—"
                 parts.append(
-                    f"  [C{i}] {c.severity.value.upper()} â€” "
+                    f"  [C{i}] {c.severity.value.upper()} — "
                     f"{c.claim_a.claim_type.value.replace('_', ' ').capitalize()}: "
                     f'"{a_val}" vs "{b_val}"'
                 )
@@ -723,10 +723,10 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
         parts.append("")
         for v in syn.votes:
             role = v.title or v.persona
-            parts.append(f"â€¢ {role} ({v.investor_name}, {v.firm})")
+            parts.append(f"• {role} ({v.investor_name}, {v.firm})")
             parts.append(f"  Ballot: {v.decision.value} | Confidence: {v.confidence_score:.0f}/100")
             parts.append(f"  Reasoning: {sanitize_runtime_artifacts(v.key_reasoning or v.thesis)}")
-            parts.append(f"  Major Concern: {v.major_concern or 'â€”'}")
+            parts.append(f"  Major Concern: {v.major_concern or '—'}")
             parts.append("")
         if syn.debate_transcript:
             parts.append("IC Debate Transcript:")
@@ -755,7 +755,7 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
     parts.append("-" * 40)
     if brief.future_simulation:
         fs = brief.future_simulation
-        parts.append(f"Most Likely Case: {fs.most_likely_case or 'â€”'}")
+        parts.append(f"Most Likely Case: {fs.most_likely_case or '—'}")
         parts.append(f"Africa Risk Premium: {fs.africa_risk_premium:.1f} pp")
         parts.append(f"Expected Value (36m): ${fs.expected_value_usd:,.0f}")
         if fs.africa_conditions_summary:
@@ -797,10 +797,10 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
     parts.append("EXPLAINABLE AI DECISIONS")
     parts.append("-" * 40)
     for reason in brief.explainability:
-        parts.append(f"â€¢ {reason}")
+        parts.append(f"• {reason}")
     parts.append("")
     parts.append("================================================================================")
-    parts.append("Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically")
+    parts.append("Kulima Africa | Kulima FLEX · Confidential · Generated Automatically")
     return "\n".join(parts)
 
 
@@ -822,21 +822,21 @@ def build_signals_report_text(brief: InvestmentBrief) -> str:
         "",
     ]
     for idx, sig in enumerate(highest_priority_signals(signals), 1):
-        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "â€”"
+        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "—"
         parts.extend(
             [
-                f"[SG{idx}] {sig.level.value.upper()} Â· {sig.category.value.title()} Â· {sig.title}",
+                f"[SG{idx}] {sig.level.value.upper()} · {sig.category.value.title()} · {sig.title}",
                 f"Direction: {sig.direction}",
                 f"Description: {sig.description}",
                 f"Evidence refs: {refs}",
-                f"Action: {sig.recommended_action or 'â€”'}",
+                f"Action: {sig.recommended_action or '—'}",
                 f"Confidence: {sig.confidence:.2f}",
-                f"Time horizon: {sig.time_horizon or 'â€”'}",
+                f"Time horizon: {sig.time_horizon or '—'}",
                 "",
             ]
         )
     parts.append("================================================================================")
-    parts.append("Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically")
+    parts.append("Kulima Africa | Kulima FLEX · Confidential · Generated Automatically")
     return "\n".join(parts).strip()
 
 
@@ -846,11 +846,11 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
         header,
         "RESEARCH RESULTS",
         "-" * 40,
-        f"Executive summary: {brief.executive_summary or 'â€”'}",
-        f"Founder assessment: {brief.founder_assessment or 'â€”'}",
-        f"Startup assessment: {brief.startup_assessment or 'â€”'}",
-        f"Market assessment: {brief.market_assessment or 'â€”'}",
-        f"Risk assessment: {brief.risk_assessment or 'â€”'}",
+        f"Executive summary: {brief.executive_summary or '—'}",
+        f"Founder assessment: {brief.founder_assessment or '—'}",
+        f"Startup assessment: {brief.startup_assessment or '—'}",
+        f"Market assessment: {brief.market_assessment or '—'}",
+        f"Risk assessment: {brief.risk_assessment or '—'}",
         "",
         "DOCUMENTS USED",
         "-" * 40,
@@ -866,7 +866,7 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
                     f"[S{i}] {src.title}",
                     f"URL: {src.url}",
                     f"Type: {src.source_type} | Relevance: {src.relevance:.2f} | Confidence: {src.confidence_score:.2f}",
-                    f"Snippet: {src.snippet or 'â€”'}",
+                    f"Snippet: {src.snippet or '—'}",
                     "",
                 ]
             )
@@ -932,14 +932,14 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
     else:
         lines.append("No next steps recorded.")
     lines.append("================================================================================")
-    lines.append("Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically")
+    lines.append("Kulima Africa | Kulima FLEX · Confidential · Generated Automatically")
     return "\n".join(lines).strip()
 
 
 def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
     header = _txt_header("Executive One Pager", brief)
     top_reasons = [
-        brief.executive_summary or "â€”",
+        brief.executive_summary or "—",
         brief.investment_recommendation or brief.recommendation.value,
     ]
     if brief.red_flags:
@@ -971,7 +971,7 @@ def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
     ]
     if brief.evidence_integrity:
         ei = brief.evidence_integrity
-        lines.append(f"Grade {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) Â· {ei.source_count} Sources Reviewed Â· {ei.high_authority_count} High-Authority Records")
+        lines.append(f"Grade {ei.integrity_grade.value} ({ei.integrity_score:.0f}/100) · {ei.source_count} Sources Reviewed · {ei.high_authority_count} High-Authority Records")
     else:
         # Trust & Outcome audit (P7): never claim the engine "verified" when
         # no integrity sweep is on record for this assessment.
@@ -980,11 +980,11 @@ def build_executive_one_pager_text(brief: InvestmentBrief) -> str:
             "uploaded document evidence."
         )
     lines.append("================================================================================")
-    lines.append("Kulima Africa | Kulima FLEX Â· Confidential Â· Generated Automatically")
+    lines.append("Kulima Africa | Kulima FLEX · Confidential · Generated Automatically")
     return "\n".join(lines).strip()
 
 
-# â”€â”€ PDF Styles & Generator Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── PDF Styles & Generator Helpers ────────────────────────────────────────────
 
 def _pdf_styles() -> Any:
     styles = getSampleStyleSheet()
@@ -1118,7 +1118,7 @@ def _pdf_styles() -> Any:
 
 def _esc(text: str) -> str:
     return (
-        (text or "â€”")
+        (text or "—")
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
@@ -1137,7 +1137,7 @@ def _truncate_for_cell(text: str, limit: int = 900) -> str:
     text = text or ""
     if len(text) <= limit:
         return text
-    return text[:limit].rsplit(" ", 1)[0] + " â€¦"
+    return text[:limit].rsplit(" ", 1)[0] + " …"
 
 
 def _build_brand_header(brief: InvestmentBrief, report_name: str, styles: Any) -> list:
@@ -1188,8 +1188,8 @@ def _build_brand_header(brief: InvestmentBrief, report_name: str, styles: Any) -
             Paragraph("<b>Lead / Principal:</b> " + _esc(brief.founder_name), styles["KulimaBody"]),
         ],
         [
-            Paragraph(f"<b>Sector / Geo:</b> {_esc(brief.sector or 'â€”')} | {_esc(brief.geography or 'â€”')}", styles["KulimaBody"]),
-            Paragraph(f"<b>Stage:</b> {_esc(brief.stage or 'â€”')} | <b>Date:</b> {date_str}", styles["KulimaBody"]),
+            Paragraph(f"<b>Sector / Geo:</b> {_esc(brief.sector or '—')} | {_esc(brief.geography or '—')}", styles["KulimaBody"]),
+            Paragraph(f"<b>Stage:</b> {_esc(brief.stage or '—')} | <b>Date:</b> {date_str}", styles["KulimaBody"]),
         ],
     ]
     meta_table = Table(meta_data, colWidths=[3.3 * inch, 3.35 * inch])
@@ -1262,13 +1262,13 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     )
 
     # 3. Key Reasons vs Key Risks Table
-    reasons_list = [Paragraph("â€¢ " + _esc(_truncate_for_cell(sanitize_runtime_artifacts(brief.executive_summary or "â€”"))), styles["KulimaBullet"])]
-    reasons_list.append(Paragraph("â€¢ " + _esc(_truncate_for_cell(single_recommendation(brief), 400)), styles["KulimaBullet"]))
+    reasons_list = [Paragraph("• " + _esc(_truncate_for_cell(sanitize_runtime_artifacts(brief.executive_summary or "—"))), styles["KulimaBullet"])]
+    reasons_list.append(Paragraph("• " + _esc(_truncate_for_cell(single_recommendation(brief), 400)), styles["KulimaBullet"]))
 
     if brief.red_flags:
-        risks_list = [Paragraph(f"â€¢ <b>[{rf.severity.upper()}]</b> " + _esc(rf.title) + ": " + _esc(rf.detail), styles["KulimaBullet"]) for rf in brief.red_flags[:2]]
+        risks_list = [Paragraph(f"• <b>[{rf.severity.upper()}]</b> " + _esc(rf.title) + ": " + _esc(rf.detail), styles["KulimaBullet"]) for rf in brief.red_flags[:2]]
     else:
-        risks_list = [Paragraph("â€¢ No critical red flags surfaced from the available evidence base.", styles["KulimaBullet"])]
+        risks_list = [Paragraph("• No critical red flags surfaced from the available evidence base.", styles["KulimaBullet"])]
 
     cols_table = Table(
         [[
@@ -1309,7 +1309,7 @@ def _build_executive_summary_box(brief: InvestmentBrief, styles: Any) -> list:
     return elements
 
 
-# â”€â”€ PDF Build Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── PDF Build Engine ─────────────────────────────────────────────────────────
 
 def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict | None = None) -> bytes:
     if any(
@@ -1340,7 +1340,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
         rightMargin=0.75 * inch,
         topMargin=0.65 * inch,
         bottomMargin=0.75 * inch,
-        title=f"Kulima IC {'Report' if full_report else 'Memo'} â€” {brief.founder_name}",
+        title=f"Kulima IC {'Report' if full_report else 'Memo'} — {brief.founder_name}",
         author="Kulima Africa | Kulima FLEX",
     )
     styles = _pdf_styles()
@@ -1357,7 +1357,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
 
     # Scorecard Table
     score_data = [
-        ["Founder", "Startup", "Market", "Trust", "Riskâ†“", "Overall Score"],
+        ["Founder", "Startup", "Market", "Trust", "Risk↓", "Overall Score"],
         [
             f"{brief.founder_score:.0f}",
             f"{brief.startup_score:.0f}",
@@ -1429,7 +1429,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
         for idx, step in enumerate(brief.next_steps, 1):
             story.append(Paragraph(f"{idx}. {_esc(step)}", styles["KulimaBullet"]))
     else:
-        story.append(Paragraph("â€”", styles["KulimaBody"]))
+        story.append(Paragraph("—", styles["KulimaBody"]))
 
     # Additional Full IC Report Sections
     if full_report:
@@ -1447,10 +1447,10 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
             story.append(Paragraph("Evidence Reliability & Contradiction Report", styles["KulimaH2"]))
             story.append(
                 Paragraph(
-                    f"<b>Rating: {_esc(ei.integrity_grade.value)} ({ei.integrity_score:.0f}/100)</b> &nbsp;Â·&nbsp; "
-                    f"Depth: {_esc(depth_label)} &nbsp;Â·&nbsp; Consistency: {_esc(consistency)}<br/>"
-                    f"Sources reviewed: {source_count} &nbsp;Â·&nbsp; Claims extracted: {claim_count} &nbsp;Â·&nbsp; "
-                    f"Uploaded documents: {acc['document_count']} &nbsp;Â·&nbsp; "
+                    f"<b>Rating: {_esc(ei.integrity_grade.value)} ({ei.integrity_score:.0f}/100)</b> &nbsp;·&nbsp; "
+                    f"Depth: {_esc(depth_label)} &nbsp;·&nbsp; Consistency: {_esc(consistency)}<br/>"
+                    f"Sources reviewed: {source_count} &nbsp;·&nbsp; Claims extracted: {claim_count} &nbsp;·&nbsp; "
+                    f"Uploaded documents: {acc['document_count']} &nbsp;·&nbsp; "
                     f"High-authority sources: {high_authority_count}",
                     styles["KulimaIntegrityGrade"],
                 )
@@ -1458,13 +1458,13 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
             if ei.contradictions:
                 story.append(Paragraph("<b>Conflicts detected:</b>", styles["KulimaBody"]))
                 for i, c in enumerate(ei.contradictions, 1):
-                    a_val = c.claim_a.value_raw or "â€”"
-                    b_val = c.claim_b.value_raw or "â€”"
+                    a_val = c.claim_a.value_raw or "—"
+                    b_val = c.claim_b.value_raw or "—"
                     claim_label = c.claim_a.claim_type.value.replace("_", " ").capitalize()
                     action = c.recommended_action or "Verify with founder."
                     story.append(
                         Paragraph(
-                            f"[C{i}] <b>{_esc(c.severity.value.upper())}</b> â€” {_esc(claim_label)}: &ldquo;{_esc(a_val)}&rdquo; vs &ldquo;{_esc(b_val)}&rdquo;<br/>"
+                            f"[C{i}] <b>{_esc(c.severity.value.upper())}</b> — {_esc(claim_label)}: &ldquo;{_esc(a_val)}&rdquo; vs &ldquo;{_esc(b_val)}&rdquo;<br/>"
                             f"<i>Action: {_esc(action)}</i>",
                             styles["KulimaVerification"],
                         )
@@ -1500,7 +1500,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
                 role = v.title or v.persona
                 story.append(
                     Paragraph(
-                        f"â€¢ <b>{_esc(role)}</b> ({_esc(v.investor_name)}, {_esc(v.firm)}) â€” Ballot: <b>{_esc(v.decision.value)}</b><br/>"
+                        f"• <b>{_esc(role)}</b> ({_esc(v.investor_name)}, {_esc(v.firm)}) — Ballot: <b>{_esc(v.decision.value)}</b><br/>"
                         f"  Reasoning: {_esc(sanitize_runtime_artifacts(v.key_reasoning or v.thesis))}",
                         styles["KulimaBody"],
                     )
@@ -1518,7 +1518,7 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
             for i, src in enumerate(brief.sources, 1):
                 story.append(
                     Paragraph(
-                        f"[{i}] <b>{_esc(src.title)}</b> &nbsp;Â·&nbsp; {_esc(src.url)}",
+                        f"[{i}] <b>{_esc(src.title)}</b> &nbsp;·&nbsp; {_esc(src.url)}",
                         styles["KulimaBody"],
                     )
                 )
@@ -1582,7 +1582,7 @@ def build_signals_report_pdf(brief: InvestmentBrief, outcome: dict | None = None
     ]
     section_lines.append(("Signals Overview & Severity Breakdown", overview))
     for idx, sig in enumerate(highest_priority_signals(signals), 1):
-        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "â€”"
+        refs = ", ".join(sig.evidence_refs) if sig.evidence_refs else "—"
         section_lines.append(
             (
                 f"[SG{idx}] {sig.title}",
@@ -1590,7 +1590,7 @@ def build_signals_report_pdf(brief: InvestmentBrief, outcome: dict | None = None
                     f"Severity: {sig.level.value.upper()} | Category: {sig.category.value.title()}",
                     f"Direction: {sig.direction} | Confidence: {sig.confidence:.2f}",
                     f"Description: {sig.description}",
-                    f"Recommended Action: {sig.recommended_action or 'â€”'}",
+                    f"Recommended Action: {sig.recommended_action or '—'}",
                     f"Evidence refs: {refs}",
                 ],
             )
@@ -1608,11 +1608,11 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief, outcome: dict | None
         (
             "Research Results",
             [
-                f"Executive summary: {brief.executive_summary or 'â€”'}",
-                f"Founder assessment: {brief.founder_assessment or 'â€”'}",
-                f"Startup assessment: {brief.startup_assessment or 'â€”'}",
-                f"Market assessment: {brief.market_assessment or 'â€”'}",
-                f"Risk assessment: {brief.risk_assessment or 'â€”'}",
+                f"Executive summary: {brief.executive_summary or '—'}",
+                f"Founder assessment: {brief.founder_assessment or '—'}",
+                f"Startup assessment: {brief.startup_assessment or '—'}",
+                f"Market assessment: {brief.market_assessment or '—'}",
+                f"Risk assessment: {brief.risk_assessment or '—'}",
             ],
         ),
         ("Documents Used", _brief_document_lines(brief)),
@@ -1625,7 +1625,7 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief, outcome: dict | None
                     f"[{i}] {src.title}",
                     f"URL: {src.url}",
                     f"Type: {src.source_type} | Relevance: {src.relevance:.2f} | Confidence: {src.confidence_score:.2f}",
-                    f"Snippet: {src.snippet or 'â€”'}",
+                    f"Snippet: {src.snippet or '—'}",
                     "",
                 ]
             )
@@ -1678,7 +1678,7 @@ def build_due_diligence_summary_pdf(brief: InvestmentBrief, outcome: dict | None
 
 
 def build_executive_one_pager_pdf(brief: InvestmentBrief, outcome: dict | None = None) -> bytes:
-    top_reasons = [brief.executive_summary or "â€”"]
+    top_reasons = [brief.executive_summary or "—"]
     if brief.investment_recommendation:
         top_reasons.append(brief.investment_recommendation)
         
@@ -1725,7 +1725,7 @@ def _build_styled_report_pdf(
         rightMargin=0.75 * inch,
         topMargin=0.65 * inch,
         bottomMargin=0.75 * inch,
-        title=f"{report_title} â€” {brief.founder_name}",
+        title=f"{report_title} — {brief.founder_name}",
         author="Kulima Africa | Kulima FLEX",
     )
     styles = _pdf_styles()
@@ -1737,10 +1737,10 @@ def _build_styled_report_pdf(
     for heading, items in sections:
         story.append(Paragraph(heading, styles["KulimaH2"]))
         if not items:
-            story.append(Paragraph("â€”", styles["KulimaBody"]))
+            story.append(Paragraph("—", styles["KulimaBody"]))
         else:
             for item in items:
-                story.append(Paragraph(f"â€¢ {_esc(item)}", styles["KulimaBullet"]))
+                story.append(Paragraph(f"• {_esc(item)}", styles["KulimaBullet"]))
         story.append(Spacer(1, 4))
 
     if canvas and NumberedCanvas:
@@ -1750,13 +1750,13 @@ def _build_styled_report_pdf(
     return buffer.getvalue()
 
 
-# â”€â”€ Streamlit Component Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Streamlit Component Helpers ──────────────────────────────────────────────
 
 def render_reports_buttons(brief: InvestmentBrief, key_prefix: str = "reports") -> None:
     import streamlit as st
 
-    st.markdown("### ðŸ“š Report Pack")
-    st.caption("All report PDFs are generated from the current runâ€™s actual outputs.")
+    st.markdown("### 📚 Report Pack")
+    st.caption("All report PDFs are generated from the current run’s actual outputs.")
     names = export_filenames(brief)
 
     col1, col2 = st.columns(2)
@@ -1807,7 +1807,7 @@ def render_reports_buttons(brief: InvestmentBrief, key_prefix: str = "reports") 
 def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> None:
     import streamlit as st
 
-    st.markdown("### ðŸ“¥ Export Investment Materials")
+    st.markdown("### 📥 Export Investment Materials")
     st.caption(
         "Download IC-ready documents in multiple formats. "
         "All exports include scores, syndicate votes, and futures analysis."
@@ -1825,7 +1825,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
         depth_label = "Limited Coverage" if ei.sparse_mode else ei.evidence_depth.value.capitalize()
         reliability_md = (
             f"Reliability: **{ei.integrity_grade.value}** "
-            f"({ei.integrity_score:.0f}/100) Â· {depth_label}  \n"
+            f"({ei.integrity_score:.0f}/100) · {depth_label}  \n"
         )
 
     col1, col2, col3 = st.columns(3)
@@ -1837,16 +1837,16 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             unsafe_allow_html=True,
         )
         st.download_button(
-            label="ðŸ“„ Download Memo PDF",
+            label="📄 Download Memo PDF",
             data=memo_pdf,
             file_name=names["memo_pdf"],
             mime="application/pdf",
             width="stretch",
             key=f"{key_prefix}_dl_memo_pdf",
-            help="Concise IC memo â€” 1-2 pages, suitable for partner review.",
+            help="Concise IC memo — 1-2 pages, suitable for partner review.",
         )
         st.download_button(
-            label="ðŸ“ Download Memo TXT",
+            label="📝 Download Memo TXT",
             data=memo_txt,
             file_name=names["memo_txt"],
             mime="text/plain",
@@ -1863,7 +1863,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             unsafe_allow_html=True,
         )
         st.download_button(
-            label="ðŸ“„ Download Full Report PDF",
+            label="📄 Download Full Report PDF",
             data=report_pdf,
             file_name=names["report_pdf"],
             mime="application/pdf",
@@ -1876,7 +1876,7 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             ),
         )
         st.download_button(
-            label="ðŸ“ Download Full Report TXT",
+            label="📝 Download Full Report TXT",
             data=report_txt,
             file_name=names["report_txt"],
             mime="text/plain",
@@ -1897,8 +1897,8 @@ def render_export_buttons(brief: InvestmentBrief, key_prefix: str = "main") -> N
             f"Recommendation: **{brief.recommendation.value}**  \n"
             f"Overall: **{brief.overall_score:.0f}/100**  \n"
             f"Conviction: {brief.confidence_level.value}  \n"
-            f"Sector: {brief.sector or 'â€”'}  \n"
+            f"Sector: {brief.sector or '—'}  \n"
             f"{reliability_md}"
-            f"Sources: {len(brief.sources)} Â· Red flags: {len(brief.red_flags)}"
+            f"Sources: {len(brief.sources)} · Red flags: {len(brief.red_flags)}"
         )
         st.markdown("</div>", unsafe_allow_html=True)

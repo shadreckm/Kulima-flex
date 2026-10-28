@@ -38,15 +38,16 @@ export default function Composer({ onSend, runId }: { onSend?: (text: string, at
     <div>
       <AttachmentPills attachments={attachments} onRemove={(id) => setAttachments(attachments.filter(a => a.id !== id))} />
       <div className="flex gap-2 items-center">
-        <label className="p-2 bg-gray-100 rounded cursor-pointer">
+        <label className="p-2 bg-gray-100 rounded cursor-pointer" title="Add a document to this assessment">
           {uploading ? 'Uploading…' : '📎'}
-          <input type="file" onChange={onAttach} className="hidden" />
+          <input type="file" onChange={onAttach} className="hidden" aria-label="Attach document" />
         </label>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-          placeholder="Ask anything..."
+          placeholder="Ask about the evidence, a signal, or the decision…"
+          aria-label="Ask the AI Analyst"
           className="flex-1 px-3 py-2 rounded border"
         />
         <Button onClick={handleSend} disabled={uploading}>Send</Button>

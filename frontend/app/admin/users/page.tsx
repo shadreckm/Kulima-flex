@@ -1,11 +1,14 @@
 'use client'
 
-// Admin Console — Phase 2: user management.
+// Admin Console — Users.
 //
 // Who exists, where they belong, what plan they are on and what they last did.
-// Everything here is an operator reading across workspaces; the console cannot
-// change any of it. Role and membership edits stay in the customer workspace
-// (Settings → Members), where the acting user holds the organization permission.
+// This panel changes nothing. Subscription and account state is managed on
+// Organizations; role and membership edits stay in the customer workspace
+// (Settings → Members), where the acting user holds the organization permission —
+// the console deliberately offers no membership editor, because a platform screen
+// that could write memberships would be one bug away from granting cross-workspace
+// access. The platform plane itself (PLATFORM_ADMIN) lives on Administrators.
 
 import { useState } from 'react'
 import AdminConsoleShell from '../../../components/AdminConsole/AdminConsoleShell'
@@ -43,7 +46,7 @@ export default function AdminUsersPage() {
     <AdminConsoleShell
       section="users"
       title="User Management"
-      description="Users, organizations, plans, roles and recent activity — platform-wide and read-only. Membership edits happen inside a workspace, never here."
+      description="Users, organizations, plans, roles and recent activity — platform-wide. This panel reads; account changes happen on Organizations, and membership edits happen inside a workspace."
       toolbar={(
         <div className="flex items-center gap-2 flex-wrap">
           <form
@@ -171,7 +174,7 @@ export default function AdminUsersPage() {
               />
             </Panel>
 
-            <Panel title="Roles" note="Membership rows per organization role across every workspace.">
+            <Panel title="Roles" note="Membership rows per organization role across every workspace. These are organization roles only — PLATFORM_ADMIN is a platform principal and appears on the Administrators panel, never here.">
               <BarList items={mapItems(data.roles)} emptyLabel="NO DATA — no memberships recorded." />
             </Panel>
           </div>

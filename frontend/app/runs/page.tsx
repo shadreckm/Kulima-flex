@@ -107,7 +107,7 @@ export default function RunsPage() {
           {liveRuns.length === 0 ? (
             <div className="py-6 text-center">
                 <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
-                <div className="text-[11px] text-slate-400 mt-1">Upload your first pitch deck, NGO report, survey, business plan, or program report.</div>
+                <div className="text-[11px] text-slate-400 mt-1">Upload an NGO report, programme document, survey, business plan, or pitch deck.</div>
             </div>
           ) : liveRuns.map(run => (
             <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
@@ -139,7 +139,7 @@ export default function RunsPage() {
               <div className="py-6 text-center">
                 <div className="text-sm font-bold text-slate-700">No documents uploaded yet</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  Upload your first pitch deck, NGO report, survey, business plan, or program report from the{' '}
+                  Upload an NGO report, programme document, survey, business plan, or pitch deck from the{' '}
                   <Link href="/flex" className="text-[#0B5D3B] font-bold hover:underline">AI Analyst Workspace</Link>.
                 </div>
               </div>

@@ -17,27 +17,21 @@ type ReportDef = {
   kind: ReportKind
   label: string
   description: string
-  useCases: string[]         // which assessment types this is most useful for
+  useCases: string[]         // which assessment profiles this is most useful for
   audience: string           // who reads this report
   format: 'pdf' | 'txt'
   primary: boolean           // show as primary CTA
-  // NGO/development-first: when the assessment is not a venture, these
-  // override label/audience so no Investment-Committee wording leaks through.
-  institutionLabel?: string
-  institutionAudience?: string
 }
 
-// Venture-shaped entity types keep the Investment Committee framing; every
-// other type (NGO, Development/Government Programme, Tourism, Research) is
-// reviewed with institutional wording. Nothing is removed — only reframed.
-// NOTE: must stay non-exported — Next.js rejects unknown named exports on page files.
-const VENTURE_TYPES = ['startup', 'social_enterprise', 'cooperative', 'accelerator']
-function isVentureType(entityType?: string): boolean {
-  return VENTURE_TYPES.includes((entityType || '').toLowerCase())
-}
+// The profile-correct title of the full review lives in ENTITY_REVIEW_TITLE
+// below, so the card a user downloads is named exactly like the PDF they get.
+// NOTE: everything in this file must stay non-exported — Next.js rejects
+// unknown named exports on page files.
 
-// Mirrors the backend entity→report-title map (kulima/export.py) so the
-// download card is titled exactly like the PDF it produces.
+// Mirrors the backend entity→report-title map (kulima/export.py →
+// kulima/intelligence/report_quality.py) so the download card is titled exactly
+// like the PDF it produces. Profiles with no title of their own inherit the
+// institutional review, never the startup template.
 const ENTITY_REVIEW_TITLE: Record<string, string> = {
   ngo: 'Institutional Capacity Review',
   development_program: 'Programme Performance Review',
@@ -46,6 +40,14 @@ const ENTITY_REVIEW_TITLE: Record<string, string> = {
   foundation: 'Institutional Capacity Review',
   government_program: 'Governance Review',
   tourism_sme: 'Tourism Resilience Report',
+  startup: 'Investment Committee Report',
+  social_enterprise: 'Investment Committee Report',
+  cooperative: 'Investment Committee Report',
+  accelerator: 'Institutional Capacity Review',
+}
+
+function entityReviewTitle(entityType?: string): string {
+  return ENTITY_REVIEW_TITLE[(entityType || '').toLowerCase()] || ENTITY_REVIEW_TITLE.ngo
 }
 
 // ── Report definitions with entity-type framing ───────────────────────────
@@ -53,75 +55,78 @@ const ENTITY_REVIEW_TITLE: Record<string, string> = {
 const REPORTS: ReportDef[] = [
   {
     kind: 'memo',
-    label: 'Investment / Decision Memo',
-    institutionLabel: 'Decision & Capacity Memo',
-    description: 'Executive recommendation, rationale, trust score, key risks and opportunities in a single signed document.',
-    useCases: ['NGO', 'Development Program', 'Government Program', 'Tourism SME', 'Startup'],
-    audience: 'Investment Committee · Donor Board · Senior Management',
-    institutionAudience: 'Donor Board · Trustees · Senior Management',
+    label: 'Decision Memo',
+    description: 'The decision itself: recommendation, reasoning, evidence grade, confidence, main risks and the next action — one document to circulate.',
+    useCases: ['NGO', 'Development Programme', 'Government Programme', 'Tourism SME', 'Startup'],
+    audience: 'Board · Donor · Senior Management',
     format: 'pdf',
     primary: true,
   },
   {
     kind: 'report',
-    label: 'Full IC Report',
-    description: 'Complete analysis package: evidence integrity, domain scores, signal breakdown, contradictions, and MEAL indicators.',
-    useCases: ['NGO', 'Development Program', 'Government Program', 'Startup'],
-    audience: 'Investment Committee · Program Review Panel · Auditors',
-    institutionAudience: 'Programme Review Panel · Donors · Auditors',
+    label: 'Investment Committee Report',
+    description: 'The complete review: evidence integrity, domain scores, signals, contradictions, gaps and the decision record behind every figure.',
+    useCases: ['NGO', 'Development Programme', 'Government Programme', 'Tourism SME', 'Startup'],
+    audience: 'Review Panel · Donors · Auditors · Committee',
     format: 'pdf',
     primary: true,
   },
   {
     kind: 'signals',
     label: 'Signals Report',
-    description: 'Detected risk and opportunity signals across the signal domains: Community, Trust, Funding, Programme Delivery, Risk, Opportunity, Climate, Environment, Market, Tourism.',
-    useCases: ['NGO', 'Development Program', 'Tourism SME', 'Government Program', 'Startup'],
-    audience: 'Risk Officers · Program Analysts · Sector Specialists',
+    description: 'Every risk and opportunity signal detected across the domains — Community, Trust, Funding, Programme Delivery, Risk, Opportunity, Climate, Environment, Market, Tourism — with its source.',
+    useCases: ['NGO', 'Development Programme', 'Tourism SME', 'Government Programme', 'Startup'],
+    audience: 'Risk Officers · Programme Analysts · MEAL Teams',
     format: 'pdf',
     primary: false,
   },
   {
     kind: 'due-diligence',
-    label: 'Due Diligence Summary',
-    description: 'Evidence integrity audit, source attribution, corroboration status, verification checklist, and unsupported claims.',
-    useCases: ['NGO', 'Development Program', 'Startup'],
-    audience: 'Legal Team · External Auditors · Compliance Officers',
+    label: 'Evidence Verification Summary',
+    description: 'How the evidence was checked: integrity audit, source attribution, corroboration, verification checklist and any claims still unsupported.',
+    useCases: ['NGO', 'Development Programme', 'Government Programme', 'Startup'],
+    audience: 'Legal · External Auditors · Compliance',
     format: 'pdf',
     primary: false,
   },
   {
     kind: 'one-pager',
-    label: 'Executive One Pager',
-    description: 'Single-page summary for board, donor, or parliamentary review. Verdict, trust score, and top 3 findings.',
-    useCases: ['NGO', 'Development Program', 'Government Program', 'Tourism SME', 'Startup'],
-    audience: 'Board · Parliament · Donors · Partners',
+    label: 'Executive One-Pager',
+    description: 'One page for the people who sign off: verdict, evidence grade, confidence and the three findings that matter most.',
+    useCases: ['NGO', 'Development Programme', 'Government Programme', 'Tourism SME', 'Startup'],
+    audience: 'Executive Director · Board · Donor · Partner',
     format: 'pdf',
     primary: false,
   },
 ]
 
-// Returns the report list with NGO/development wording applied for non-venture
-// assessments, so Investment-Committee reports/labels only surface for Startups.
+// Returns the report list with the profile-correct titles applied: the full
+// review always carries the title of the PDF the backend actually generates
+// (NGO → Institutional Capacity Review, Startup → Investment Committee Report,
+// and so on). Nothing is removed — only named correctly for the reader.
 function reportsForEntity(entityType?: string): ReportDef[] {
-  const venture = isVentureType(entityType)
-  const reviewTitle = ENTITY_REVIEW_TITLE[(entityType || '').toLowerCase()]
-  return REPORTS.map(r => {
-    if (venture) return r
-    const label = r.kind === 'report' && reviewTitle
-      ? reviewTitle
-      : (r.institutionLabel ?? r.label)
-    return { ...r, label, audience: r.institutionAudience ?? r.audience }
-  })
+  const reviewTitle = entityReviewTitle(entityType)
+  return REPORTS.map(r => (r.kind === 'report' ? { ...r, label: reviewTitle } : r))
 }
 
 
 // ── Future integrations (Phase 7 architecture) ────────────────────────────
 
+// Shows whether a report is written for the profile the user has open, so the
+// right download is obvious without reading every card.
+function ProfileFit({ report, profileLabel }: { report: ReportDef; profileLabel: string }) {
+  if (!profileLabel || !report.useCases.includes(profileLabel)) return null
+  return (
+    <span className="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ECFDF3] text-[#027A48] border border-[#A6F4C5]">
+      Written for this {profileLabel.toLowerCase()} assessment
+    </span>
+  )
+}
+
 const FUTURE_INTEGRATIONS = [
-  { label: 'UNDP Result-Based Management', note: 'Coming soon · NGO / Development Program', icon: '🇺🇳' },
-  { label: 'EU PPRD / PRAG Standards',     note: 'Coming soon · Government Program',       icon: '🇪🇺' },
-  { label: 'USAID MEL Framework',          note: 'Coming soon · Development Program',       icon: '🏛️' },
+  { label: 'UNDP Result-Based Management', note: 'Coming soon · NGO / Development Programme', icon: '🇺🇳' },
+  { label: 'EU PPRD / PRAG Standards',     note: 'Coming soon · Government Programme',       icon: '🇪🇺' },
+  { label: 'USAID MEL Framework',          note: 'Coming soon · Development Programme',       icon: '🏛️' },
   { label: 'IFC ESG Standards',            note: 'Coming soon · Startup / Tourism SME',     icon: '🌍' },
 ]
 
@@ -224,6 +229,29 @@ function ReportsPageInner() {
         </section>
       )}
 
+      {/* Which review this profile produces — stated before any download. */}
+      {ctx ? (
+        <section className="p-5 bg-white rounded-[12px] border border-[#A6F4C5] shadow-saas">
+          <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#027A48]">
+            {entityTypeLabel} · the review this assessment produces
+          </div>
+          <div className="text-lg font-black text-slate-900 mt-1">{entityReviewTitle(ctx?.assessmentType)}</div>
+          <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-3xl">
+            Every document below is generated from the same evidence, signals and decision record — only the
+            reader and the depth change. The full review is titled as above.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold text-slate-500">
+            <span>
+              Evidence grade: {ctx.trustScore != null ? `${Math.round(ctx.trustScore)}/100` : 'not scored'}
+            </span>
+            <span>
+              {ctx.documentCount ? `${ctx.documentCount} source document${ctx.documentCount !== 1 ? 's' : ''}` : 'No source documents recorded'}
+            </span>
+            <Link href="/trust" className="text-[#0B5D3B] hover:underline">See what was verified</Link>
+          </div>
+        </section>
+      ) : null}
+
       {/* Outcome Layer V1: the reports a board reads are the same artifacts a
           follow-up later judges — keep the decision loop visible here. */}
       {runId ? <OutcomeFollowup runId={runId} /> : null}
@@ -248,12 +276,13 @@ function ReportsPageInner() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {reports.filter(r => r.primary).map(report => (
                 <div key={report.kind} className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-                  <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
                       <div className="text-sm font-extrabold text-slate-900">{report.label}</div>
                       <div className="text-xs text-slate-500 mt-1 leading-5">{report.description}</div>
                     </div>
                   </div>
+                  <div className="mb-2"><ProfileFit report={report} profileLabel={entityTypeLabel} /></div>
                   <div className="text-[10px] text-slate-400 mb-3">
                     <span className="font-bold">Audience:</span> {report.audience}
                   </div>
@@ -287,6 +316,7 @@ function ReportsPageInner() {
                 <div key={report.kind} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
                   <div className="text-sm font-extrabold text-slate-900 mb-1">{report.label}</div>
                   <div className="text-xs text-slate-500 leading-5 mb-2">{report.description}</div>
+                  <div className="mb-2"><ProfileFit report={report} profileLabel={entityTypeLabel} /></div>
                   <div className="text-[10px] text-slate-400 mb-3">
                     <span className="font-bold">Audience:</span> {report.audience}
                   </div>

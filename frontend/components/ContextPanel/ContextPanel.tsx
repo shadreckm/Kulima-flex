@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Card } from '../shadcn/Card'
 import { Separator } from '../shadcn/Separator'
 import { Badge } from '../shadcn/Badge'
@@ -99,9 +100,38 @@ interface SnapshotProps<T> {
   data: T | null
 }
 
+/**
+ * The official chain, always shown in full so a user in any single stage can
+ * see where the work goes next. Only the stage the user is actually in is
+ * highlighted — nothing here is a link the user cannot follow.
+ */
+const CHAIN_STAGES = ['Info', 'Evidence', 'Trust', 'Signals', 'Decision', 'Reports', 'Action']
+
+function ValueChainStrip({ stage }: { stage: string }) {
+  return (
+    <div className="p-2 bg-[#F5F8FC] border border-[#DDE6F0] rounded-lg">
+      <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+        Evidence-to-Decision Chain
+      </div>
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] font-extrabold">
+        {CHAIN_STAGES.map((s, i) => (
+          <React.Fragment key={s}>
+            {i > 0 ? <span className="text-slate-400">→</span> : null}
+            {s === stage ? (
+              <span className="text-[#0B5D3B] bg-[#ECFDF3] px-1.5 py-0.5 rounded border border-[#A6F4C5]">{s}</span>
+            ) : (
+              <span className="text-slate-500">{s}</span>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function FlexSnapshotView({ runId, status, loading, error, data }: SnapshotProps<DecisionSnapshot>) {
   if (!runId) {
-    return <div className="text-xs text-gray-500">Run an analysis to see the decision snapshot.</div>
+    return <div className="text-xs text-gray-500">Run an analysis to see the decision it produces.</div>
   }
 
   // STATE SYNCHRONIZATION FIX: If data exists, decision is complete regardless of status string
@@ -124,38 +154,72 @@ function FlexSnapshotView({ runId, status, loading, error, data }: SnapshotProps
 
   return (
     <div>
-      <h3 className="text-sm font-semibold">Decision Snapshot</h3>
-      <div className="mt-3 flex items-center gap-2">
+      <ValueChainStrip stage="Decision" />
+
+      <h3 className="mt-3 text-sm font-semibold">Decision</h3>
+      <div className="mt-2 flex items-center gap-2">
         <div className="text-sm">Recommendation:</div>
         <Badge>{data.verdict}</Badge>
       </div>
-      {data.confidencePercent != null && (
-        <div className="mt-2 text-xs text-gray-500">
-          Confidence: {data.confidencePercent.toFixed(0)}%
-          {data.confidenceLabel ? ` (${data.confidenceLabel})` : ''}
+
+      {/* Trust Layer visibility (Phase 9): the grade and confidence behind this
+          recommendation are shown up front, not buried on another screen. */}
+      {(data.confidencePercent != null || data.reliabilityGrade) ? (
+        <div className="mt-2 p-2 rounded border border-[#DDE6F0] bg-[#F5F8FC] space-y-1">
+          {data.reliabilityGrade ? (
+            <div className="text-[11px] text-gray-700">
+              <span className="font-bold">Evidence grade:</span> Grade {data.reliabilityGrade}
+              {data.reliabilityScore != null ? ` (${data.reliabilityScore.toFixed(0)}/100)` : ''}
+            </div>
+          ) : null}
+          {data.confidencePercent != null ? (
+            <div className="text-[11px] text-gray-700">
+              <span className="font-bold">Confidence:</span> {data.confidencePercent.toFixed(0)}%
+              {data.confidenceLabel ? ` — ${data.confidenceLabel}` : ''}
+            </div>
+          ) : null}
+          <div className="text-[10px] text-gray-500">
+            Based on what the documents actually support. Open the evidence to read it.
+          </div>
         </div>
-      )}
-      {data.reliabilityGrade && (
-        <div className="mt-1 text-xs text-gray-500">
-          Reliability: Grade {data.reliabilityGrade}
-          {data.reliabilityScore != null ? ` (${data.reliabilityScore.toFixed(0)}/100)` : ''}
-        </div>
-      )}
+      ) : null}
+
       <Separator className="my-3" />
-      <div className="text-sm">Top Reasons</div>
-      <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
-        {data.topReasons.map((r, idx) => (
-          <li key={idx}>{r}</li>
-        ))}
-      </ul>
-      <div className="mt-3 text-sm">Top Risks</div>
-      <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
-        {data.topRisks.map((r, idx) => (
-          <li key={idx}>{r}</li>
-        ))}
-      </ul>
-      <div className="mt-3 text-sm">Next Action</div>
-      <div className="mt-1 text-xs text-gray-700">{data.nextAction}</div>
+
+      <div className="text-sm">Why this decision</div>
+      {data.topReasons.length ? (
+        <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
+          {data.topReasons.map((r, idx) => (
+            <li key={idx}>{r}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-1 text-xs text-gray-500">NO DATA — no evidence-backed reasons recorded for this run.</div>
+      )}
+
+      <div className="mt-3 text-sm">Risks to watch</div>
+      {data.topRisks.length ? (
+        <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
+          {data.topRisks.map((r, idx) => (
+            <li key={idx}>{r}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-1 text-xs text-gray-500">No risks flagged from the evidence available.</div>
+      )}
+
+      <div className="mt-3 p-2 rounded border border-[#A6F4C5] bg-[#ECFDF3]">
+        <div className="text-[10px] font-black uppercase tracking-wider text-[#027A48]">What to do next</div>
+        <div className="mt-1 text-xs text-[#084D2F]">
+          {data.nextAction ? data.nextAction : 'No next action recorded yet — review the signals above.'}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold">
+        <Link className="text-[#0B5D3B] hover:underline" href="/decision">Full decision record →</Link>
+        <Link className="text-slate-600 hover:underline" href="/evidence">Evidence behind it</Link>
+        <Link className="text-slate-600 hover:underline" href="/reports">Reports to send</Link>
+      </div>
     </div>
   )
 }
@@ -171,7 +235,7 @@ const DOMAIN_CONFIG: Record<string, { label: string; icon: string; category: str
   environmental: { label: 'Environment', icon: '🌿', category: 'environmental' },
   // Secondary market signals (kept but deprioritized in order)
   market: { label: 'Market', icon: '📈', category: 'market' },
-  tourism: { label: 'Tourism', icon: '�', category: 'tourism' },
+  tourism: { label: 'Tourism', icon: '🧭', category: 'tourism' },
 }
 
 /** Legacy domain keys folded into the nine display domains (backend Step 6). */
@@ -207,7 +271,7 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
   const [selectedDomain, setSelectedDomain] = useState<string | 'all'>('all')
 
   if (!runId) {
-    return <div className="text-xs text-gray-500">Select or create an evaluation to inspect signal intelligence.</div>
+    return <div className="text-xs text-gray-500">Start an assessment to see the signals it produces.</div>
   }
 
   // STATE SYNCHRONIZATION FIX: If data exists, signals are complete regardless of status string
@@ -217,7 +281,7 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
   }
 
   if (loading && !data) {
-    return <div className="text-xs text-gray-500">Extracting signals from documents and Tavily OSINT…</div>
+    return <div className="text-xs text-gray-500">Extracting signals from your documents and public research…</div>
   }
 
   if (error && !data) {
@@ -262,39 +326,35 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
     ? Object.entries(resolvedDomains)
     : Object.entries(resolvedDomains).filter(([k]) => k === selectedDomain)
 
+  // Data honesty: counts come from what the run actually produced, never from
+  // a fixed display number.
+  const domainCount = Object.keys(resolvedDomains).length
+  const signalCount = allSignals.length
+
   return (
     <div className="space-y-3.5">
       {/* ── Value Chain Progression Header ── */}
-      <div className="p-2 bg-[#F5F8FC] border border-[#DDE6F0] rounded-lg">
-        <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
-          Decision Intelligence Value Chain
-        </div>
-        <div className="flex items-center justify-between text-[10px] font-extrabold">
-          <span className="text-slate-500">Info</span>
-          <span className="text-slate-400">→</span>
-          <span className="text-slate-500">Evidence</span>
-          <span className="text-slate-400">→</span>
-          <span className="text-slate-500">Trust</span>
-          <span className="text-slate-400">→</span>
-          <span className="text-[#0B5D3B] bg-[#ECFDF3] px-1.5 py-0.5 rounded border border-[#A6F4C5]">Signals</span>
-          <span className="text-slate-400">→</span>
-          <span className="text-slate-500">Decision</span>
-        </div>
-      </div>
+      <ValueChainStrip stage="Signals" />
 
       {/* Header & Overall Counters */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-extrabold text-slate-900">Signals Intelligence</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">9 Verified Domains · Docs & Tavily OSINT</p>
+          <h3 className="text-sm font-extrabold text-slate-900">Signals</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {domainCount} domains · read from your documents and public research
+          </p>
         </div>
         <Badge className="bg-[#0B5D3B] text-white text-[10px]">
-          {allSignals.length || 9} Signals
+          {signalCount ? `${signalCount} Signals` : 'NO SIGNALS YET'}
         </Badge>
       </div>
 
       {/* Severity Counters */}
-      <div className="grid grid-cols-4 gap-1.5 text-center">
+      <div>
+        <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+          How urgent each signal is
+        </div>
+        <div className="grid grid-cols-4 gap-1.5 text-center">
         <div className="p-1.5 rounded bg-red-50 border border-red-200">
           <div className="text-[10px] font-black text-red-700">CRITICAL</div>
           <div className="text-xs font-black text-red-900 mt-0.5">{data.critical}</div>
@@ -310,6 +370,7 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
         <div className="p-1.5 rounded bg-emerald-50 border border-emerald-200">
           <div className="text-[10px] font-black text-emerald-700">LOW</div>
           <div className="text-xs font-black text-emerald-900 mt-0.5">{data.low}</div>
+        </div>
         </div>
       </div>
 
@@ -330,7 +391,7 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All (9)
+            All ({domainCount})
           </button>
           {Object.entries(resolvedDomains).map(([key, dom]) => (
             <button
@@ -349,6 +410,10 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
             </button>
           ))}
         </div>
+        <p className="mt-1.5 text-[9px] text-slate-400 leading-snug">
+          A domain score summarises the signals found in that domain. Every score sits above the
+          signals and sources it was calculated from — no number appears on its own.
+        </p>
       </div>
 
       {/* Domain Cards & Extracted Signals */}
@@ -389,12 +454,17 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
             )}
 
             {dom.summary ? (
-              <p className="text-[11px] text-slate-600 leading-relaxed">{dom.summary}</p>
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                  What this domain shows
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-600 leading-relaxed">{dom.summary}</p>
+              </div>
             ) : null}
 
             {dom.recommendation ? (
               <div className="mt-1.5 text-[10px] font-bold text-[#0B5D3B] bg-[#F5F8FC] p-1.5 rounded border border-slate-200/60">
-                → Recommendation: {dom.recommendation}
+                What should change → {dom.recommendation}
               </div>
             ) : null}
 
@@ -404,6 +474,9 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
               ) : dom.signals.map((sig: any) => {
                 const isRisk = sig.direction === 'risk'
                 const isDoc = sig.metadata?.source_type === 'document' || (sig.evidenceRefs && sig.evidenceRefs.some((r: string) => r.includes('DOC')))
+                const refs: string[] = Array.isArray(sig.evidenceRefs) ? sig.evidenceRefs.filter(Boolean) : []
+                const rawConf = typeof sig.confidence === 'number' ? sig.confidence : null
+                const confidencePct = rawConf == null ? null : Math.round((rawConf <= 1 ? rawConf : rawConf / 100) * 100)
                 return (
                   <div
                     key={sig.id}
@@ -417,23 +490,55 @@ function SignalsSnapshotView({ runId, status, loading, error, data }: SnapshotPr
                         sig.level === 'high' ? 'bg-amber-600 text-white' :
                         sig.level === 'medium' ? 'bg-yellow-600 text-white' : 'bg-emerald-600 text-white'
                       }`}>
-                        {sig.level}
+                        {sig.level || 'informational'}
                       </span>
                       <span className="text-[10px] font-semibold text-slate-500">
-                        {isDoc ? '📄 Primary Document' : '🌐 Tavily OSINT Research'}
+                        {isDoc ? '📄 From your documents' : '🌐 Public research'}
                       </span>
                     </div>
-
+              
                     <div className="font-extrabold text-slate-900 leading-tight">
                       {isRisk ? '⚠' : '✅'} {sig.title}
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                      {sig.description}
-                    </p>
-
-                    {sig.recommendedAction && (
+              
+                    <div className="mt-1">
+                      <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                        Why it matters
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                        {sig.description || 'No explanation was recorded for this signal — read the source behind it.'}
+                      </p>
+                    </div>
+              
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-slate-500">
+                      <span
+                        className="font-bold text-slate-600"
+                        title={refs.length ? refs.join('\n') : 'No evidence reference stored for this signal'}
+                      >
+                        {refs.length
+                          ? `Evidence: ${refs.length} reference${refs.length > 1 ? 's' : ''}`
+                          : 'Evidence: source only'}
+                      </span>
+                      {confidencePct != null ? (
+                        <span
+                          className="font-bold text-slate-600"
+                          title="Confidence: how firmly the extracted evidence supports this individual signal, not the overall assessment score"
+                        >
+                          Confidence {confidencePct}%
+                        </span>
+                      ) : (
+                        <span className="italic text-slate-400">Confidence not measured</span>
+                      )}
+                      {sig.timeHorizon ? <span>Horizon: {sig.timeHorizon}</span> : null}
+                    </div>
+              
+                    {sig.recommendedAction ? (
                       <div className="mt-1.5 text-[10px] font-bold text-[#0B5D3B] bg-white/80 p-1 rounded border border-slate-200/60">
-                        → Action: {sig.recommendedAction}
+                        What should change → {sig.recommendedAction}
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 text-[10px] italic text-slate-400">
+                        No action recorded — this signal informs the decision rather than changing it.
                       </div>
                     )}
                   </div>

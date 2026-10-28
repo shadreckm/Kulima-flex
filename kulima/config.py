@@ -61,10 +61,15 @@ class Settings:
     use_supabase: bool
     storage_bucket_name: str
     # ── Platform operations console (internal, admin-only) ──────────────
-    # Identity keys (user ids / emails) allowed to read across every
-    # workspace. Distinct from organization roles: an org Owner is NOT a
-    # platform operator. Empty means the console is unreachable (fail-closed).
+    # The PLATFORM_ADMIN role is a stored principal in the 'platform_admins'
+    # table — separate from the organization roles (Owner / Admin / Reviewer /
+    # Contributor / Viewer), which govern one workspace only. These identities
+    # are provisioned into that role at startup; the remaining env entries act
+    # as break-glass access if the store is ever unavailable.
+    # Emptying KULIMA_PLATFORM_ADMIN_EMAILS makes the console unreachable.
     platform_admin_user_ids: tuple[str, ...] = ()
+    platform_admin_primary_email: str = "kulimaafrica@gmail.com"
+    platform_admin_emails: tuple[str, ...] = ("kulimaafrica@gmail.com",)
 
     def missing_required_secrets(self) -> list[str]:
         missing = []
@@ -83,7 +88,7 @@ class Settings:
             "guest_daily_limit": self.guest_daily_limit,
             "analyst_daily_limit": self.analyst_daily_limit,
             "investor_daily_limit": self.investor_daily_limit,
-            "admin_controls": bool(self.admin_emails),
+            "admin_controls": bool(self.admin_emails or self.platform_admin_emails),
         }
 
 
@@ -144,6 +149,21 @@ def get_settings() -> Settings:
             v.strip().lower()
             for v in os.getenv("KULIMA_PLATFORM_ADMIN_USER_IDS", "").split(",")
             if v.strip()
+        ),
+        # The root account of the platform plane. Provisioned into the stored
+        # PLATFORM_ADMIN role on startup and unrevocable from the console.
+        platform_admin_primary_email=(
+            os.getenv("KULIMA_PLATFORM_ADMIN_PRIMARY_EMAIL", "kulimaafrica@gmail.com").strip().lower()
+        ),
+        # Defaults to the primary admin, so a fresh environment has exactly one
+        # platform administrator without any extra configuration.
+        platform_admin_emails=tuple(
+            e.strip().lower()
+            for e in os.getenv(
+                "KULIMA_PLATFORM_ADMIN_EMAILS",
+                os.getenv("KULIMA_PLATFORM_ADMIN_PRIMARY_EMAIL", "kulimaafrica@gmail.com"),
+            ).split(",")
+            if e.strip()
         ),
     )
 

@@ -60,6 +60,25 @@ class BillingBlocked(Exception):
 _repo = BillingRepository()
 
 
+def get_repository() -> BillingRepository:
+    """The repository every function in this module reads and writes with.
+
+    Code that inspects a subscription *around* a service call should use this
+    instance instead of constructing its own: the singleton binds its database
+    once, at import, so a second repository built from a configuration value
+    that changed afterwards would read a different file than the one the engine
+    just wrote — a mutation would look like it had no effect.
+    """
+    return _repo
+
+
+def use_repository(repo: BillingRepository) -> BillingRepository:
+    """Point the service at another repository (tests, single-DB reconfiguration)."""
+    global _repo
+    _repo = repo
+    return _repo
+
+
 # ── Configuration ────────────────────────────────────────────────────────────
 
 def enforcement_enabled() -> bool:

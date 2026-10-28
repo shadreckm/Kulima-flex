@@ -170,7 +170,7 @@ export type AssessmentState = {
   lastUpload?: {
     id: string
     name: string
-    trustScore: number
+    trustScore: number | null
     evidenceStatus: string
     signals: string[]
   }
@@ -307,8 +307,11 @@ export function saveAssessmentContext(context: AssessmentContext): void {
       ? {
           id: context.assessmentId || context.runId,
           name: context.documentName,
-          trustScore: context.trustScore ?? 0,
-          evidenceStatus: 'VERIFIED',
+          trustScore: context.trustScore ?? null,
+          // Only the trust engine awards a status (VERIFIED / CORROBORATED /
+          // INSUFFICIENT_EVIDENCE) once the document is audited. At save time
+          // no audit has run, so record that fact instead of claiming one.
+          evidenceStatus: 'AWAITING_AUDIT',
           signals: context.signals ?? [],
         }
       : undefined,

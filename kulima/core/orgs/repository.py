@@ -54,6 +54,17 @@ CREATE INDEX IF NOT EXISTS idx_org_members_user
 
 _SLUG_SANITIZE = re.compile(r"[^a-z0-9]+")
 
+#: The platform plane's role name. It is **not** a membership role: see the
+#: module docstring of ``kulima.core.orgs.platform_admins``. Membership writes
+#: reject it explicitly rather than relying on ``coerce_role`` failing, so the
+#: two planes stay separated even if someone adds the value to the enum later.
+PLATFORM_ROLE_NAME = "platform_admin"
+
+
+def _reject_platform_role(role: object) -> None:
+    if str(role or "").strip().lower() == PLATFORM_ROLE_NAME:
+        raise ValueError("platform_role_not_assignable")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -182,6 +193,16 @@ class OrgRepository:
             ).fetchall()
         return {r["user_id"] for r in rows}
 
+    def distinct_user_ids(self) -> set[str]:
+        """Every principal known to the platform (has a membership row).
+
+        Used to check that an identity actually signed in before it is attached
+        to a workspace — an email someone typed into a form is not a principal.
+        """
+        with self._connect() as conn:
+            rows = conn.execute("SELECT DISTINCT user_id FROM organization_members").fetchall()
+        return {r["user_id"] for r in rows}
+
     def count_members(self, org_id: str) -> int:
         with self._connect() as conn:
             row = conn.execute(
@@ -199,6 +220,7 @@ class OrgRepository:
         email: str | None = None,
         display_name: str | None = None,
     ) -> OrganizationMember | None:
+        _reject_platform_role(role)
         role_enum = coerce_role(role)
         if role_enum is None:
             raise ValueError("invalid_role")
@@ -218,6 +240,7 @@ class OrgRepository:
         return self.get_membership_for_org(org_id, user_id)
 
     def set_role(self, org_id: str, user_id: str, role: Role | str) -> bool:
+        _reject_platform_role(role)
         role_enum = coerce_role(role)
         if role_enum is None:
             raise ValueError("invalid_role")

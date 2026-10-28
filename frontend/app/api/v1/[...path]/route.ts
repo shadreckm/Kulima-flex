@@ -57,6 +57,14 @@ async function proxy(request: NextRequest) {
   }
   const tokenSub = typeof decodedToken === 'object' && decodedToken && 'sub' in decodedToken ? String((decodedToken as { sub?: unknown }).sub || '') : ''
 
+  // The provider-verified email travels in the encrypted NextAuth JWT. Reading
+  // it here (server-side) and re-minting it into the backend token is what makes
+  // an email a *session* identifier rather than a database row the customer can
+  // edit — the platform administrator role is resolved against it.
+  const tokenEmail = typeof decodedToken === 'object' && decodedToken && 'email' in decodedToken
+    ? String((decodedToken as { email?: unknown }).email || '').trim().toLowerCase()
+    : ''
+
   if (!decodedToken || !tokenSub) {
     // No valid NextAuth session cookie on this request.
     console.warn('[kulima-proxy] request without valid NextAuth session token', {
@@ -69,7 +77,7 @@ async function proxy(request: NextRequest) {
     )
   }
 
-  const backendToken = await new SignJWT({})
+  const backendToken = await new SignJWT(tokenEmail ? { email: tokenEmail } : {})
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(tokenSub)
     .setIssuedAt()

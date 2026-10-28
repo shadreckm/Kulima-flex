@@ -353,13 +353,112 @@ export function FetchStatus({
         kind={denied ? 'denied' : 'error'}
         title={denied ? `${section}: access denied` : `${section} could not be loaded`}
         body={denied
-          ? 'The backend refused this section (HTTP 403) — your identity is not a configured platform operator, or the operator gate changed since this page loaded.'
+          ? 'The backend refused this section (HTTP 403) — this identity does not hold the PLATFORM_ADMIN role or the capability this route declares, or the role changed since the page loaded.'
           : `${error} No partial numbers are shown: an incomplete platform aggregate is more dangerous than none.`}
       />
     )
   }
   if (busy) {
-    return <StateBlock kind="loading" title={`Reading ${section.toLowerCase()}…`} body="Aggregating across every workspace. This view is read-only and is recorded in the audit log." />
+    return <StateBlock kind="loading" title={`Reading ${section.toLowerCase()}…`} body="Aggregating across every workspace. Every read is recorded in the audit log." />
   }
   return null
 }
+
+// ── Platform actions (the console's write surface) ───────────────────────────
+
+/**
+ * A capability-gated button. `allowed=false` renders the reason instead of a
+ * dead control: an administrator who cannot manage subscriptions should read that
+ * from the screen, not discover it through a 403 after clicking.
+ */
+export function ActionButton({
+  label,
+  onClick,
+  allowed = true,
+  busy = false,
+  tone = 'neutral',
+  title,
+}: {
+  label: string
+  onClick: () => void
+  allowed?: boolean
+  busy?: boolean
+  tone?: 'neutral' | 'good' | 'warn' | 'bad'
+  title?: string
+}) {
+  const tones = {
+    neutral: 'border-[#DDE6F0] bg-white text-slate-700 hover:border-[#0B5D3B] hover:text-[#0B5D3B]',
+    good: 'border-[#0B5D3B] bg-[#0B5D3B] text-white hover:bg-[#08482E]',
+    warn: 'border-[#FEDF89] bg-[#FFFAEB] text-[#B54708] hover:border-[#B54708]',
+    bad: 'border-[#FECDCA] bg-[#FEF3F2] text-[#B42318] hover:border-[#B42318]',
+  }
+  if (!allowed) {
+    return (
+      <span
+        title={title || 'Your PLATFORM_ADMIN role does not include this capability'}
+        className="px-3 py-1.5 rounded-lg border border-dashed border-[#DDE6F0] text-[10px] font-extrabold uppercase tracking-wider text-slate-400"
+      >
+        {label} · restricted
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={title}
+      className={`px-3 py-1.5 rounded-lg border text-[10px] font-extrabold uppercase tracking-wider transition disabled:opacity-50 ${tones[tone]}`}
+    >
+      {busy ? 'Working…' : label}
+    </button>
+  )
+}
+
+/**
+ * The outcome of one platform mutation, stated in the backend's own words.
+ * A failure keeps its error `code` visible — `LAST_ADMIN` and
+ * `ENTERPRISE_ACTIVATION_REQUIRED` mean very different things to an operator,
+ * and a generic "something went wrong" would hide that.
+ */
+export function ActionFeedback({
+  ok,
+  message,
+  code,
+  onDismiss,
+}: {
+  ok: boolean
+  message: string
+  code?: string | null
+  onDismiss?: () => void
+}) {
+  return (
+    <div className={`rounded-[12px] border p-3 text-xs leading-relaxed flex items-start justify-between gap-3 ${
+      ok ? 'border-[#ABEFC6] bg-[#F0FDF4] text-[#08522B]' : 'border-[#FECDCA] bg-[#FEF3F2] text-[#B42318]'
+    }`}
+    >
+      <div className="min-w-0">
+        <span className="font-extrabold uppercase tracking-wider text-[10px]">{ok ? 'Recorded' : 'Refused'}</span>
+        {code ? <span className="ml-2 font-mono font-bold text-[10px]">{code}</span> : null}
+        <p className="mt-1 break-words">{message}</p>
+      </div>
+      {onDismiss ? (
+        <button type="button" onClick={onDismiss} className="text-[10px] font-extrabold uppercase tracking-wider opacity-70 hover:opacity-100">
+          Dismiss
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+/** A labelled form field for the mutation drawers — one visual grammar everywhere. */
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+export const INPUT_CLASS = 'px-2.5 py-1.5 rounded-lg border border-[#DDE6F0] bg-white text-xs text-slate-800 focus:outline-none focus:border-[#0B5D3B]'

@@ -270,7 +270,7 @@ function FeedbackPageInner() {
                       value={userName}
                       onChange={(e) => setUserName(e.target.value)}
                       className="mt-1.5 w-full p-2.5 border border-[#DDE6F0] rounded-lg bg-[#F5F8FC] text-sm text-slate-900 focus:outline-none focus:border-[#0B5D3B]"
-                      placeholder="e.g. Investment Committee Member / Program Officer"
+                      placeholder="e.g. Programme Manager / MEAL Officer / Executive Director"
                     />
                   </div>
 

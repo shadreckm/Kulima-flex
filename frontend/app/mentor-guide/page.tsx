@@ -2,12 +2,12 @@ import Link from 'next/link'
 import KulimaLogo from '../../components/KulimaLogo/KulimaLogo'
 
 const steps = [
-  ['01', 'Choose a use case', 'Start with Startup / Investor, NGO / Donor, or Government Program. FLEX changes the evidence checklist to match the decision you need to make.'],
-  ['02', 'Upload primary evidence', 'Use a report, financial model, survey, pitch deck, audit, license, or indicator table. Add a second independent document when available.'],
+  ['01', 'Choose a use case', 'Pick NGO, Development Programme, Government Programme, Tourism SME or Startup. FLEX changes the evidence checklist, the signal domains and the report title to match the decision you need to make.'],
+  ['02', 'Upload primary evidence', 'Use an annual report, programme review, M&E or endline report, donor agreement, logframe export, financial model, survey, licence, or indicator table. Add a second independent document for the same claim when available — that is what earns verification.'],
   ['03', 'Review the evidence', 'Check what is present, what is missing, which claims are unsupported, and whether sources agree. Missing evidence is shown before a recommendation.'],
-  ['04', 'Read trust and risk', 'Evidence Score measures usefulness. Trust Score measures reliability. Risk Score highlights contradictions and warning signals. Completeness Score measures coverage.'],
-  ['05', 'Choose the next action', 'Use Invest, Observe, Pass, or Review Required as a decision aid, not an automatic verdict. Open the verification checklist before acting.'],
-  ['06', 'Export and learn', 'Download the decision brief or diligence report, then record the eventual outcome so future decisions can be calibrated.'],
+  ['04', 'Read trust and risk', 'Trust Score (0–100) measures how much of the assessment rests on verifiable, corroborated sources. Evidence Grade (A–F) measures the integrity of the evidence base. Confidence says how firmly the evidence supports the verdict. Where none of these can be computed, the screen says so instead of guessing.'],
+  ['05', 'Choose the next action', 'Treat the verdict as a decision aid, not an automatic answer — it is written in your own framework: Strong Capacity / Moderate Capacity / Needs Strengthening (NGO), Ready / Requires Support / At Risk (Programme), Effective / Monitor / Intervene (Government), Ready for Growth / Build Resilience / High Risk (Tourism), Invest / Observe / Pass (Startup). Read the reason, the evidence and the next action before acting.'],
+  ['06', 'Close the loop', 'Download the review for your audience (Institutional Capacity Review, Programme Performance Review, Governance Review, Tourism Resilience Report or Investment Committee Report), then answer the 30-day follow-up and record the outcome — that is what turns a decision into a learning.'],
 ]
 
 export default function MentorGuidePage() {
@@ -43,7 +43,7 @@ export default function MentorGuidePage() {
 
         <section className="mt-10 rounded-[12px] border border-[#DDE6F0] bg-white p-5 shadow-saas">
           <h2 className="text-xl font-black text-slate-900">Start with your documents</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-500">Upload your first pitch deck, NGO report, survey, business plan, or program report. Your assessment is built from your evidence, not a shared demo case.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Upload an NGO report, programme document, survey, business plan, or pitch deck. Your assessment is built from your evidence, not a shared demo case.</p>
           <Link href="/" className="mt-4 inline-block rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold text-white hover:bg-[#08482E]">Upload Evidence</Link>
         </section>
       </section>

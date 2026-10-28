@@ -64,7 +64,7 @@ export default function AnalyticsPage() {
     <PilotWorkspaceShell
       workspace="Analytics"
       title="Portfolio Analytics"
-      description="Portfolio analytics derived from completed evaluation runs."
+      description="Verdict counts, evidence coverage and trust across every assessment stored in this workspace."
     >
       {error ? (
         <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
@@ -74,22 +74,27 @@ export default function AnalyticsPage() {
 
       <section className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {[
-          ['Total Evaluations', metric(metrics, 'total_runs')],
-          ['Invest', metric(metrics, 'invest_count')],
-          ['Co-Invest', metric(metrics, 'co_invest_count')],
-          ['Observe', metric(metrics, 'observe_count')],
-          ['Pass', metric(metrics, 'pass_count')],
-          ['Average Score', metric(metrics, 'average_score')],
-          ['Average Confidence', metric(metrics, 'average_confidence')],
-          ['Average Trust', metric(metrics, 'average_trust')],
-          ['Average Risk', metric(metrics, 'average_risk')],
-          ['Evidence Coverage', `${metric(metrics, 'evidence_coverage')}%`],
-          ['Verification Coverage', `${metric(metrics, 'signal_coverage')}%`],
-          ['Avg Unsupported Claims', metric(metrics, 'average_unsupported_claims')],
-        ].map(([label, value]) => (
-          <div key={label} className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
+          ['Total Assessments', metric(metrics, 'total_runs'), 'Every assessment run stored in this workspace.'],
+          ['Invest', metric(metrics, 'invest_count'), 'Assessments whose verdict is the engine term "Invest" — the startup-profile wording of a proceed decision.'],
+          ['Co-Invest', metric(metrics, 'co_invest_count'), 'Verdict "Co-Invest": proceed only alongside another funder or partner.'],
+          ['Observe', metric(metrics, 'observe_count'), 'Verdict "Observe": not yet enough evidence to decide either way.'],
+          ['Pass', metric(metrics, 'pass_count'), 'Verdict "Pass": do not proceed on the current evidence.'],
+          ['Average Score', metric(metrics, 'average_score'), '0–100 composite score, averaged over the stored runs. A run with no score yet counts as zero, so a partly finished portfolio reads low.'],
+          ['Average Confidence', metric(metrics, 'average_confidence'), '0–1: how firmly the recorded evidence supports each verdict. This is not the same as trust (0–100).'],
+          ['Average Trust', metric(metrics, 'average_trust'), '0–100: how much of each assessment rests on verifiable, corroborated sources.'],
+          ['Average Risk', metric(metrics, 'average_risk'), '0–100: average risk exposure flagged by the signals engine.'],
+          ['Evidence Coverage', `${metric(metrics, 'evidence_coverage')}%`, 'Sources per claim: of the claims these assessments make, how many a recorded source can back (source count ÷ claim count).'],
+          ['Verification Coverage', `${metric(metrics, 'signal_coverage')}%`, 'Share of the core narrative sections (lead, entity, diligence, risk, memo) actually produced for each run.'],
+          ['Avg Unsupported Claims', metric(metrics, 'average_unsupported_claims'), 'Average number of claims per run that no source could back up.'],
+        ].map(([label, value, hint]) => (
+          <div
+            key={label}
+            className="p-4 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas"
+            title={hint}
+          >
             <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500">{label}</div>
             <div className="mt-1.5 text-2xl font-black text-slate-900 tracking-tight">{value}</div>
+            <div className="mt-1 text-[10px] text-slate-400 leading-snug">{hint}</div>
           </div>
         ))}
       </section>
@@ -107,7 +112,7 @@ export default function AnalyticsPage() {
               <div className="text-xl font-black text-slate-900 mt-1">{archivedRuns.length}</div>
             </div>
             <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">IC-Ready (Invest)</div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider" title="Assessments whose verdict is the engine term 'Invest' — the strongest proceed verdict the decision engine issues.">Proceed verdicts (Invest)</div>
               <div className="text-xl font-black text-slate-900 mt-1">{metric(metrics, 'invest_count')}</div>
             </div>
             <div className="p-3 bg-[#F5F8FC] rounded-lg border border-[#DDE6F0]">
@@ -118,7 +123,11 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="p-5 bg-white rounded-[12px] border border-[#DDE6F0] shadow-saas">
-          <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-4 pb-2.5 border-b border-[#DDE6F0]">Top Evaluations by Score</h2>
+          <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-1 pb-2.5 border-b border-[#DDE6F0]">Top Assessments by Score</h2>
+          <p className="text-[11px] text-slate-500 mb-3">
+            Score is the composite verdict (0–100); Trust is the evidence base behind it; Grade is evidence integrity (A–F).
+            A dash means the run never produced that figure.
+          </p>
           <div className="space-y-3">
             {topRuns.length === 0 ? (
               <div className="text-sm font-bold text-slate-700 py-3">No documents uploaded yet</div>
@@ -126,7 +135,7 @@ export default function AnalyticsPage() {
               <div key={run.runId} className="border border-[#DDE6F0] bg-[#F5F8FC] rounded-lg p-3">
                 <div className="text-xs font-bold text-slate-900">{run.startupName}</div>
                 <div className="text-[11px] text-slate-500">{run.founderName}</div>
-                <div className="text-[10px] text-slate-400 mt-1">Score {run.overallScore ?? '—'} · Trust {run.trustScore ?? '—'} · Grade {run.integrityGrade ?? '—'}</div>
+                <div className="text-[10px] text-slate-400 mt-1">Score {run.overallScore ?? 'not scored'} · Trust {run.trustScore ?? 'not scored'} · Grade {run.integrityGrade ?? 'not audited'}</div>
               </div>
             ))}
           </div>

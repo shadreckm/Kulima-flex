@@ -6,16 +6,13 @@ import { usePathname } from 'next/navigation'
 import TrustGauge from '../TrustGauge/TrustGauge'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import type { EntityType } from '../../lib/entity-types'
+import { ENTITY_CONFIGS } from '../../lib/entity-types'
 import KulimaLogo from '../KulimaLogo/KulimaLogo'
 
-const ENTITY_LABELS: Record<EntityType, string> = {
-  startup: 'Startup',
-  ngo: 'NGO',
-  development_program: 'Dev. Program',
-  accelerator: 'Accelerator',
-  government_program: 'Gov. Program',
-  tourism_sme: 'Tourism SME',
-}
+/** Assessment-type labels come from lib/entity-types — one vocabulary everywhere. */
+const ENTITY_LABELS = Object.fromEntries(
+  ENTITY_CONFIGS.map(c => [c.type, c.label]),
+) as Record<EntityType, string>
 
 type SidebarProps = {
   workspace: string
@@ -29,16 +26,26 @@ type SidebarProps = {
   onCloseMobile?: () => void
 }
 
-const PIPELINE_ITEMS = [
+const PIPELINE_STEPS = [
   { label: 'Dashboard',   href: '/dashboard' },
   { label: 'Assessments', href: '/assessments' },
-  { label: 'Evidence',    href: '/evidence' },
-  { label: 'Research',    href: '/research' },
-  { label: 'Signals',     href: '/signals' },
-  { label: 'Decision',    href: '/decision' },
-  { label: 'Reports',     href: '/reports' },
-  { label: 'AI Analyst',  href: '/flex' },
 ]
+
+// The assessment hierarchy, in the order the product actually builds it:
+// Research → Evidence → Signals → Decision → Reports → Outcomes. (The numbered
+// chain itself is drawn in the workspace header, which also shows stage state.)
+const PIPELINE_ITEMS = [
+  { label: 'Research',  href: '/research' },
+  { label: 'Evidence',  href: '/evidence' },
+  { label: 'Signals',   href: '/signals' },
+  { label: 'Decision',  href: '/decision' },
+  { label: 'Reports',   href: '/reports' },
+  { label: 'Outcomes',  href: '/outcomes' },
+]
+
+// The analyst is an assistant to the pipeline, not the product itself — the
+// workspace must read as an assessment workspace, never as a chat application.
+const ANALYST_ITEMS = [{ label: 'AI Analyst', href: '/flex' }]
 
 const SECONDARY_ITEMS = [
   { label: 'Feedback',         href: '/feedback' },
@@ -48,9 +55,11 @@ const SECONDARY_ITEMS = [
 ]
 
 // Internal tooling, never shown to a customer. Visibility is decided by the
-// backend operator gate (/api/v1/admin/session), not by an organization role —
-// an Org Owner sees nothing here.
+// backend PLATFORM_ADMIN role check (/api/v1/admin/session), not by an
+// organization role — an Org Owner sees nothing here.
 const PLATFORM_OPS_ITEM = { label: 'Admin Console', href: '/admin' }
+
+type NavItem = { label: string; href: string; step?: string }
 
 function NavGroup({
   label,
@@ -59,7 +68,7 @@ function NavGroup({
   onCloseMobile,
 }: {
   label: string
-  items: { label: string; href: string }[]
+  items: NavItem[]
   pathname: string | null
   onCloseMobile?: () => void
 }) {
@@ -78,13 +87,23 @@ function NavGroup({
               key={item.label}
               href={item.href}
               onClick={onCloseMobile}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 active
                   ? 'bg-[#174836] text-white shadow-sm border border-[#1E6047]'
                   : 'text-[#C8D8CC] hover:bg-[#0E2E22] hover:text-white'
               }`}
             >
-              {item.label}
+              {item.step ? (
+                <span
+                  className={`w-4 shrink-0 text-[9px] font-bold tabular-nums ${
+                    active ? 'text-white/70' : 'text-emerald-500/50'
+                  }`}
+                  aria-hidden="true"
+                >
+                  {item.step}
+                </span>
+              ) : null}
+              <span>{item.label}</span>
             </Link>
           )
         })}
@@ -151,7 +170,7 @@ export default function NavigationSidebar({
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <div className="text-xs font-bold text-white truncate leading-tight">{displayStartup || 'Active Assessment'}</div>
-                {entityType && entityType !== 'startup' ? (
+                {entityType ? (
                   <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
                     {ENTITY_LABELS[entityType] || entityType}
                   </span>
@@ -176,10 +195,26 @@ export default function NavigationSidebar({
 
         {/* Navigation Groups */}
         <nav className="flex flex-col gap-4">
-          {/* Primary */}
+          {/* Your work */}
+          <NavGroup
+            label="Your Work"
+            items={PIPELINE_STEPS}
+            pathname={pathname}
+            onCloseMobile={onCloseMobile}
+          />
+          <div className="border-t border-[#0E3627]" />
+          {/* The assessment hierarchy */}
           <NavGroup
             label="Assessment Pipeline"
             items={PIPELINE_ITEMS}
+            pathname={pathname}
+            onCloseMobile={onCloseMobile}
+          />
+          <div className="border-t border-[#0E3627]" />
+          {/* The analyst assistant, downstream of the evidence */}
+          <NavGroup
+            label="Analyst"
+            items={ANALYST_ITEMS}
             pathname={pathname}
             onCloseMobile={onCloseMobile}
           />

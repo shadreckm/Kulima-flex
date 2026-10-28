@@ -7,6 +7,23 @@ import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorks
 import { getActiveAssessment, listAssessments, getDecisionHistory, type AssessmentWorkspacePayload } from '../../lib/api'
 import { FollowupChip, followupStateFromRow } from '../../components/OutcomeFollowup/OutcomeFollowup'
 
+/** Pipeline states in the words a programme team uses, not the API's snake_case. */
+const STATUS_TEXT: Record<string, string> = {
+  intake: 'Draft',
+  needs_confirmation: 'Needs confirmation',
+  ready: 'Ready to run',
+  running: 'Running',
+  complete: 'Complete',
+  completed: 'Complete',
+  failed: 'Failed',
+}
+
+function statusText(status?: string | null): string {
+  const key = String(status || '').toLowerCase()
+  if (!key) return 'Status not recorded'
+  return STATUS_TEXT[key] || key.replace(/_/g, ' ')
+}
+
 export default function AssessmentsPage() {
   const { status: authStatus } = useSession()
   const [assessments, setAssessments] = useState<AssessmentWorkspacePayload[]>([])
@@ -81,7 +98,7 @@ export default function AssessmentsPage() {
     <PilotWorkspaceShell
       workspace="Assessments"
       title="Assessment Inventory"
-      description="View all assessments, their status, trust scores, and decisions."
+      description="Every assessment in this workspace with its profile, pipeline state, evidence trust and verdict."
     >
       {error ? (
         <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
@@ -107,9 +124,19 @@ export default function AssessmentsPage() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-xs font-bold text-slate-900 truncate">{activeAssessment.displayEntity || activeAssessment.organizationName || activeAssessment.startupName}</div>
-                <div className="text-[11px] text-slate-500">{activeAssessment.founderName}</div>
-                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1.5">
-                  <span>Status: {activeAssessment.status}</span>
+                <div className="text-[11px] text-slate-500">{activeAssessment.assessmentTypeLabel || 'Assessment'}{activeAssessment.founderName ? ` · Lead: ${activeAssessment.founderName}` : ''}</div>
+                <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 mt-1.5">
+                  <span title="Pipeline state of this assessment">Status: {statusText(activeAssessment.status)}</span>
+                  <span>·</span>
+                  <span
+                    title="0–100: how much of this assessment rests on verifiable, corroborated sources"
+                  >
+                    Trust {activeAssessment.trustScore != null ? `${Math.round(activeAssessment.trustScore)}/100` : 'not scored'}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    Verdict: {activeAssessment.decision?.recommendation || 'pending'}
+                  </span>
                   {activeAssessment.runId ? <FollowupChip runId={activeAssessment.runId} state={followupStateFromRow(followupByRun[String(activeAssessment.runId)])} /> : null}
                 </div>
               </div>
@@ -117,7 +144,7 @@ export default function AssessmentsPage() {
                 href={`/flex?assessmentId=${activeAssessment.assessmentId}`}
                 className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-[#0B5D3B] text-white hover:bg-[#08482E] shrink-0"
               >
-                View
+                Open
               </Link>
             </div>
           </div>
@@ -135,8 +162,8 @@ export default function AssessmentsPage() {
             <div className="py-6 text-center">
               <div className="text-sm font-bold text-slate-700">No assessments yet</div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Create your first assessment by uploading documents from the{' '}
-                <Link href="/" className="text-[#0B5D3B] font-bold hover:underline">landing page</Link>.
+                Start an assessment by uploading your documents from the{' '}
+                <Link href="/" className="text-[#0B5D3B] font-bold hover:underline">Kulima FLEX home screen</Link>.
               </div>
             </div>
           ) : assessments.map(assessment => (
@@ -144,9 +171,15 @@ export default function AssessmentsPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-slate-900 truncate">{assessment.displayEntity || assessment.organizationName || assessment.startupName}</div>
-                  <div className="text-[11px] text-slate-500">{assessment.founderName}</div>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1.5">
-                    <span>Status: {assessment.status}</span>
+                  <div className="text-[11px] text-slate-500">{assessment.assessmentTypeLabel || 'Assessment'}{assessment.founderName ? ` · Lead: ${assessment.founderName}` : ''}</div>
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 mt-1.5">
+                    <span title="Pipeline state of this assessment">Status: {statusText(assessment.status)}</span>
+                    <span>·</span>
+                    <span title="0–100: how much of this assessment rests on verifiable, corroborated sources">
+                      Trust {assessment.trustScore != null ? `${Math.round(assessment.trustScore)}/100` : 'not scored'}
+                    </span>
+                    <span>·</span>
+                    <span>Verdict: {assessment.decision?.recommendation || 'pending'}</span>
                     {assessment.runId ? <FollowupChip runId={assessment.runId} state={followupStateFromRow(followupByRun[String(assessment.runId)])} /> : null}
                   </div>
                 </div>
@@ -154,7 +187,7 @@ export default function AssessmentsPage() {
                   href={`/flex?assessmentId=${assessment.assessmentId}`}
                   className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white text-slate-700 border border-[#DDE6F0] hover:bg-slate-50 shrink-0"
                 >
-                  View
+                  Open
                 </Link>
               </div>
             </div>

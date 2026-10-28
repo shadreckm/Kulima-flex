@@ -1,12 +1,12 @@
 'use client'
 
-// Platform-operator probe for the internal Admin Console.
+// PLATFORM_ADMIN probe for the internal Admin Console.
 //
-// `/api/v1/admin/session` answers a single question — is *this* signed-in
-// identity a configured platform operator? — and is the only admin endpoint any
-// authenticated user may call. Everything else on the console is cross-workspace
-// and returns 403 for ordinary users, so the navigation affordance has to be
-// driven by this probe rather than by an organization role.
+// `/api/v1/admin/session` answers a single question — does *this* signed-in
+// identity hold the stored PLATFORM_ADMIN role? — and is the only admin endpoint
+// any authenticated user may call. Everything else on the console is
+// cross-workspace and returns 403 for ordinary users, so the navigation affordance
+// has to be driven by this probe rather than by an organization role.
 //
 // Results are cached briefly in module scope: the sidebar re-renders on every
 // client navigation, and one round trip per minute is enough to keep the
@@ -29,7 +29,7 @@ async function probe(): Promise<AdminSession | null> {
       return session
     })
     .catch(() => {
-      // 401 (no session) and 403 (not an operator) both mean "no console link".
+      // 401 (no session) and 403 (no PLATFORM_ADMIN role) both mean "no console link".
       cached = null
       return null
     })

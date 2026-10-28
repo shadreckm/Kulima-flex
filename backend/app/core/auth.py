@@ -39,8 +39,14 @@ def _secret_fingerprint(secret: str) -> str:
 
 
 class AuthenticatedUser:
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, verified_email: str | None = None):
         self.user_id = user_id
+        # Provider-verified email minted into the backend token by our own auth
+        # chain (see the ``email`` claim in app/api/v1/[...path]/route.ts). It is
+        # a *session* identifier, not a database row: nobody can edit it without
+        # the signing secret. Platform-admin authorization may trust it; an
+        # ``organization_members.email`` row may not.
+        self.verified_email = verified_email
 
 
 async def get_current_user(request: Request) -> AuthenticatedUser:
@@ -108,7 +114,11 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": True, "code": "TOKEN_VERIFICATION_FAILED", "message": "Session token contains no subject (sub) claim."},
         )
-    return AuthenticatedUser(user_id=user_id)
+    # The email claim is optional and only meaningful because this token is
+    # signature-verified: a bearer cannot edit a claim without the signing key.
+    claim_email = payload.get("email")
+    verified_email = str(claim_email).strip().lower() if isinstance(claim_email, str) and claim_email.strip() else None
+    return AuthenticatedUser(user_id=user_id, verified_email=verified_email)
 
 
 # ── Enterprise Trust: organization context & RBAC (Phases 2–3) ──────────────
@@ -138,6 +148,11 @@ class OrgContext:
         return self.user.user_id
 
     @property
+    def verified_email(self) -> str | None:
+        """Email minted by our own auth chain, if this token carries one."""
+        return getattr(self.user, "verified_email", None)
+
+    @property
     def org_id(self) -> str:
         return self.org.id
 
@@ -165,6 +180,7 @@ class OrgContext:
     def to_payload(self) -> dict:
         return {
             "userId": self.user_id,
+            "verifiedEmail": self.verified_email,
             "orgId": self.org_id,
             "orgName": self.org.name,
             "role": self.role.value,

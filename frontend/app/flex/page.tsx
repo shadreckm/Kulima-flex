@@ -26,7 +26,7 @@ function clearFlexRedirectLatch() {
 
 function FlexPageInner() {
   const { status: authStatus } = useSession()
-  // Assessment Context drives everything â€” no legacy current-run store.
+  // Assessment Context drives everything — no legacy current-run store.
   const { assessmentContext, bootState, retry } = useAssessmentBootstrap({
     route: 'flex',
   })
@@ -78,7 +78,7 @@ function FlexPageInner() {
   if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">
-        Checking sessionâ€¦
+        Checking session…
       </div>
     )
   }
@@ -113,12 +113,12 @@ function FlexPageInner() {
           <>
             {status === 'failed' ? (
               <div className="p-4 bg-red-50 text-red-700 rounded-[12px] border border-red-200 text-sm font-medium">
-                This evaluation run encountered an error. Start a new evaluation or contact support.
+                This assessment run encountered an error. Start a new assessment or contact support.
               </div>
             ) : null}
             <div className="flex-1 min-h-0 flex flex-col">
               <ChatShell
-                personaName="IC Analyst"
+                personaName="AI Analyst"
                 runId={runId}
                 assessmentId={assessmentContext?.assessmentId || null}
                 assessmentName={assessmentContext?.displayEntity || assessmentContext?.entityName || null}
@@ -130,26 +130,26 @@ function FlexPageInner() {
             {bootState === 'needs_confirmation' ? (
               <>
                 <div className="font-bold text-slate-900">
-                  Extraction confidence is low â€” confirm the assessment identity once.
+                  Extraction confidence is low — confirm the assessment identity once.
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
                   The shared assessment context was created from your upload, but the entity name could
-                  not be extracted with confidence. Confirm it on the intake page â€” Ask IC and every other
-                  workspace reuse it automatically.
+                  not be extracted with confidence. Confirm it on the intake page — the AI Analyst and every
+                  other workspace reuses it automatically.
                 </p>
                 <Link
                   href="/"
                   className="inline-block mt-3 rounded-lg bg-[#0B5D3B] px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white hover:bg-[#08482E] transition"
                 >
-                  Review assessment details â†’
+                  Review assessment details →
                 </Link>
               </>
             ) : bootState === 'error' ? (
               <>
                 <div className="font-bold text-slate-900">Could not start the assessment run.</div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  The shared context is ready â€” retry starting the intelligence run. Tavily research and
-                  the IC Analyst will work from the extracted entity.
+                  The shared context is ready — retry starting the intelligence run. Tavily research and
+                  the AI Analyst will work from the extracted entity.
                 </p>
                 {error ? (
                   <div className="mt-2 font-mono text-[10px] text-red-600 break-all">{error}</div>
@@ -166,10 +166,10 @@ function FlexPageInner() {
               <>
                 <div className="font-bold text-slate-900 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#F79009] animate-pulse" />
-                  Starting your assessment run from the shared contextâ€¦
+                  Starting your assessment run from the shared context…
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-5">
-                  Tavily research and the IC Analyst are driven by the extracted entity â€”{' '}
+                  Tavily research and the AI Analyst are driven by the extracted entity —{' '}
                   <strong className="text-slate-800">
                     {assessmentContext.displayEntity || assessmentContext.entityName || 'Assessment'}
                   </strong>
@@ -196,7 +196,7 @@ function FlexPageInner() {
 
 export default function FlexPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loadingâ€¦</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#F5F8FC] flex items-center justify-center text-sm font-semibold text-slate-500">Loading…</div>}>
       <FlexPageInner />
     </Suspense>
   )

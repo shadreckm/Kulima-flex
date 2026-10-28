@@ -31,11 +31,16 @@ export type EntityConfig = {
   legacy?: boolean
   /** Guidance on what documents to upload for this entity type */
   uploadGuidance: string
-  /** Label for the primary score (e.g., Investment Readiness, Program Readiness) */
+  /** Label for the primary score (e.g., Investment Readiness, Programme Readiness) */
   scoreLabel: string
+  /** The decision this workflow supports — shown at intake so the user knows
+   *  they are in the right workflow before anything runs. */
+  decisionQuestion: string
+  /** Canonical title of the review this assessment produces (mirrors kulima/export.py). */
+  reportTitle: string
 }
 
-// PRIMARY EXPERIENCE: NGO and Development Program configurations prioritized for V1
+// PRIMARY EXPERIENCE: NGO and Development Programme configurations prioritized for V1
 export const ENTITY_CONFIGS: EntityConfig[] = [
   {
     type: 'ngo',
@@ -43,32 +48,38 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     description: 'Non-governmental organisation under programme review or donor evaluation.',
     fields: {
       primary:   { key: 'entityName',    label: 'NGO Name',      placeholder: 'e.g. AfriCare Malawi' },
-      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. Food Security Initiative' },
+      secondary: { key: 'programName',   label: 'Programme Name',  placeholder: 'e.g. Food Security Initiative' },
     },
     uploadGuidance: 'Upload monitoring reports, impact assessments, donor reports, financial statements, annual reports',
-    scoreLabel: 'Program Readiness',
+    scoreLabel: 'Programme Readiness',
+    decisionQuestion: 'Can this organisation deliver its programme, and prove its impact?',
+    reportTitle: 'Institutional Capacity Review',
   },
   {
     type: 'development_program',
-    label: 'Development Program',
-    description: 'Development finance program under DFI or bilateral-agency evaluation.',
+    label: 'Development Programme',
+    description: 'Development finance programme under DFI or bilateral-agency evaluation.',
     fields: {
       primary:   { key: 'entityName',    label: 'Organisation',  placeholder: 'e.g. USAID East Africa' },
-      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. Resilient Food Systems' },
+      secondary: { key: 'programName',   label: 'Programme Name',  placeholder: 'e.g. Resilient Food Systems' },
     },
-    uploadGuidance: 'Upload program frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
-    scoreLabel: 'Program Readiness',
+    uploadGuidance: 'Upload programme frameworks, beneficiary reports, monitoring data, financial statements, theory of change',
+    scoreLabel: 'Programme Performance',
+    decisionQuestion: 'Is the programme performing against its theory of change?',
+    reportTitle: 'Programme Performance Review',
   },
   {
     type: 'government_program',
-    label: 'Government Program',
+    label: 'Government Programme',
     description: 'Government agency programme under SPARC, parliamentary, or donor review.',
     fields: {
       primary:   { key: 'entityName',    label: 'Agency',        placeholder: 'e.g. Ministry of Agriculture, Tanzania' },
-      secondary: { key: 'programName',   label: 'Program Name',  placeholder: 'e.g. National Irrigation Strategy' },
+      secondary: { key: 'programName',   label: 'Programme Name',  placeholder: 'e.g. National Irrigation Strategy' },
     },
-    uploadGuidance: 'Upload program proposals, budget allocations, implementation reports, impact evaluations, policy documents',
-    scoreLabel: 'Program Performance',
+    uploadGuidance: 'Upload programme proposals, budget allocations, implementation reports, impact evaluations, policy documents',
+    scoreLabel: 'Programme Performance',
+    decisionQuestion: 'Are public funds being implemented and governed as planned?',
+    reportTitle: 'Governance Review',
   },
   {
     type: 'tourism_sme',
@@ -79,7 +90,9 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
       secondary: { key: 'programName',   label: 'Owner / Lead',  placeholder: 'e.g. Grace Banda' },
     },
     uploadGuidance: 'Upload visitor statistics, sustainability reports, destination impact data, business licenses, financial statements',
-    scoreLabel: 'Tourism Impact',
+    scoreLabel: 'Tourism Resilience',
+    decisionQuestion: 'Is this tourism enterprise resilient and ready for investment?',
+    reportTitle: 'Tourism Resilience Report',
   },
   {
     type: 'startup',
@@ -91,6 +104,8 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     },
     uploadGuidance: 'Upload pitch deck, financial projections, market analysis, team bios, product roadmap',
     scoreLabel: 'Investment Readiness',
+    decisionQuestion: 'Is this venture ready for an investment committee decision?',
+    reportTitle: 'Investment Committee Report',
   },
   {
     type: 'accelerator',
@@ -99,10 +114,14 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
     description: 'Accelerator or incubator programme under portfolio or impact review.',
     fields: {
       primary:   { key: 'entityName',    label: 'Accelerator Name', placeholder: 'e.g. MEST Africa' },
-      secondary: { key: 'programName',   label: 'Program / Cohort', placeholder: 'e.g. Cohort 12 — AgriTech' },
+      secondary: { key: 'programName',   label: 'Programme / Cohort', placeholder: 'e.g. Cohort 12 — AgriTech' },
     },
-    uploadGuidance: 'Upload cohort reports, startup pitch decks, program metrics, portfolio summaries, impact reports',
+    uploadGuidance: 'Upload cohort reports, startup pitch decks, programme metrics, portfolio summaries, impact reports',
     scoreLabel: 'Portfolio Impact',
+    decisionQuestion: 'How is the portfolio and cohort performing?',
+    // This profile has no report title of its own in the backend map, so it
+    // inherits the institutional review — never the startup template.
+    reportTitle: 'Institutional Capacity Review',
   },
 ]
 

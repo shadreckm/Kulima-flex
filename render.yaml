@@ -106,6 +106,15 @@ services:
         value: "10"
       - key: KULIMA_ADMIN_EMAILS
         sync: false
+      # Platform administrator (stored PLATFORM_ADMIN role — the only plane that
+      # may open /admin; every other user is refused 403). Primary is provisioned
+      # into platform_admins at startup and is unrevocable from the console.
+      - key: KULIMA_PLATFORM_ADMIN_PRIMARY_EMAIL
+        value: kulimaafrica@gmail.com
+      - key: KULIMA_PLATFORM_ADMIN_EMAILS
+        value: kulimaafrica@gmail.com
+      - key: KULIMA_PLATFORM_ADMIN_USER_IDS
+        sync: false
 
   - type: web
     name: kulima-flex-web

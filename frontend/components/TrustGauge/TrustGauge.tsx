@@ -31,19 +31,19 @@ export default function TrustGauge({
       strokeColor = '#12B76A'
       badgeBg = '#ECFDF3'
       badgeText = '#027A48'
-      statusText = 'Verified High Trust'
+      statusText = 'Strong Evidence Base'
     } else if (numericScore >= 60) {
       tier = 'amber'
       strokeColor = '#F79009'
       badgeBg = '#FFFAEB'
       badgeText = '#B54708'
-      statusText = 'Observational Trust'
+      statusText = 'Mixed Evidence Base'
     } else {
       tier = 'red'
       strokeColor = '#F04438'
       badgeBg = '#FEF3F2'
       badgeText = '#B42318'
-      statusText = 'High Risk / Low Trust'
+      statusText = 'Weak Evidence Base'
     }
   }
 
@@ -122,16 +122,20 @@ export default function TrustGauge({
             <span
               className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider"
               style={{ backgroundColor: badgeBg, color: badgeText }}
+              title="What the trust score means: how much of this assessment rests on verifiable, corroborated sources"
             >
-              {tier === 'green' ? 'High Confidence' : tier === 'amber' ? 'Moderate Trust' : tier === 'red' ? 'Critical Watch' : 'Unscored'}
+              {tier === 'green' ? 'High Trust' : tier === 'amber' ? 'Moderate Trust' : tier === 'red' ? 'Low Trust' : 'Unscored'}
             </span>
             {grade ? (
-              <span className="px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold tracking-wider">
+              <span
+                className="px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold tracking-wider"
+                title="Evidence integrity grade (A–F) from the Trust Engine"
+              >
                 GRADE {grade}
               </span>
             ) : null}
             {confidencePercent != null ? (
-              <span className="text-[11px] text-slate-500 font-medium">
+              <span className="text-[11px] text-slate-500 font-medium" title="How firmly this evidence supports the decision">
                 {confidencePercent}% conf
               </span>
             ) : null}
