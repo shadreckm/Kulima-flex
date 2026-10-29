@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSession, signIn } from 'next-auth/react'
+import Link from 'next/link'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import TrustGauge from '../../components/TrustGauge/TrustGauge'
 import OutcomeFollowup from '../../components/OutcomeFollowup/OutcomeFollowup'
@@ -554,6 +555,14 @@ export default function OutcomesPage() {
                   taken</strong>, and <strong>was the recommendation followed</strong>.
                   Answers are stored with the decision and shown in report exports. They are
                   optional: ignoring them blocks nothing, and the request stays in this queue.
+                </p>
+                <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                  Already asking beneficiaries this in a Google Form? Connect it in the{' '}
+                  <Link href="/evidence" className="font-bold text-[#0B5D3B] underline underline-offset-2">
+                    Evidence workspace
+                  </Link>{' '}
+                  with purpose <em>Follow-up</em>: its responses attach as provenance-marked evidence
+                  and never re-decide a recorded recommendation.
                 </p>
               </div>
               {dueFollowups.map(f => (

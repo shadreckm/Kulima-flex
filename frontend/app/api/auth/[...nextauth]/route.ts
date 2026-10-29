@@ -45,8 +45,17 @@ const authOptions: NextAuthOptions = {
       // Ensure 'sub' is always present so the backend validator can resolve
       // the user from tokens minted outside the /api/v1 proxy (direct
       // large-file uploads read this same token shape).
+      //
+      // Order matters for identity permanence. The provider-verified email is
+      // first because it is the identifier the workspace, the plan and the
+      // PLATFORM_ADMIN role are keyed on; a display name is editable at the
+      // provider and a random id is regenerated per token, so either one being
+      // used as the subject silently re-parents a user into a brand-new
+      // workspace and unbinds a platform identity that was already linked.
       if (!token.sub) {
-        token.sub = token.name || token.email || crypto.randomUUID()
+        const verifiedEmail =
+          typeof token.email === 'string' ? token.email.trim().toLowerCase() : ''
+        token.sub = verifiedEmail || token.name || crypto.randomUUID()
       }
       return token
     },

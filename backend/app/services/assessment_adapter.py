@@ -785,6 +785,14 @@ def attach_documents(
     user_id: Optional[str],
     *,
     org_id: Optional[str] = None,
+    source_type: str = "document",
+    pipeline_label: Optional[str] = None,
+    summary_text: Optional[str] = None,
+    self_reported: bool = False,
+    source_ceiling: Optional[float] = None,
+    duplicate_instrument_count: int = 0,
+    extra_metadata: Optional[dict[str, Any]] = None,
+    rerun: bool = True,
 ) -> dict[str, Any]:
     """Attach more documents to an existing Assessment Context and re-run.
 
@@ -792,6 +800,11 @@ def attach_documents(
     existing context, merged extraction refreshes the entity, the previous
     run link is released (a fresh run will be started), and the caller gets
     the updated context + a started intelligence run in one call.
+
+    Collection channels (Forms Integration V1) call the same function with
+    provenance arguments — a response batch is attached as a document, so the
+    evidence pipeline stays single and documents and forms coexist. Defaults
+    reproduce the historical upload behaviour exactly.
     """
     ctx = _repo.get(assessment_id, user_id=user_id, org_id=org_id)
     if ctx is None:
@@ -811,6 +824,13 @@ def attach_documents(
             user_id=user_id,
             org_id=org_id,
             assessment_id=ctx.assessment_id,
+            source_type=source_type,
+            pipeline_label=pipeline_label,
+            summary_text=summary_text,
+            self_reported=self_reported,
+            source_ceiling=source_ceiling,
+            duplicate_instrument_count=duplicate_instrument_count,
+            extra_metadata=extra_metadata,
         )
         name = str(payload.get("name") or "uploaded_document")
         extracted_text = str(payload.get("extractedText") or "")
@@ -858,10 +878,14 @@ def attach_documents(
         ctx.trust_score = round(blended, 1)
 
     # Release the previous run so a fresh chain (research → signals → decision)
-    # is triggered for the enriched evidence base.
-    ctx.run_id = None
-    if ctx.status in (AssessmentStatus.RUNNING, AssessmentStatus.COMPLETE):
-        ctx.status = AssessmentStatus.READY
+    # is triggered for the enriched evidence base. A collection sync can opt out
+    # (rerun=False) to attach evidence without re-running a decision that has
+    # already been recorded — decision history stays immutable.
+    retriggered = bool(rerun)
+    if retriggered:
+        ctx.run_id = None
+        if ctx.status in (AssessmentStatus.RUNNING, AssessmentStatus.COMPLETE):
+            ctx.status = AssessmentStatus.READY
     _repo.save(ctx, org_id=org_id)
     record_event(
         "assessment.evidence_attached",
@@ -871,9 +895,16 @@ def attach_documents(
         metadata={
             "newDocuments": len(new_texts),
             "totalDocuments": len(ctx.uploaded_documents),
-            "retriggeredRun": True,
+            "retriggeredRun": retriggered,
+            **({"sourceType": source_type} if source_type != "document" else {}),
         },
     )
+
+    if not retriggered:
+        return serialize_context(_repo.get(assessment_id, user_id=user_id, org_id=org_id) or ctx) | {
+            "runId": ctx.run_id,
+            "runStatus": "not_retriggered",
+        }
 
     # Auto-chain: start the new intelligence run immediately.
     run = start_assessment_run(assessment_id, user_id, org_id=org_id)

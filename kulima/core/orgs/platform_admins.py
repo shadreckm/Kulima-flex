@@ -308,6 +308,86 @@ class PlatformAdminRepository:
                     return self._row_to_admin(row)
         return None
 
+    def resolve_session(
+        self, *, subject: str | None = None, verified_email: str | None = None,
+    ) -> tuple[PlatformAdmin | None, str | None]:
+        """Active role row for a signing session, matched on *any* identifier it proves.
+
+        Returns ``(row, matched_via)`` where ``matched_via`` is one of
+        ``session_subject`` / ``verified_email`` / ``subject_email``:
+
+        * ``session_subject`` — the JWT ``sub`` equals the row's bound ``user_id``.
+          This is the permanent binding; it works with no email claim at all.
+        * ``verified_email`` — the provider-verified ``email`` claim equals the row's
+          ``email``. This is how a principal is recognised *before* its ``sub`` has
+          ever been linked.
+        * ``subject_email`` — the ``sub`` is itself an email address (this deployment
+          mints ``token.sub`` from the verified address when the provider gives no
+          account id, and ``/api/v1/orgs/me`` resolves workspaces from that same
+          ``sub``). It is still a *session* identifier: it arrived inside a token
+          signed with the auth secret, which is exactly why it is trusted while
+          ``organization_members.email`` never is.
+
+        A row bound to a *different* subject is never returned for an email match
+        that belongs to another principal, because the row's own ``email`` column is
+        what is compared — never a caller-supplied identity.
+        """
+        subject_value = str(subject).strip() if subject and str(subject).strip() else None
+        email_value = (
+            str(verified_email).strip().lower()
+            if verified_email and str(verified_email).strip() else None
+        )
+        # An email-shaped subject is a second address candidate, not a second kind.
+        email_candidates: list[str] = []
+        for candidate in (email_value, subject_value):
+            if candidate and _looks_like_email(candidate) and candidate.lower() not in [
+                e.lower() for e in email_candidates
+            ]:
+                email_candidates.append(candidate)
+
+        with self._connect() as conn:
+            if subject_value:
+                row = conn.execute(
+                    "SELECT * FROM platform_admins WHERE user_id = ? AND status = 'active'",
+                    (subject_value,),
+                ).fetchone()
+                if row is not None:
+                    return self._row_to_admin(row), "session_subject"
+            for candidate in email_candidates:
+                row = conn.execute(
+                    "SELECT * FROM platform_admins WHERE email = ? AND status = 'active'",
+                    (candidate.lower(),),
+                ).fetchone()
+                if row is not None:
+                    via = "verified_email" if candidate == email_value else "subject_email"
+                    return self._row_to_admin(row), via
+        return None, None
+
+    def bind_subject(self, *, principal: str, user_id: str) -> tuple[bool, str]:
+        """Permanently link an active role row to the subject that signed in.
+
+        ``attach_subject`` is the write; this adds the *why* so the caller can report
+        and audit the outcome instead of swallowing a silent no-op. It never
+        overwrites an existing link: re-pointing a principal's binding is an explicit
+        revoke-and-grant on the roster, not a side effect of someone else's request.
+        """
+        if not user_id or not str(user_id).strip():
+            return False, "no_subject"
+        existing = self.get(principal)
+        if existing is None:
+            return False, "no_row"
+        if not existing.is_active:
+            return False, "not_active"
+        if existing.user_id is not None:
+            if str(existing.user_id).strip() == str(user_id).strip():
+                return False, "already_bound"
+            return False, "bound_to_other"
+        if self.find(user_id=str(user_id).strip()) is not None:
+            return False, "subject_taken"
+        return (True, "bound") if self.attach_subject(
+            principal=principal, user_id=str(user_id).strip()
+        ) else (False, "not_bound")
+
     def get(self, principal: str) -> PlatformAdmin | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM platform_admins WHERE principal = ?", (principal,)).fetchone()

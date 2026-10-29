@@ -19,6 +19,9 @@ class RateLimitMiddleware:
         "/api/v1/documents",
         "/api/v1/intelligence",
         "/api/v1/signals",
+        # Collection channels spend an external (Google) quota per sync, so the
+        # connector surface is throttled like the LLM-backed routes.
+        "/api/v1/forms",
     )
 
     def __init__(self, app):

@@ -159,7 +159,18 @@ export const PLATFORM_ADMIN_ROLE_LABEL = 'Platform Administrator'
 export type AdminSession = {
   isPlatformAdmin: boolean
   reason: string                 // 'granted' | 'not_configured' | 'not_allowlisted'
-  matchedVia: string | null      // 'session_subject' | 'verified_email' | null
+  /**
+   * Which session claim resolved the role: 'session_subject' (the permanent
+   * binding), 'verified_email' (the provider-verified email claim) or
+   * 'subject_email' (the subject is itself the verified address).
+   */
+  matchedVia: string | null
+  /**
+   * Outcome of binding this session's subject onto the role row: 'bound',
+   * 'already_bound', 'bound_to_other', 'subject_taken', … or null when there was
+   * nothing to bind. It is why the console is visible or not, stated plainly.
+   */
+  identityBound: string | null
   identifiersChecked: string[]   // the caller's own identifiers only
   allowListConfigured: boolean
   allowListSize: number

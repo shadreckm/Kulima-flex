@@ -1155,3 +1155,219 @@ export function outcomeReviewDownloadHref(
   return `/api/v1/outcomes/${encodeURIComponent(String(runId))}/outcome-review?format=${format}`
 }
 
+// ── Collection Sources: Google Forms / Sheets (Forms Integration V1) ─────────
+// A collection channel is an ingress, not a pipeline: every batch it produces
+// becomes one ordinary evidence document. Nothing here invents a number — the
+// types mirror the backend payloads exactly, and an unavailable channel is
+// reported as unavailable rather than as an empty-but-working one.
+
+export type ChannelStatus = {
+  enabled: boolean
+  configured: boolean
+  missing: string[]
+  minBatchSize: number
+  maxResponsesPerSync: number
+  pollMinutes: number
+  usesDurableQueue: boolean
+  autoRerun: boolean
+  credentialBlastRadius: string
+  message: string | null
+}
+
+export type CollectionGuidance = {
+  entityType: string
+  entityLabel: string
+  purpose: string
+  defaultEvidenceClass: string
+  respondentTypes: string[]
+  requiredBlocks: string[]
+  signalDomains: string[]
+  minimumResponses: number
+  honestyCaveat: string
+  reportSections: string[]
+}
+
+export type CollectionConnection = {
+  id: string
+  assessmentId: string
+  kind: string
+  kindLabel: string
+  formId: string
+  sheetId: string
+  sheetRange: string
+  title: string
+  purpose: string
+  status: string
+  evidenceClass: string
+  questionCount: number
+  schemaHash: string
+  totalResponses: number
+  pendingResponses: number
+  batchCount: number
+  lastSyncedAt: string
+  lastError: string
+  note: string
+  createdAt: string
+}
+
+export type CollectionBatch = {
+  id: string
+  connectionId: string
+  documentId: string
+  runId: string
+  filename: string
+  responseCount: number
+  windowStart: string
+  windowEnd: string
+  trustScore: number | null
+  evidenceStatus: string
+  createdAt: string
+  [key: string]: unknown
+}
+
+export type ConnectionsPayload = {
+  enabled: boolean
+  configured: boolean
+  message: string | null
+  connections: CollectionConnection[]
+  batches: CollectionBatch[]
+  guidance: CollectionGuidance | null
+  status: ChannelStatus
+}
+
+export type ConnectionCreatePayload = {
+  assessmentId: string
+  formUrl?: string
+  sheetUrl?: string
+  sheetRange?: string
+  purpose?: 'evidence' | 'follow_up'
+  note?: string
+}
+
+export type ConnectionCreated = {
+  connection: CollectionConnection
+  authorizeUrl: string
+  redirectUri: string
+  guidance: CollectionGuidance
+  credentialBlastRadius: string
+  consentNote: string
+}
+
+export type CollectionSyncResult = {
+  connectionId: string
+  kind: string
+  kindLabel: string
+  title: string
+  purpose: string
+  assessmentId: string
+  fetched: number
+  newResponses: number
+  pendingCount: number
+  minBatchSize: number
+  recommendedMinimum: number
+  reason: string
+  status?: string
+  message?: string
+  materialised?: boolean
+  documentId?: string
+  batchId?: string
+  responseCount?: number
+  medianResponseTrust?: number | null
+  respondentMix?: Record<string, number>
+  belowRecommendedMinimum?: boolean
+  honestyCaveat?: string
+  evidenceStatus?: string
+  retriggered?: boolean
+  schedule?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+/**
+ * One request helper for the whole channel. The backend flattens domain errors
+ * to `{ error, code, message }` at the TOP level, so the operator-facing message
+ * is what the user reads — never a bare status code.
+ */
+async function collectionRequest<T>(path: string, init: RequestInit, context: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: withAuth({ 'Content-Type': 'application/json', ...(init.headers || {}) }),
+  })
+  if (!res.ok) {
+    const raw = await readResponseText(res)
+    const code = diagnosticCode(raw)
+    let message = ''
+    try {
+      message = String((JSON.parse(raw) as { message?: string })?.message || '')
+    } catch { /* non-JSON body falls through to the raw preview */ }
+    throw new Error(`${context} failed: ${res.status}${code ? ` [${code}]` : ''} ${message || raw.slice(0, 300)}`.trim())
+  }
+  return parseJsonResponse<T>(res, context)
+}
+
+export async function getChannelStatus(): Promise<ChannelStatus> {
+  return collectionRequest<ChannelStatus>('/api/v1/forms/status', { method: 'GET' }, 'getChannelStatus')
+}
+
+export async function getCollectionGuidance(assessmentId: string): Promise<{
+  assessmentId: string
+  entityType: string
+  guidance: CollectionGuidance
+  status: ChannelStatus
+}> {
+  return collectionRequest(
+    `/api/v1/forms/guidance?assessmentId=${encodeURIComponent(assessmentId)}`,
+    { method: 'GET' },
+    'getCollectionGuidance',
+  )
+}
+
+export async function listCollectionConnections(assessmentId?: string | null): Promise<ConnectionsPayload> {
+  const query = assessmentId ? `?assessmentId=${encodeURIComponent(assessmentId)}` : ''
+  return collectionRequest<ConnectionsPayload>(`/api/v1/forms/connections${query}`, { method: 'GET' }, 'listCollectionConnections')
+}
+
+export async function listCollectionBatches(assessmentId?: string | null): Promise<{ batches: CollectionBatch[] }> {
+  const query = assessmentId ? `?assessmentId=${encodeURIComponent(assessmentId)}` : ''
+  return collectionRequest(`/api/v1/forms/batches${query}`, { method: 'GET' }, 'listCollectionBatches')
+}
+
+export async function createCollectionConnection(payload: ConnectionCreatePayload): Promise<ConnectionCreated> {
+  return collectionRequest<ConnectionCreated>(
+    '/api/v1/forms/connections',
+    { method: 'POST', body: JSON.stringify(payload) },
+    'createCollectionConnection',
+  )
+}
+
+export async function disconnectCollectionConnection(connectionId: string): Promise<{
+  revoked: boolean
+  connection: CollectionConnection
+  note: string
+}> {
+  return collectionRequest(
+    `/api/v1/forms/connections/${encodeURIComponent(connectionId)}`,
+    { method: 'DELETE' },
+    'disconnectCollectionConnection',
+  )
+}
+
+export async function syncCollectionConnection(
+  connectionId: string,
+  assessmentId?: string | null,
+  scheduleMinutes = 0,
+): Promise<CollectionSyncResult> {
+  return collectionRequest<CollectionSyncResult>(
+    `/api/v1/forms/connections/${encodeURIComponent(connectionId)}/sync`,
+    { method: 'POST', body: JSON.stringify({ assessmentId: assessmentId || '', scheduleMinutes }) },
+    'syncCollectionConnection',
+  )
+}
+
+export async function scheduleCollectionSync(connectionId: string, minutes = 60): Promise<Record<string, unknown>> {
+  return collectionRequest(
+    `/api/v1/forms/connections/${encodeURIComponent(connectionId)}/schedule?minutes=${minutes}`,
+    { method: 'POST' },
+    'scheduleCollectionSync',
+  )
+}
+

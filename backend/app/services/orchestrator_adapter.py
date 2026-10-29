@@ -707,6 +707,20 @@ def _sync_assessment(
 
         if ctx and brief is not None:
             existing_doc_ids = {r.id for r in getattr(brief, "uploaded_evidence", []) or []}
+            # Collection-channel provenance (Forms Integration V1). Best-effort:
+            # with the channel switched off this lookup returns nothing and the
+            # bridge behaves exactly as before.
+            collection_batches: dict[str, dict] = {}
+            try:
+                from kulima.core.forms.repository import get_repo as _get_forms_repo
+
+                for row in _get_forms_repo().list_batches(
+                    getattr(ctx, "org_id", None) or org_id or "", assessment_id
+                ):
+                    if row.get("documentId"):
+                        collection_batches[str(row["documentId"])] = row
+            except Exception as col_exc:  # noqa: BLE001 — provenance must not fail the run
+                _log.debug("Collection provenance lookup skipped: %s", col_exc)
             brief_updated = False
             for doc in ctx.uploaded_documents:
                 # Add signals from document
@@ -720,10 +734,28 @@ def _sync_assessment(
                             tb = TrustScoreBreakdown.model_validate(doc.trust_breakdown)
                         except Exception:
                             pass
+                    batch = collection_batches.get(str(doc.id))
+                    if batch:
+                        origin = (
+                            f"Google Form Collection Pipeline ({doc.name}) · "
+                            f"{int(batch.get('responseCount') or 0)} responses · self-reported"
+                        )
+                        attribution_title = f"Collection Batch: {doc.name}"
+                        attribution_type = "collection"
+                        trail = [
+                            f"Collection batch attached to run: {doc.name}",
+                            f"{int(batch.get('responseCount') or 0)} responses collected through a connected instrument",
+                            "Self-reported evidence: corroborated by documents, never by response volume",
+                        ]
+                    else:
+                        origin = f"Document Ingestion Pipeline ({doc.name})"
+                        attribution_title = f"Uploaded Document: {doc.name}"
+                        attribution_type = "document"
+                        trail = [f"Document attached to run: {doc.name}"]
                     evidence_record = UploadedEvidenceRecord(
                         id=doc.id,
                         filename=doc.name,
-                        source=f"Document Ingestion Pipeline ({doc.name})",
+                        source=origin,
                         upload_date=doc.upload_date or datetime.now(timezone.utc).isoformat(),
                         file_type=doc.file_type or "DOCUMENT",
                         uploader=ctx.created_by or "Assessment Reviewer",
@@ -732,16 +764,16 @@ def _sync_assessment(
                         evidence_items=list(doc.evidence_items or []),
                         signals_generated=list(doc.signals or []),
                         decision_impact=doc.decision_impact or "Supporting Evidence Attribution",
-                        audit_trail=[f"Document attached to run: {doc.name}"],
+                        audit_trail=trail,
                         raw_summary=doc.raw_summary or "",
                     )
                     brief.uploaded_evidence.append(evidence_record)
                     brief.sources.append(SourceAttribution(
-                        title=f"Uploaded Document: {doc.name}",
+                        title=attribution_title,
                         url=doc.url or f"/uploads/{doc.id}",
                         snippet=doc.raw_summary[:250] if doc.raw_summary else f"Uploaded dossier component {doc.name}",
                         relevance=0.95,
-                        source_type="document",
+                        source_type=attribution_type,
                         confidence_score=round((doc.trust_score or 75.0) / 100.0, 2),
                     ))
                     brief_updated = True

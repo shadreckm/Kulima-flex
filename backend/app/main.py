@@ -20,6 +20,7 @@ from .routers import (
     conversations,
     documents,
     outcomes,
+    forms,
     assessments,
     assessment_workspace,
     orgs,
@@ -118,6 +119,10 @@ app.include_router(ask_signals.router, prefix="/api/v1/ask", tags=["ask_signals"
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(outcomes.router, prefix="/api/v1/outcomes", tags=["outcomes"])
+# Collection channels (Forms Integration V1). Switched off unless
+# KULIMA_FORMS_ENABLED is set, and every route declines honestly when the
+# Google OAuth client is not configured on the deployment.
+app.include_router(forms.router, prefix="/api/v1/forms", tags=["forms"])
 app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(auth_diagnostics.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])

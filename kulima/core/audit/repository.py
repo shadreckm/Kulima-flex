@@ -108,6 +108,16 @@ EVENT_TYPES: dict[str, str] = {
     "dossier.generated": "Decision Dossier Generated",
     "dossier.approved": "Decision Dossier Approved",
     "session.exit_with_pending": "Session Exit with Pending Tasks",
+    # Collection channels (Forms Integration V1): every authorisation, sync and
+    # disconnect is governance-relevant because a connection hands an external
+    # system read access to workspace evidence.
+    "collection.auth_started": "Collection Authorisation Started",
+    "collection.connected": "Collection Source Connected",
+    "collection.connection_failed": "Collection Connection Failed",
+    "collection.disconnected": "Collection Source Disconnected",
+    "collection.synced": "Collection Responses Synced",
+    "collection.sync_failed": "Collection Sync Failed",
+    "collection.batch_materialised": "Collection Evidence Batch Created",
 }
 
 LABELS_BY_PREFIX = {
@@ -123,6 +133,7 @@ LABELS_BY_PREFIX = {
     "org": "Team",
     "billing": "Billing",
     "admin": "Platform Ops",
+    "collection": "Collection Sources",
 }
 
 

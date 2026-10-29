@@ -22,6 +22,10 @@ class JobKind(str, Enum):
     DECISION = "decision"
     EXPORT = "export"
     RETENTION_CLEANUP = "retention_cleanup"
+    # Collection channels (Forms Integration V1): pull a connected form's new
+    # responses and materialise one evidence batch. Enqueued only when
+    # KULIMA_FORMS_USE_JOBS is set, and by the optional polling cadence.
+    FORM_SYNC = "form_sync"
 
 
 class JobStatus(str, Enum):

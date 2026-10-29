@@ -327,6 +327,7 @@ export function AdminConsoleShell({
               <span>Role: <span className="font-bold text-slate-500">{session.roleLabel || 'Platform Administrator'}</span></span>
               <span>Granted by: <span className="font-bold text-slate-500">{session.grantedBy === 'env_allow_list' ? 'break-glass environment' : 'stored PLATFORM_ADMIN role'}</span></span>
               <span>Matched on: <span className="font-bold text-slate-500">{session.matchedVia || 'session_subject'}</span></span>
+              <span>Identity binding: <span className="font-bold text-slate-500">{session.identityBound || 'not applicable'}</span></span>
               <span>Capabilities: {session.capabilities?.length ?? 0}/{ALL_CAPABILITIES.length}</span>
               <span>Active administrators: {session.adminCount}</span>
               <span>Break-glass identities configured: {session.allowListSize}</span>

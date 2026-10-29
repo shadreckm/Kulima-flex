@@ -188,6 +188,8 @@ class JobRunner:
             return await self._execute_export_job(job)
         elif job.kind == JobKind.RETENTION_CLEANUP:
             return await self._execute_retention_cleanup_job(job)
+        elif job.kind == JobKind.FORM_SYNC:
+            return await self._execute_form_sync_job(job)
         else:
             raise ValueError(f"Unknown job kind: {job.kind}")
 
@@ -435,6 +437,32 @@ class JobRunner:
             "expired_documents_cleaned": cleaned_count,
             "org_id": org_id,
         }
+
+    async def _execute_form_sync_job(self, job: Job) -> dict[str, any]:
+        """Pull a connected form's new responses and materialise one batch.
+
+        The payload deliberately avoids the ``assessment_id`` key: a failed
+        collection sync must not mark a completed assessment FAILED through
+        ``_propagate_failure``. The target context is carried as
+        ``target_assessment_id`` and passed to the connector explicitly.
+        """
+        connection_id = job.payload.get("connection_id")
+        org_id = job.payload.get("org_id")
+        if not connection_id or not org_id:
+            raise ValueError("form_sync job requires connection_id and org_id")
+
+        from backend.app.services import forms_adapter
+
+        _log.info("Executing form sync job %s for connection %s", job.id, connection_id)
+        result = await asyncio.to_thread(
+            forms_adapter.sync_connection,
+            connection_id,
+            org_id=org_id,
+            user_id=job.payload.get("user_id"),
+            assessment_id=job.payload.get("target_assessment_id"),
+            reason="scheduled",
+        )
+        return result
 
     async def _maybe_advance_case_lifecycle(self, case_id: str) -> None:
         """Check if all jobs for a case are complete and advance lifecycle."""

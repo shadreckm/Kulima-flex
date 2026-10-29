@@ -174,6 +174,50 @@ def recommendation_tier(brief: Any) -> str:
 
 # ── Issue 3: honest evidence accounting ──────────────────────────────────────
 
+#: Provenance marker every collection channel writes into
+#: ``UploadedEvidenceRecord.source`` (see ``document_adapter.save_uploaded_file``
+#: ``pipeline_label`` and the orchestrator bridge). Reports use it to separate
+#: document evidence from collection evidence without inventing a second model.
+#: Matched as a phrase because the bridge prefixes it with the channel name
+#: ("Google Form Collection Pipeline (…)").
+COLLECTION_SOURCE_PREFIX = "Collection Pipeline"
+
+_RESPONSE_COUNT = re.compile(r"·\s*(\d+)\s*responses")
+
+
+def _record_source(record: Any) -> str:
+    source = getattr(record, "source", None)
+    if source is None and isinstance(record, dict):
+        source = record.get("source")
+    return str(source or "")
+
+
+def is_collection_evidence(record: Any) -> bool:
+    """True when this evidence record arrived through a collection channel."""
+    return COLLECTION_SOURCE_PREFIX in _record_source(record)
+
+
+def _record_response_count(record: Any) -> int:
+    match = _RESPONSE_COUNT.search(_record_source(record))
+    return int(match.group(1)) if match else 0
+
+
+def collection_accounting(brief: Any) -> dict[str, int]:
+    """How much of this assessment's evidence came from live collection.
+
+    Reported separately from — never merged into — the document count, so a
+    reader can see that 400 form responses are one self-reported instrument and
+    not four hundred corroborating sources.
+    """
+    records = list(getattr(brief, "uploaded_evidence", []) or [])
+    collection = [r for r in records if is_collection_evidence(r)]
+    return {
+        "document_evidence_count": len(records) - len(collection),
+        "collection_evidence_count": len(collection),
+        "collection_response_count": sum(_record_response_count(r) for r in collection),
+    }
+
+
 def _doc_evidence_item_count(brief: Any) -> int:
     """Count evidence items actually extracted from uploaded documents."""
     total = 0
@@ -224,11 +268,37 @@ def evidence_accounting(brief: Any) -> dict[str, int]:
 
 def evidence_accounting_line(brief: Any) -> str:
     acc = evidence_accounting(brief)
-    return (
+    base = (
         f"Sources reviewed: {acc['source_count']} | "
         f"Claims extracted: {acc['claim_count']} | "
         f"Uploaded documents: {acc['document_count']} | "
         f"High-authority sources: {acc['high_authority_count']}"
+    )
+    line = collection_accounting_line(brief)
+    return f"{base}\n{line}" if line else base
+
+
+def collection_accounting_line(brief: Any) -> str:
+    """One honest line about live collection, or an empty string.
+
+    Returns nothing when no collection evidence exists, so reports for
+    document-only assessments are byte-identical to before this channel existed.
+    The line reconciles against the attached-record total above it rather than
+    introducing a competing count: a batch is one evidence record, however many
+    responses it carries.
+    """
+    acc = collection_accounting(brief)
+    batches = acc["collection_evidence_count"]
+    if not batches:
+        return ""
+    responses = acc["collection_response_count"]
+    documents = acc["document_evidence_count"]
+    detail = f"{responses} responses · " if responses else ""
+    return (
+        f"Evidence origin: {documents + batches} attached evidence record(s) = "
+        f"{documents} uploaded document(s) + {batches} collection batch(es) "
+        f"({detail}self-reported, collected by the assessed entity and not independently "
+        f"verified — response volume never raises a batch above CORROBORATED authority)"
     )
 
 

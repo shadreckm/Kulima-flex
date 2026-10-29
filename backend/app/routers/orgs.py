@@ -21,6 +21,7 @@ from kulima.core.orgs.models import (
 )
 from kulima.core.orgs.repository import OrgRepository
 
+from ..core.admin_access import ensure_identity_bound
 from ..core.auth import OrgContext, get_current_org, require_permission
 
 router = APIRouter()
@@ -102,7 +103,15 @@ async def list_organizations(current: OrgContext = Depends(get_current_org)):
 
 @router.get("/me")
 async def get_my_org(current: OrgContext = Depends(get_current_org)):
-    """Acting identity: user, workspace, role, permissions and plan."""
+    """Acting identity: user, workspace, role, permissions and plan.
+
+    Also the sign-in binding point for the platform plane: when this session's own
+    claims resolve an active ``PLATFORM_ADMIN`` row that has no subject bound yet,
+    the row is linked to this subject here, so the console is reachable on the next
+    request without depending on an email claim arriving. Ordinary users bind
+    nothing — and learn nothing about who else is on the roster.
+    """
+    ensure_identity_bound(current)
     return {
         **current.to_payload(),
         "memberCount": _repo().count_members(current.org_id),

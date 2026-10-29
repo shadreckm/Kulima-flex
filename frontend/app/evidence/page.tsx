@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useSession, signIn } from 'next-auth/react'
 import PilotWorkspaceShell from '../../components/PilotWorkspaceShell/PilotWorkspaceShell'
 import ActivityTimeline from '../../components/ActivityTimeline/ActivityTimeline'
+import CollectionSources from '../../components/CollectionSources/CollectionSources'
 import { getFullBrief, attachAssessmentDocuments, attachAssessmentDocumentsDirect, type AssessmentWorkspacePayload } from '../../lib/api'
 import { useAssessmentWorkspace } from '../../hooks/useAssessmentWorkspace'
 import AssessmentGuard from '../../components/AssessmentGuard/AssessmentGuard'
@@ -447,6 +448,11 @@ export default function EvidencePage() {
               const evStatus    = String(doc.evidence_status || doc.evidenceStatus || '')
               const tb          = doc.trust_breakdown ?? null
               const rawSummary  = doc.raw_summary || doc.rawSummary || null
+              // A collection batch arrives as an ordinary document whose summary
+              // the connector wrote ("Collection batch: …"). Keeping the origin
+              // visible in this list is what stops form evidence from reading
+              // like an audited filing — provenance guard G4.
+              const isCollection = /^Collection batch:/i.test(String(rawSummary || ''))
               return (
                 <div key={doc.id || idx} className="p-4 bg-[#F5F8FC] rounded-[10px] border border-[#DDE6F0] space-y-3">
                   {/* Document header row */}
@@ -456,6 +462,14 @@ export default function EvidencePage() {
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-900 text-white">
                           {docType}
                         </span>
+                        {isCollection ? (
+                          <span
+                            title="Imported from a connected collection channel (Google Form or response sheet). Self-reported: collected by the assessed entity, not independently verified."
+                            className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#F4EBFF] text-[#6941C6] border border-[#E9D7FE]"
+                          >
+                            Collection batch
+                          </span>
+                        ) : null}
                         <span className="text-sm font-extrabold text-slate-900 truncate">{docName}</span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-[11px] text-slate-500">
@@ -596,6 +610,19 @@ export default function EvidencePage() {
         )}
       </section>
 
+      {/* ── SOURCE C: Collection Channels (Google Forms / Sheets) ───────────────
+          Forms Integration V1. Adds evidence through the same Document Bridge;
+          when the channel is switched off it shows one quiet line instead of a
+          dead control, so document upload stays the primary route as before. */}
+      <CollectionSources
+        assessmentId={assessmentId || null}
+        onEvidenceChanged={async () => {
+          await reloadContext()
+          if (runId) await refreshBrief().catch(() => null)
+          setPipelineReady(true)
+        }}
+      />
+
       {/* Integrity Summary & Verification Checklist */}
       {brief ? (
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -687,14 +714,24 @@ export default function EvidencePage() {
                       Source B — Uploaded Documents ({uploadedEvidence.length})
                     </div>
                   ) : null}
-                  {uploadedEvidence.map((doc, idx) => (
-                    <div key={`u${idx}`} className="border border-amber-200 bg-amber-50/40 rounded-lg p-3 text-xs">
-                      <div className="font-bold text-slate-900">{doc.filename || 'Document'}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
-                        Trust: {metric(doc.trust_breakdown?.final_trust_score, 'not scored')} · Status: {String(doc.evidence_status || 'not audited').replace(/_/g, ' ')}
+                  {uploadedEvidence.map((doc, idx) => {
+                    const fromCollection = /^Collection batch:/i.test(String(doc.raw_summary || doc.rawSummary || ''))
+                    return (
+                      <div key={`u${idx}`} className={`rounded-lg p-3 text-xs border ${
+                        fromCollection ? 'border-[#E9D7FE] bg-[#F4EBFF]/40' : 'border-amber-200 bg-amber-50/40'
+                      }`}>
+                        <div className="font-bold text-slate-900">{doc.name || doc.filename || 'Document'}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                          Trust: {metric(doc.trust_breakdown?.final_trust_score, 'not scored')} · Status: {String(doc.evidence_status || 'not audited').replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-[10px] mt-1 font-semibold text-slate-600">
+                          {fromCollection
+                            ? 'Source C — collection channel (self-reported responses, one batch)'
+                            : 'Source B — uploaded primary document'}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </>
               )}
             </div>

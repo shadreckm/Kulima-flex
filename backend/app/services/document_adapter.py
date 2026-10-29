@@ -50,6 +50,22 @@ ALLOWED_MIME_TYPES = {
 }
 DISALLOWED_EXTENSIONS = {".exe", ".bat", ".cmd", ".js", ".ps1", ".msi", ".sh", ".vbs"}
 
+# ── Collection channels: self-reported evidence ceilings (Forms Integration V1) ─
+# Guard G1 — volume never buys reliability. A response batch is self-reported
+# structured data (authority tier T5): however many responses arrive, its source
+# reliability may not rise above the "structured data export" rung, and its final
+# trust score may not cross the VERIFIED threshold (80) that
+# ``_extract_signals_and_evidence`` applies.
+#
+# Guard G2 — one instrument is one corroborating source. Repeated syncs of the
+# same form must not inflate the multi-document corroboration bonus, so the
+# caller passes how many batches this instrument already contributed.
+#
+# Both ceilings apply ONLY when a collection connector registers the payload.
+# Ordinary document uploads keep the existing ladder byte-for-byte.
+SELF_REPORTED_SOURCE_CEILING = 70.0
+SELF_REPORTED_TRUST_CEILING = 79.0
+
 
 class InvalidUploadError(Exception):
     """Raised when an uploaded document violates security constraints."""
@@ -107,6 +123,9 @@ def _calculate_trust_engine_scores(
     chunks_count: int,
     brief: Optional[InvestmentBrief] = None,
     all_uploaded_count: int = 0,
+    source_ceiling: Optional[float] = None,
+    self_reported: bool = False,
+    duplicate_instrument_count: int = 0,
 ) -> TrustScoreBreakdown:
     """Deterministic, transparent Trust Engine score calculation.
 
@@ -173,6 +192,20 @@ def _calculate_trust_engine_scores(
     else:
         source_rel = 65.0
         rel_reason = "Generic corporate documentation"
+
+    # ── COLLECTION GUARD G1: self-reported collections have an authority cap ──
+    # Applies only when a connector registered this payload (or an explicit
+    # ceiling was passed). Documents uploaded by a user are never re-capped here,
+    # so the existing ladder and its baselines are untouched.
+    guard_notes: list[str] = []
+    if self_reported or source_ceiling is not None:
+        ceiling = float(source_ceiling if source_ceiling is not None else SELF_REPORTED_SOURCE_CEILING)
+        if source_rel > ceiling:
+            source_rel = ceiling
+            guard_notes.append(
+                f"Source reliability capped at {ceiling:.0f}/100: self-reported responses "
+                "cannot gain authority from response volume."
+            )
 
     # ── 2. RECENCY (15% weight) ──────────────────────────────────────────────
     # Look for year markers in the document to infer age.
@@ -241,15 +274,30 @@ def _calculate_trust_engine_scores(
         else:
             corroboration_score = 52.0
 
-        # Multi-document corroboration bonus (each additional doc adds weight)
-        total_docs = existing_docs + 1 + all_uploaded_count
+        # Multi-document corroboration bonus (each additional doc adds weight).
+        # Guard G2: previous batches from the SAME instrument are not independent
+        # sources, so the connector subtracts them before the bonus is computed.
+        total_docs = existing_docs + 1 + all_uploaded_count - max(0, int(duplicate_instrument_count))
+        if duplicate_instrument_count:
+            guard_notes.append(
+                f"{int(duplicate_instrument_count)} earlier batch(es) from this same instrument "
+                "were excluded from the corroboration count (one instrument = one source)."
+            )
         if total_docs >= 3:
             corroboration_score = min(corroboration_score + 10, 100.0)
         elif total_docs == 2:
             corroboration_score = min(corroboration_score + 5, 100.0)
-    elif all_uploaded_count >= 1:
-        # Multiple docs uploaded together without a brief context
+    elif max(0, all_uploaded_count - int(duplicate_instrument_count)) >= 1:
+        # Multiple docs uploaded together without a brief context. Guard G2
+        # applies here too: batches from one instrument are not new sources.
+        # Document uploads always pass duplicate_instrument_count=0, so this
+        # branch is byte-identical to the previous behaviour for them.
         corroboration_score = 60.0
+        if duplicate_instrument_count:
+            guard_notes.append(
+                f"{int(duplicate_instrument_count)} earlier batch(es) from this same instrument "
+                "were excluded from the corroboration count (one instrument = one source)."
+            )
     else:
         corroboration_score = 48.0
 
@@ -278,6 +326,16 @@ def _calculate_trust_engine_scores(
 
     final_score = round(max(10.0, min(99.0, weighted)), 1)
 
+    # ── COLLECTION GUARD G1 (continued): self-reported evidence never VERIFIED ─
+    # 79 sits strictly below the 80 threshold in _extract_signals_and_evidence,
+    # so a batch of responses can reach CORROBORATED and no higher, by arithmetic.
+    if self_reported and final_score > SELF_REPORTED_TRUST_CEILING:
+        final_score = round(SELF_REPORTED_TRUST_CEILING, 1)
+        guard_notes.append(
+            f"Trust score held at {SELF_REPORTED_TRUST_CEILING:.0f}/100: self-reported collections "
+            "are not independently verified and cannot be classified VERIFIED."
+        )
+
     # Build rationale string
     rationale = (
         f"{rel_reason} (reliability {source_rel:.0f}%). "
@@ -285,6 +343,7 @@ def _calculate_trust_engine_scores(
         f"Recency {recency_score:.0f}% (document year signals). "
         f"Corroboration {corroboration_score:.0f}%."
         + (f" Contradiction penalty applied: -{contradiction_penalty:.0f} pts." if contradiction_penalty > 0 else "")
+        + (" " + " ".join(guard_notes) if guard_notes else "")
     )
 
     return TrustScoreBreakdown(
@@ -368,6 +427,13 @@ def save_uploaded_file(
     org_id: Optional[str] = None,
     assessment_id: Optional[str] = None,
     retention_days: Optional[int] = None,
+    source_type: str = "document",
+    pipeline_label: Optional[str] = None,
+    summary_text: Optional[str] = None,
+    self_reported: bool = False,
+    source_ceiling: Optional[float] = None,
+    duplicate_instrument_count: int = 0,
+    extra_metadata: Optional[dict] = None,
 ) -> dict:
     """Execute the complete 7-step Evidence Pipeline for uploaded files.
 
@@ -375,6 +441,11 @@ def save_uploaded_file(
     metadata envelope (sha256, size, scheme, key reference), is bound to its
     workspace (org + assessment), is private by default, and honours the
     retention window when one is configured.
+
+    Collection channels (Forms Integration V1) reuse this pipeline instead of
+    adding a second one. The extra keyword arguments only annotate provenance
+    and apply the self-reported ceilings; every default reproduces the
+    historical document-upload behaviour exactly.
     """
 
     # STEP 1: Validate and Store Document
@@ -476,6 +547,9 @@ def save_uploaded_file(
         chunks_count=chunks_count,
         brief=target_brief,
         all_uploaded_count=all_uploaded_count,
+        self_reported=self_reported,
+        source_ceiling=source_ceiling,
+        duplicate_instrument_count=duplicate_instrument_count,
     )
 
     # STEP 5: Generate Signals
@@ -487,8 +561,19 @@ def save_uploaded_file(
     )
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    # Provenance labels: a connector-registered batch says which pipeline built
+    # it (design guard G4 — provenance always visible). Defaults are unchanged.
+    origin_label = pipeline_label or f"Document Ingestion Pipeline ({filename})"
+    ingestion_note = (
+        f"Collection batch ingested: {filename} at {now_iso}"
+        if pipeline_label
+        else f"Document ingested: {filename} at {now_iso}"
+    )
+    digest_text = (summary_text or extracted_text[:400]) if (summary_text or extracted_text) else (
+        "No extractable text found in document."
+    )
     audit_trail = [
-        f"Document ingested: {filename} at {now_iso}",
+        ingestion_note,
         f"Trust Engine evaluated score: {trust_breakdown.final_trust_score}/100",
         f"Signals detected: {len(signals)} items",
         f"Published to Evidence Workspace: {now_iso}",
@@ -497,7 +582,7 @@ def save_uploaded_file(
     evidence_record = UploadedEvidenceRecord(
         id=doc_id,
         filename=filename,
-        source=f"Document Ingestion Pipeline ({filename})",
+        source=origin_label,
         upload_date=now_iso,
         file_type=ext.lstrip(".").upper() or "DOCUMENT",
         uploader=user_id or "Pilot Reviewer",
@@ -507,10 +592,21 @@ def save_uploaded_file(
         signals_generated=signals,
         decision_impact=decision_impact,
         audit_trail=audit_trail,
-        raw_summary=extracted_text[:400] if extracted_text else "No extractable text found in document.",
+        raw_summary=digest_text[:1800] if digest_text else "",
     )
 
     # STEP 6: Persist Document Record & Update Run Brief in Database
+    doc_metadata = {
+        "run_id": resolved_db_id,
+        "trust_score": trust_breakdown.final_trust_score,
+        "signals": signals,
+    }
+    if extra_metadata:
+        doc_metadata.update(extra_metadata)
+    if pipeline_label:
+        # Provenance is recorded only for connector-registered payloads, so the
+        # metadata shape of an ordinary document upload stays exactly as before.
+        doc_metadata["origin"] = origin_label
     doc = Document(
         id=doc_id,
         filename=filename,
@@ -518,12 +614,8 @@ def save_uploaded_file(
         doc_type=doc_type,
         uploaded_by=user_id,
         uploaded_at=datetime.now(timezone.utc),
-        source_type="document",
-        metadata={
-            "run_id": resolved_db_id,
-            "trust_score": trust_breakdown.final_trust_score,
-            "signals": signals,
-        },
+        source_type=source_type,
+        metadata=doc_metadata,
     )
     _doc_repo.save_document(
         resolved_db_id,
@@ -540,6 +632,19 @@ def save_uploaded_file(
     )
 
     # Audit trail (Phase 4): document upload is recorded for governance.
+    audit_metadata = {
+        "filename": filename,
+        "mimeType": mime_type,
+        "sizeBytes": len(content),
+        "visibility": "private",
+        "encrypted": at_rest_encrypted,
+        "retentionDays": effective_retention,
+    }
+    if source_type != "document":
+        # Only collection batches widen the payload, so existing audit metadata
+        # for ordinary uploads is unchanged.
+        audit_metadata["sourceType"] = source_type
+        audit_metadata["origin"] = origin_label
     record_event(
         "document.uploaded",
         org_id=org_id,
@@ -547,25 +652,22 @@ def save_uploaded_file(
         run_id=str(resolved_db_id) if resolved_db_id else (str(run_uuid) if run_uuid else None),
         assessment_id=assessment_id,
         document_id=doc_id,
-        metadata={
-            "filename": filename,
-            "mimeType": mime_type,
-            "sizeBytes": len(content),
-            "visibility": "private",
-            "encrypted": at_rest_encrypted,
-            "retentionDays": effective_retention,
-        },
+        metadata=audit_metadata,
     )
 
     # STEP 7: Publish into Evidence & Reports Workspace
     if resolved_db_id and target_brief:
         # Append source attribution
         new_source = SourceAttribution(
-            title=f"Uploaded Document: {filename}",
+            title=(
+                f"Collection Batch: {filename}"
+                if pipeline_label
+                else f"Uploaded Document: {filename}"
+            ),
             url=f"/uploads/{target_name}",
-            snippet=extracted_text[:250] if extracted_text else f"Uploaded dossier component {filename}",
+            snippet=(summary_text or extracted_text)[:250] if (summary_text or extracted_text) else f"Uploaded dossier component {filename}",
             relevance=0.95,
-            source_type="document",
+            source_type=source_type,
             confidence_score=round(trust_breakdown.final_trust_score / 100.0, 2),
         )
         target_brief.sources.append(new_source)
@@ -590,7 +692,7 @@ def save_uploaded_file(
         },
     )
 
-    return {
+    result = {
         "id": doc_id,
         "name": filename,
         "url": f"/uploads/{target_name}",
@@ -619,3 +721,9 @@ def save_uploaded_file(
         "expiresAt": expires_at,
         "storageScheme": storage_metadata["scheme"],
     }
+    if source_type != "document":
+        # Collection provenance widens the payload only for connector batches.
+        result["sourceType"] = source_type
+        result["origin"] = origin_label
+        result["selfReported"] = self_reported
+    return result

@@ -16,8 +16,11 @@ cross-workspace visibility.
 Resolution order
 ----------------
 1. the stored ``PLATFORM_ADMIN`` role, matched on identifiers the *session*
-   proves (JWT ``sub``, or the provider-verified ``email`` claim minted by our
-   own auth chain);
+   proves — JWT ``sub``, the provider-verified ``email`` claim minted by our own
+   auth chain, or a ``sub`` that is itself a verified address. Whichever of the
+   three resolves first also permanently binds the row's ``user_id`` to the
+   signing subject (``admin.platform_role_claimed``), so the next session from
+   that principal is recognised on its subject alone;
 2. ``KULIMA_ADMIN_EMAILS`` / ``KULIMA_PLATFORM_ADMIN_USER_IDS`` as break-glass,
    for when the role store is unreachable or an operator must be recovered from
    the deployment environment. A break-glass grant is labelled ``via`` in the
@@ -32,7 +35,9 @@ What is never consulted: ``organization_members.email``, ``display_name`` or
 ``organizations.created_by``. Those are rows an organization Admin can write
 (inviting a member lets them type any address), so trusting them would let a
 customer grant themselves platform access by listing an operator's address
-against their own user id.
+against their own user id. A value read out of the *signed token* is a different
+thing: the bearer cannot edit a claim without the auth secret, which is why both
+``sub`` and the ``email`` claim are usable and a form field never is.
 """
 
 from __future__ import annotations
@@ -83,6 +88,11 @@ class AdminDecision:
     capabilities: tuple[str, ...] = ()
     admin_count: int = 0
     store_configured: bool = False
+    #: Outcome of the permanent subject binding: 'bound' | 'already_bound' |
+    #: 'no_subject' | 'bound_to_other' | 'subject_taken' | 'not_bound' | 'no_row',
+    #: or None when nothing needed binding on this request. A grant whose identity
+    #: could not be bound is reported, not hidden.
+    identity_bound: str | None = None
 
     def holds(self, capability: PlatformCapability | str | None) -> bool:
         if capability is None:
@@ -95,7 +105,7 @@ class AdminDecision:
             "isPlatformAdmin": self.allowed,
             "reason": self.reason,
             "matchedVia": self.matched_via,
-            "identifiersChecked": list(self.checked),
+            "identifiersChecked": list(dict.fromkeys(self.checked)),
             "allowListConfigured": self.allow_list_size > 0,
             "allowListSize": self.allow_list_size,
             "grantedBy": self.granted_by,
@@ -105,6 +115,10 @@ class AdminDecision:
             "capabilityLabels": capability_labels(self.capabilities) if self.allowed else [],
             "roleStoreConfigured": self.store_configured,
             "adminCount": self.admin_count,
+            # How this session's identity is bound in the role store. An operator
+            # asking "why is the console hidden?" gets the answer from this field
+            # rather than from the log.
+            "identityBound": self.identity_bound,
         }
 
 
@@ -128,11 +142,24 @@ def identity_candidates(
       encrypted NextAuth JWT (Google / Azure AD verify address ownership). It is
       what lets the role be provisioned for an address before that person has
       ever signed in and their ``sub`` is unknown.
+    * ``subject_email`` — the same ``sub`` value, offered a second time because it
+      *is* an email address. Deployments whose subject is the verified address
+      (and sessions whose email claim was dropped by an older proxy) must resolve
+      identically: the role should not depend on which of two signed claims the
+      request happened to carry. It is never read from a database row.
     """
     pairs: list[tuple[str, str]] = [("session_subject", user_id)]
     if verified_email:
         pairs.append(("verified_email", verified_email))
+    subject = str(user_id or "").strip()
+    if subject and _looks_like_email(subject) and subject.lower() != str(verified_email or "").strip().lower():
+        pairs.append(("subject_email", subject))
     return pairs
+
+
+def _looks_like_email(value: str) -> bool:
+    v = str(value).strip()
+    return "@" in v and "." in v.split("@")[-1] and " " not in v
 
 
 def _role_lookup(identifiers: Iterable[tuple[str, str]]):
@@ -145,17 +172,12 @@ def _role_lookup(identifiers: Iterable[tuple[str, str]]):
             email = value
     try:
         repo = get_repo()
-        admin = repo.resolve(user_id=user_id, email=email)
+        admin, matched_kind = repo.resolve_session(subject=user_id, verified_email=email)
         count = repo.count_active()
         configured = count > 0
     except Exception as exc:  # noqa: BLE001 — fail closed, fall back to break-glass
         _log.warning("platform admin role lookup failed; falling back to break-glass: %s", exc)
         return None, 0, False, None
-    matched_kind = "session_subject"
-    if admin is not None and admin.user_id and str(admin.user_id) == str(user_id):
-        matched_kind = "session_subject"
-    elif admin is not None and email and str(admin.email or "").lower() == str(email).lower():
-        matched_kind = "verified_email"
     return admin, count, configured, matched_kind
 
 
@@ -163,29 +185,38 @@ def evaluate(identifiers: Iterable[tuple[str, str]]) -> AdminDecision:
     pairs = list(identifiers)
     checked = tuple(v for _, v in pairs if v)
     admin, admin_count, store_configured, matched_kind = _role_lookup(pairs)
+    allow = allow_list()
 
     if admin is not None and admin.is_active:
-        # A bootstrap row provisioned for an address can arrive with no subject
-        # linked. Linking it on first verified-email access grants nothing new —
-        # the same session already matched on that email — it just makes the
-        # binding survive environments where the email claim is later absent.
-        if admin.user_id is None:
-            _link_subject(pairs)
+        # A role row provisioned for an address arrives with no subject bound.
+        # Binding it on first access grants nothing new — this request already
+        # matched — it makes the *next* request resolvable on its subject alone,
+        # which is the permanent binding. The outcome is reported either way.
+        bound = _bind_identity(pairs, admin) if admin.user_id is None else "already_bound"
+        # ``KULIMA_ADMIN_EMAILS`` is bootstrapped into the store as well as read as
+        # break-glass, so an emergency identity can resolve through either plane.
+        # The more conservative label wins: an operator must always be able to see
+        # that access currently depends on a deployment variable, not on a grant
+        # someone recorded on the roster.
+        env_listed = any(str(v).strip().lower() in allow for _, v in pairs if v)
         return AdminDecision(
             allowed=True,
             reason=REASON_GRANTED,
             matched_via=matched_kind,
             checked=checked,
-            allow_list_size=len(allow_list()),
-            granted_by=VIA_PLATFORM_ROLE,
+            allow_list_size=len(allow),
+            granted_by=VIA_ENV_ALLOW_LIST if env_listed else VIA_PLATFORM_ROLE,
             role=PLATFORM_ADMIN_ROLE,
-            role_label=PLATFORM_ADMIN_ROLE_LABEL,
+            role_label=(
+                f"{PLATFORM_ADMIN_ROLE_LABEL} (break-glass)" if env_listed
+                else PLATFORM_ADMIN_ROLE_LABEL
+            ),
             capabilities=tuple(sorted(c.value for c in admin.capabilities)),
             admin_count=admin_count,
             store_configured=store_configured,
+            identity_bound=bound,
         )
 
-    allow = allow_list()
     if not allow and not store_configured:
         return AdminDecision(
             allowed=False,
@@ -226,18 +257,88 @@ def evaluate(identifiers: Iterable[tuple[str, str]]) -> AdminDecision:
     )
 
 
-def _link_subject(pairs: list[tuple[str, str]]) -> None:
+def _bind_identity(pairs: list[tuple[str, str]], admin) -> str:
+    """Permanently link an unbound role row to the subject that just matched it.
+
+    The subject is only written after the session already resolved the role on an
+    identifier it proves, so binding grants nothing. It is what turns a provisional
+    email-based provision into a standing identity, and the result is recorded as
+    ``admin.platform_role_claimed`` so a link — or a refusal to link — is visible in
+    the audit log instead of only in a warning line nobody reads.
+    """
     user_id = next((v for k, v in pairs if k == "session_subject"), None)
-    email = next((v for k, v in pairs if k == "verified_email"), None)
-    if not user_id or not email:
-        return
+    if not user_id:
+        return "no_subject"
     try:
         repo = get_repo()
-        row = repo.find(email=email)
-        if row is not None and row.user_id is None:
-            repo.attach_subject(principal=row.principal, user_id=user_id)
-    except Exception as exc:  # noqa: BLE001 — a convenience link must never break a request
-        _log.warning("platform admin subject link failed: %s", exc)
+        ok, outcome = repo.bind_subject(principal=admin.principal, user_id=user_id)
+    except Exception as exc:  # noqa: BLE001 — a failed convenience write must never break a request
+        _log.error("platform admin identity binding failed for a granted session: %s", exc)
+        return "not_bound"
+    if ok:
+        try:
+            from kulima.core.audit.repository import record_event
+
+            record_event(
+                "admin.platform_role_claimed",
+                user_id=user_id,
+                metadata={"source": "session", "outcome": outcome},
+            )
+        except Exception as exc:  # noqa: BLE001 — the binding succeeded; the log line is secondary
+            _log.warning("platform admin identity linked but not audited: %s", exc)
+        _log.info("platform admin identity linked to the signing subject")
+        return "bound"
+    if outcome not in ("already_bound",):
+        _log.warning("platform admin identity not bound (%s)", outcome)
+    return outcome
+
+
+#: Subjects this process has already finished binding, keyed by the database they
+#: were bound in. The whoami runs on every workspace load, and a bound identity
+#: never needs binding again; refusals and "no row" are deliberately *not*
+#: memoised so a roster change takes effect, and the store path is part of the key
+#: so a test or a reconfiguration that swaps databases cannot inherit a stale hit.
+_bound_subjects: dict[str, str] = {}
+_BOUND_CACHE_LIMIT = 512
+
+
+def _bound_cache_key(subject: str) -> tuple[str, str]:
+    return (subject, str(get_settings().db_path))
+
+
+def ensure_identity_bound(current: OrgContext) -> str | None:
+    """Bind a matching platform identity without authorizing anything.
+
+    Called from the authenticated whoami (``GET /api/v1/orgs/me``) so the binding
+    happens on sign-in, on whichever request every client makes first, rather than
+    waiting for someone to open a console they cannot yet see. It resolves the role
+    from the session's own claims only, writes nothing for a non-admin, and never
+    raises: an identity that cannot be bound is an ordinary user for this request.
+    """
+    subject = str(current.user_id or "").strip()
+    if not subject:
+        return None
+    key = _bound_cache_key(subject)
+    if key in _bound_subjects:
+        return "already_bound"
+    try:
+        pairs = identity_candidates(
+            user_id=current.user_id,
+            verified_email=getattr(current, "verified_email", None),
+        )
+        admin, _count, _configured, _kind = _role_lookup(pairs)
+        if admin is None or not admin.is_active:
+            return None
+        if admin.user_id is not None:
+            outcome = "already_bound"
+        else:
+            outcome = _bind_identity(pairs, admin)
+    except Exception as exc:  # noqa: BLE001 — identity bookkeeping is never a login blocker
+        _log.warning("platform identity binding skipped: %s", exc)
+        return None
+    if outcome in ("bound", "already_bound") and len(_bound_subjects) < _BOUND_CACHE_LIMIT:
+        _bound_subjects[key] = "bound"
+    return outcome
 
 
 def decision_for(current: OrgContext) -> AdminDecision:

@@ -68,6 +68,7 @@ def _load_reportlab_symbols() -> tuple[Any, ...]:
 from kulima.core.cases.adapters import from_investment_brief
 from kulima.core.documents.context import build_document_context_for_subject
 from kulima.intelligence.report_quality import (
+    collection_accounting_line,
     detect_entity_type,
     evidence_accounting,
     founder_evidence_status,
@@ -668,6 +669,12 @@ def build_full_ic_report_text(brief: InvestmentBrief) -> str:
             f"High-authority sources: {high_authority_count}"
         )
 
+        # Collection channels: document evidence and form evidence are reported
+        # separately, so responses can never be read as extra documents.
+        collection_line = collection_accounting_line(brief)
+        if collection_line:
+            parts.append(collection_line)
+
         if ei.contradictions:
             parts.append("")
             parts.append("Conflicts detected:")
@@ -911,6 +918,12 @@ def build_due_diligence_summary_text(brief: InvestmentBrief) -> str:
                 f"High-authority sources: 0",
             ]
         )
+
+    # Collection channels: reported as its own line, never folded into the
+    # document counts above (Phase 7 evidence accounting honesty).
+    _collection_line = collection_accounting_line(brief)
+    if _collection_line:
+        lines.extend(_collection_line.split("\n"))
 
     ev_title, ev_body = _leadership_evidence_block(brief)
     lines.extend([
@@ -1455,6 +1468,12 @@ def _build_pdf(brief: InvestmentBrief, full_report: bool = False, outcome: dict 
                     styles["KulimaIntegrityGrade"],
                 )
             )
+            # Collection channels appear on their own line so form responses
+            # are never read as additional uploaded documents.
+            collection_line = collection_accounting_line(brief)
+            if collection_line:
+                for _line in collection_line.split("\n"):
+                    story.append(Paragraph(_esc(_line), styles["KulimaBody"]))
             if ei.contradictions:
                 story.append(Paragraph("<b>Conflicts detected:</b>", styles["KulimaBody"]))
                 for i, c in enumerate(ei.contradictions, 1):

@@ -218,6 +218,90 @@ def test_linking_happens_once_and_does_not_change_the_roster_size(client, db_pat
     assert repo.resolve(user_id="link-once") is not None
 
 
+# ── The identity binding is permanent and works from either claim ────────────
+
+def test_subject_that_is_an_email_grants_without_an_email_claim(client, db_path):
+    """A session whose subject *is* the verified address must not need a second claim.
+
+    The deployment mints ``token.sub`` from the provider-verified email when the
+    identity provider gives no account id, and workspaces are keyed on that same
+    ``sub``. Requiring the optional ``email`` claim as well made the console depend
+    on which of two signed claims a request happened to carry.
+    """
+    session = client.get("/api/v1/admin/session", headers=_token(PRIMARY_EMAIL)).json()
+    assert session["isPlatformAdmin"] is True
+    assert session["grantedBy"] == "platform_role"
+    assert session["matchedVia"] == "subject_email"
+    assert session["identityBound"] == "bound"
+    assert PlatformCapability.MANAGE_PLATFORM_ADMINS.value in session["capabilities"]
+
+    # Permanent: the next session resolves on the subject alone, with no claim.
+    assert platform_admins.get_repo(str(db_path)).resolve(user_id=PRIMARY_EMAIL) is not None
+    assert client.get(READ_SECTIONS["overview"], headers=_token(PRIMARY_EMAIL)).status_code == 200
+
+
+def test_whoami_binds_the_identity_at_sign_in(client, db_path):
+    """``GET /api/v1/orgs/me`` is the binding point, before any console is opened."""
+    subject = "114064591648239230885"  # a provider account id, not an address
+    body = client.get("/api/v1/orgs/me", headers=_token(subject, PRIMARY_EMAIL)).json()
+    assert body["userId"] == subject
+    assert platform_admins.get_repo(str(db_path)).resolve(user_id=subject) is not None
+
+    later = client.get("/api/v1/admin/session", headers=_token(subject)).json()
+    assert later["isPlatformAdmin"] is True
+    assert later["matchedVia"] == "session_subject"
+    assert later["identityBound"] == "already_bound"
+
+
+def test_a_non_admin_whoami_binds_nothing(client, db_path):
+    _seed_customer(db_path)
+    body = client.get("/api/v1/orgs/me", headers=_token(CUSTOMER, CUSTOMER_EMAIL)).json()
+    assert body["userId"] == CUSTOMER
+    repo = platform_admins.get_repo(str(db_path))
+    assert repo.resolve(user_id=CUSTOMER) is None
+    assert repo.count_active() == 1
+
+
+def test_binding_is_recorded_in_the_audit_trail(client, db_path):
+    client.get("/api/v1/admin/session", headers=_token("audited-subject", PRIMARY_EMAIL))
+    events = _events(db_path, "admin.platform_role_claimed")
+    assert [e["userId"] for e in events] == ["audited-subject"]
+    assert event_label("admin.platform_role_claimed") == "Platform Identity Linked"
+
+
+def test_bind_subject_refuses_to_repoint_a_linked_row(db_path):
+    repo = platform_admins.get_repo(str(db_path))
+    row = repo.resolve(email=PRIMARY_EMAIL)
+    assert row is not None and row.user_id is None
+    assert repo.bind_subject(principal=row.principal, user_id="first-subject") == (True, "bound")
+    assert repo.bind_subject(principal=row.principal, user_id="first-subject") == (False, "already_bound")
+    assert repo.bind_subject(principal=row.principal, user_id="second-subject") == (False, "bound_to_other")
+    assert repo.find(user_id="second-subject") is None
+    assert repo.resolve(user_id="first-subject") is not None
+
+
+def test_bind_subject_refuses_a_subject_already_on_another_row(db_path):
+    repo = platform_admins.get_repo(str(db_path))
+    repo.grant(email=SECOND_EMAIL, granted_by="test")
+    second = repo.find(email=SECOND_EMAIL)
+    assert second is not None
+    assert repo.bind_subject(principal=second.principal, user_id="shared-subject") == (True, "bound")
+    primary = repo.resolve(email=PRIMARY_EMAIL)
+    assert repo.bind_subject(principal=primary.principal, user_id="shared-subject") == (False, "subject_taken")
+    assert repo.count_active() == 2
+
+
+def test_a_second_principal_with_the_email_claim_cannot_steal_the_binding(client, db_path, admin):
+    """The row is already bound to ``admin``; the address still resolves (that is how
+    it was provisioned) but it re-points nothing."""
+    session = client.get("/api/v1/admin/session", headers=_token("other-subject", PRIMARY_EMAIL)).json()
+    assert session["isPlatformAdmin"] is True
+    assert session["matchedVia"] == "verified_email"
+    assert session["identityBound"] == "already_bound"
+    row = platform_admins.get_repo(str(db_path)).find(email=PRIMARY_EMAIL)
+    assert row.user_id == admin
+
+
 def test_subject_grants_the_role_once_linked(client, admin):
     assert client.get(READ_SECTIONS["audit"], headers=_token(admin)).status_code == 200
 
