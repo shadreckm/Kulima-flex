@@ -13,6 +13,9 @@ Learning made    →   recorded in the lesson fields + Outcome Review PDF
 
 ## The instruments
 
+For the cohort-level calendar, roles, payment controls, executive dashboard, and Day-90
+decision, start with the [90-Day Pilot Operating System](90_DAY_OPERATING_SYSTEM.md).
+
 | # | Document | Who uses it | When |
 |---|---|---|---|
 | 1 | [PILOT_USER_GUIDE.md](PILOT_USER_GUIDE.md) | Every pilot user | Day 0, then weekly |

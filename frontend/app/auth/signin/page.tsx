@@ -6,7 +6,10 @@ import KulimaLogo from '../../../components/KulimaLogo/KulimaLogo'
 
 export default function SignInPage() {
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  // After sign-in, send new users to the landing page (upload workflow)
+  // rather than the dashboard. The landing page auto-redirects to /flex
+  // if an active assessment exists, so returning users are not stranded.
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
 
   return (
     <main className="min-h-screen bg-[#F5F8FC] px-5 py-12 text-slate-900">

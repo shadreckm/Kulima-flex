@@ -1,16 +1,40 @@
 #################################################
-# Runtime Environment
+# Runtime Environment — NEVER COMMIT SECRETS
 #################################################
 
 venv/
+
+# All .env variants — block every flavour so no secret file slips through
 .env
 .env.local
 .env.production
 .env.development
 .env.test
+.env.staging
+.env.preview
+.env.*.local
+
+# Backend-specific env files with real values
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/.env.staging
+
+# Frontend-specific env files with real values
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+frontend/.env.staging
+frontend/.env.preview
+
+# Cryptographic material
 *.pem
 *.key
+*.p12
+*.pfx
 credentials.json
+service-account*.json
+*-service-account.json
 
 __pycache__/
 *.pyc
@@ -18,13 +42,16 @@ __pycache__/
 .mypy_cache/
 
 #################################################
-# Databases (contains sensitive deal data)
+# Databases (contain sensitive assessment data)
 #################################################
 
 founders.db
+backend/founders.db
 *.db
 *.sqlite
 *.sqlite3
+test_*.db
+*_smoke.db
 
 #################################################
 # Frontend Build Artifacts
@@ -120,10 +147,13 @@ htmlcov/
 *.bak
 *.swp
 #################################################
-# Uploaded Evidence Files
+# Uploaded Evidence Files (user documents — never in git)
 #################################################
 
 backend/uploads/
-backend/uploads/
-.qoder/ 
-*.tsbuildinfo 
+uploads/
+*.tsbuildinfo
+
+# AI / tool metadata (no secrets but not repo content)
+.qoder/
+.qodo/
